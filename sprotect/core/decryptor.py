@@ -1,52 +1,44 @@
-"""Decryption engine for S-Protect-PY.
+"""Decryption engine for S-Protect-PY (testing/verification only).
 
-Decrypts JSON payloads produced by the encryption engine, verifying
-the source hash for integrity.
-
-Author: S-Protect Team
-Version: 0.1.0
+Matches the HMAC-SHA256 stream cipher used by the build pipeline.
 """
 
 from __future__ import annotations
 
+import hmac
+import hashlib
 import json
 
-from sprotect.utils.crypto import aes_decrypt, sha256_hash
+
+def _xor_stream(key: bytes, data: bytes) -> bytes:
+    out = bytearray(len(data))
+    for i in range(0, len(data), 32):
+        ctr = (i // 32).to_bytes(8, "big")
+        stream = hmac.new(key, ctr, "sha256").digest()
+        chunk = data[i:i+32]
+        for j in range(len(chunk)):
+            out[i+j] = chunk[j] ^ stream[j]
+    return bytes(out)
 
 
 def decrypt_file(encrypted_data: bytes) -> tuple[str, str]:
-    """Decrypt an encrypted JSON payload back to source code.
-
-    Parses the JSON payload, extracts the AES key and ciphertext,
-    decrypts using AES-256-GCM, and verifies the source hash.
+    """Decrypt an encrypted payload.
 
     Args:
-        encrypted_data: JSON-encoded bytes (from encrypt_file output).
+        encrypted_data: JSON bytes from encrypt_file().
 
     Returns:
-        A tuple of (decrypted_source_code, original_file_hash).
+        Tuple of (source_code, source_hash).
 
     Raises:
-        ValueError: If the payload format is invalid or hash mismatch.
-        InvalidTag: If decryption fails (wrong key or corrupted data).
+        ValueError: If HMAC integrity check fails.
     """
     payload = json.loads(encrypted_data.decode("utf-8"))
-
-    if payload.get("type") != "encrypted_python":
-        raise ValueError(f"Unknown payload type: {payload.get('type')}")
-    if payload.get("algorithm") != "aes-256-gcm":
-        raise ValueError(f"Unsupported algorithm: {payload.get('algorithm')}")
-
-    aes_key = bytes.fromhex(payload["aes_key"])
-    encrypted = bytes.fromhex(payload["data"])
-    expected_hash = payload["source_hash"]
-
-    decrypted = aes_decrypt(encrypted, aes_key)
-    actual_hash = sha256_hash(decrypted)
-
-    if actual_hash != expected_hash:
-        raise ValueError(
-            f"Source hash mismatch: expected {expected_hash}, got {actual_hash}"
-        )
-
-    return decrypted.decode("utf-8"), expected_hash
+    key = bytes.fromhex(payload["key"])
+    ct = bytes.fromhex(payload["data"])
+    sig = payload.get("hmac", "")
+    expected = hmac.new(key, ct, "sha256").hexdigest()
+    if sig and not hmac.compare_digest(sig, expected):
+        raise ValueError("HMAC integrity check failed")
+    plain = _xor_stream(key, ct)
+    return plain.decode("utf-8"), payload.get("source_hash", "")

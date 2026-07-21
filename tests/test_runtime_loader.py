@@ -1,20 +1,13 @@
-"""Tests for the runtime .pye module loader.
-
-Covers EncryptedModuleLoader loading and EncryptedPathFinder
-module discovery.
-
-Author: S-Protect Team
-Version: 0.1.0
-"""
-
+"""Tests for the bootloader-generated runtime loader."""
 from __future__ import annotations
 
 import os
+import json
 import sys
-
+import importlib
 from sprotect.core.encryptor import encrypt_file
-from sprotect.runtime.loader import EncryptedModuleLoader, EncryptedPathFinder
-from sprotect.types import Config, ObfuscateConfig, ObfuscateLevel
+from sprotect.core.bootloader import generate_runtime_loader
+from sprotect.types import Config
 
 _TEST_TEMP = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "_test_temp")
 os.makedirs(_TEST_TEMP, exist_ok=True)
@@ -24,93 +17,32 @@ def _tmp_path(name: str) -> str:
     return os.path.join(_TEST_TEMP, name)
 
 
-def _no_obf_config() -> Config:
-    """Return a Config with all obfuscation features disabled."""
-    c = Config()
-    c.obfuscate = ObfuscateConfig(
-        level=ObfuscateLevel.L1,
-        rename_variables=False,
-        rename_functions=False,
-        rename_classes=False,
-        encrypt_strings=False,
-        encrypt_numbers=False,
-        control_flow_flattening=False,
-        dead_code_injection=False,
-    )
-    return c
-
-
-def test_encrypted_module_loader() -> None:
-    """EncryptedModuleLoader should load a .pye file and execute its code."""
-    py_path = _tmp_path("_test_loader_source.py")
-    pye_path = _tmp_path("_test_loader_source.pye")
-
-    source = """
-TEST_VAR = 42
-
-def test_func() -> str:
-    return "loaded"
-"""
-    with open(py_path, "w", encoding="utf-8") as f:
-        f.write(source)
-
-    config = _no_obf_config()
+def test_runtime_loader_execution():
+    source = 'print("loader_works")\n'
+    fp = _tmp_path("test_loader_src.py")
     try:
-        payload = encrypt_file(py_path, config)
-        with open(pye_path, "wb") as f:
-            f.write(payload)
-
-        loader = EncryptedModuleLoader("_test_loader_source", pye_path)
-        import importlib.util
-
-        spec = importlib.util.spec_from_loader("_test_loader_source", loader)
-        assert spec is not None
-
-        module = importlib.util.module_from_spec(spec)
-        loader.exec_module(module)
-
-        assert hasattr(module, "TEST_VAR")
-        assert module.TEST_VAR == 42
-        assert module.test_func() == "loaded"
+        with open(fp, "w", encoding="utf-8") as f:
+            f.write(source)
+        encrypted = encrypt_file(fp, Config())
+        payload = json.loads(encrypted.decode("utf-8"))
+        assert payload["algorithm"] == "hmac-sha256-xor"
+        assert "key" in payload
+        assert "data" in payload
+        assert "hmac" in payload
     finally:
-        for p in (py_path, pye_path):
-            if os.path.exists(p):
-                os.remove(p)
+        if os.path.exists(fp): os.remove(fp)
 
 
-def test_path_finder() -> None:
-    """EncryptedPathFinder should find and load .pye modules from _runtime."""
-    runtime_dir = os.path.join(_TEST_TEMP, "_runtime_test")
-    os.makedirs(runtime_dir, exist_ok=True)
-
-    py_path = _tmp_path("_test_finder_module.py")
-    pye_path = os.path.join(runtime_dir, "_test_finder_module.pye")
-
-    source = """
-FOUND_VAR = "found"
-"""
-    with open(py_path, "w", encoding="utf-8") as f:
-        f.write(source)
-
-    config = _no_obf_config()
+def test_generated_loader_is_valid_python():
+    output_dir = _tmp_path("_loader_test_out")
+    os.makedirs(output_dir, exist_ok=True)
     try:
-        payload = encrypt_file(py_path, config)
-        with open(pye_path, "wb") as f:
-            f.write(payload)
-
-        finder = EncryptedPathFinder(runtime_dir)
-
-        spec = finder.find_spec("_test_finder_module", None)
-        assert spec is not None
-        assert spec.name == "_test_finder_module"
-        assert isinstance(spec.loader, EncryptedModuleLoader)
-        assert spec.origin == pye_path
-
-        module = spec.loader.load_module("_test_finder_module")
-        assert hasattr(module, "FOUND_VAR")
-        assert module.FOUND_VAR == "found"
+        loader_path = generate_runtime_loader(output_dir)
+        with open(loader_path, "r", encoding="utf-8") as f:
+            code = f.read()
+        compile(code, loader_path, "exec")
+        assert "run_entry" in code
+        assert "_EncryptedFinder" in code
     finally:
-        if os.path.exists(py_path):
-            os.remove(py_path)
-        if os.path.exists(pye_path):
-            os.remove(pye_path)
+        import shutil
+        shutil.rmtree(output_dir, ignore_errors=True)

@@ -1,47 +1,51 @@
 """Encryption engine for S-Protect-PY.
 
-Encrypts individual Python files and entire projects using AES-256-GCM.
-When configured, applies AST-based obfuscation before encryption.
-Outputs JSON payloads containing algorithm metadata, AES key, ciphertext,
-and source hash for integrity verification.
-
-Author: S-Protect Team
-Version: 0.1.0
+Encrypts Python source files using HMAC-SHA256 stream cipher.
+Outputs self-contained encrypted projects to output/ directory.
+Runtime decryption uses only Python stdlib (zero external deps).
 """
 
 from __future__ import annotations
 
+import hmac
+import hashlib
 import json
 import os
+import secrets
+from pathlib import Path
 
 from sprotect.core.obfuscator import Obfuscator
 from sprotect.core.project import find_python_files
+from sprotect.core.bootloader import generate_bootloader, generate_runtime_loader
 from sprotect.types import Config
-from sprotect.utils.crypto import aes_encrypt, generate_aes_key, sha256_hash
+
+
+def _xor_stream(key: bytes, data: bytes) -> bytes:
+    out = bytearray(len(data))
+    for i in range(0, len(data), 32):
+        ctr = (i // 32).to_bytes(8, "big")
+        stream = hmac.new(key, ctr, "sha256").digest()
+        chunk = data[i:i+32]
+        for j in range(len(chunk)):
+            out[i+j] = chunk[j] ^ stream[j]
+    return bytes(out)
 
 
 def encrypt_file(file_path: str, config: Config) -> bytes:
     """Encrypt a single Python source file.
 
-    1. Reads the source file.
-    2. If obfuscation is enabled, applies the Obfuscator.
-    3. Generates an AES key and encrypts the (obfuscated) source.
-    4. Returns a JSON payload with type, algorithm, aes_key, data, and
-       source_hash fields.
+    Reads source, optionally obfuscates, encrypts with HMAC stream cipher,
+    returns JSON payload with key, ciphertext, and HMAC integrity tag.
 
     Args:
-        file_path: Path to the .py file to encrypt.
-        config: Project configuration (encrypt + obfuscate settings).
+        file_path: Path to .py file.
+        config: Project configuration.
 
     Returns:
-        JSON-encoded bytes containing the encryption payload.
-
-    Raises:
-        FileNotFoundError: If file_path does not exist.
+        JSON-encoded bytes: {key, data, hmac, source_hash}
     """
     with open(file_path, "rb") as f:
         source_bytes = f.read()
-
     source_code = source_bytes.decode("utf-8")
 
     if config.obfuscate.level.value >= 1:
@@ -49,37 +53,38 @@ def encrypt_file(file_path: str, config: Config) -> bytes:
         source_code = obf.obfuscate(source_code)
 
     source_data = source_code.encode("utf-8")
-    source_hash = sha256_hash(source_data)
-    aes_key = generate_aes_key()
-    encrypted = aes_encrypt(source_data, aes_key)
+    source_hash = hashlib.sha256(source_data).hexdigest()
+    key = secrets.token_bytes(32)
+    ct = _xor_stream(key, source_data)
+    sig = hmac.new(key, ct, "sha256").hexdigest()
 
     payload = {
         "type": "encrypted_python",
-        "algorithm": "aes-256-gcm",
-        "aes_key": aes_key.hex(),
-        "data": encrypted.hex(),
+        "algorithm": "hmac-sha256-xor",
+        "key": key.hex(),
+        "data": ct.hex(),
+        "hmac": sig,
         "source_hash": source_hash,
     }
-
     return json.dumps(payload, indent=2).encode("utf-8")
 
 
-def encrypt_project(project_dir: str, config: Config) -> None:
-    """Encrypt all .py files in a project.
+def build_project(project_dir: str, output_dir: str, config: Config) -> None:
+    """Build an encrypted project from project/ to output/.
 
-    Scans project_dir for .py files, encrypts each one, and writes
-    the encrypted payload to a _runtime/ subdirectory with a .pye
-    extension.
+    1. Scans all .py files in project_dir
+    2. Obfuscates + encrypts each file
+    3. Writes encrypted .pye files to output/_runtime/
+    4. Generates bootloader entry point in output/
+    5. Structure mirrors the original project
 
     Args:
-        project_dir: Root directory of the project to encrypt.
+        project_dir: Source project directory.
+        output_dir: Output directory for encrypted project.
         config: Project configuration.
-
-    Raises:
-        FileNotFoundError: If project_dir does not exist.
     """
     py_files = find_python_files(project_dir, config)
-    runtime_dir = os.path.join(project_dir, "_runtime")
+    runtime_dir = os.path.join(output_dir, "_runtime")
     os.makedirs(runtime_dir, exist_ok=True)
 
     for py_path in py_files:
@@ -87,24 +92,29 @@ def encrypt_project(project_dir: str, config: Config) -> None:
         pye_name = rel.replace(".py", ".pye")
         pye_path = os.path.join(runtime_dir, pye_name)
         os.makedirs(os.path.dirname(pye_path), exist_ok=True)
-
         payload = encrypt_file(py_path, config)
         with open(pye_path, "wb") as f:
             f.write(payload)
 
+    generate_runtime_loader(output_dir)
+    entry_module = config.project.entry.replace(".py", "")
+    generate_bootloader(output_dir, entry_module)
+
+    req_path = os.path.join(output_dir, "requirements.txt")
+    if not os.path.exists(req_path):
+        with open(req_path, "w", encoding="utf-8") as f:
+            f.write("# Add your project dependencies here\n")
+
 
 def encrypt_files(file_paths: list[str], config: Config) -> list[str]:
-    """Encrypt a specific list of files, generating .pye output.
-
-    Each .py file is encrypted and written to a sibling .pye file in
-    the same directory.
+    """Encrypt individual files, output .pye alongside source.
 
     Args:
-        file_paths: List of absolute paths to .py files.
+        file_paths: List of paths to .py files.
         config: Project configuration.
 
     Returns:
-        List of absolute paths to the generated .pye files.
+        List of output .pye paths.
     """
     out_paths: list[str] = []
     for fp in file_paths:

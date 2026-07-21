@@ -15,7 +15,7 @@ from typing import Optional
 
 from sprotect.types import Config
 
-_EXCLUDED_DIRS = frozenset({"_runtime", "_backup", "__pycache__", ".git", ".pytest_cache"})
+_EXCLUDED_DIRS = frozenset({"_runtime", "_backup", "__pycache__", ".git", ".pytest_cache", "_test_temp"})
 
 
 def find_python_files(project_dir: str, config: Config) -> list[str]:

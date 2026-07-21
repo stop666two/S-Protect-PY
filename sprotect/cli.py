@@ -1,10 +1,11 @@
 """S-Protect-PY command-line interface.
 
-Provides subcommands for encrypting, running, configuring, and
-inspecting protected Python projects.
-
-Author: S-Protect Team
-Version: 0.1.0
+Subcommands:
+  build      Build encrypted project from project/ to output/
+  encrypt    Encrypt individual files
+  config     Manage configuration
+  check      Check files
+  version    Show version
 """
 
 from __future__ import annotations
@@ -16,9 +17,8 @@ from typing import Sequence
 
 from sprotect import __version__
 from sprotect.config import generate_default_config, load_config
-from sprotect.core.encryptor import encrypt_files, encrypt_project as do_encrypt_project
+from sprotect.core.encryptor import build_project, encrypt_files
 from sprotect.core.backup import backup_project
-from sprotect.runtime.loader import run_encrypted_project
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -26,87 +26,64 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="sprotect",
         description="S-Protect-PY: Python code protection toolkit.",
     )
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    sub = parser.add_subparsers(dest="command", required=True)
 
-    enc_parser = subparsers.add_parser("encrypt", help="Encrypt one or more files")
-    enc_parser.add_argument("files", nargs="+", help="File paths to encrypt")
-    enc_parser.add_argument("-c", "--config", help="Path to config file")
-    enc_parser.add_argument("--no-backup", action="store_true", help="Skip backup creation")
+    p = sub.add_parser("build", help="Build encrypted project (project/ -> output/)")
+    p.add_argument("--project", default="./project", help="Source project directory (default: ./project)")
+    p.add_argument("--output", default="./output", help="Output directory (default: ./output)")
+    p.add_argument("-c", "--config", help="Path to sprotect.json5")
 
-    ep_parser = subparsers.add_parser("encrypt-project", help="Encrypt an entire project directory")
-    ep_parser.add_argument("dir", nargs="?", default=".", help="Project directory")
-    ep_parser.add_argument("-c", "--config", help="Path to config file")
+    p = sub.add_parser("encrypt", help="Encrypt individual files")
+    p.add_argument("files", nargs="+", help=".py files to encrypt")
+    p.add_argument("-c", "--config", help="Path to sprotect.json5")
 
-    run_parser = subparsers.add_parser("run", help="Run a protected project")
-    run_parser.add_argument("dir", nargs="?", default=".", help="Project directory")
-    run_parser.add_argument("args", nargs=argparse.REMAINDER, help="Arguments to pass to the project")
+    p = sub.add_parser("config", help="Manage configuration")
+    ps = p.add_subparsers(dest="config_action", required=True)
+    ps.add_parser("init", help="Generate default sprotect.json5")
+    ps.add_parser("show", help="Show current configuration")
 
-    config_parser = subparsers.add_parser("config", help="Manage configuration")
-    config_sub = config_parser.add_subparsers(dest="config_action", required=True)
-    config_sub.add_parser("init", help="Generate a default sprotect.json5")
-    config_sub.add_parser("show", help="Show current configuration")
+    p = sub.add_parser("check", help="Check .py files for syntax errors")
+    p.add_argument("files", nargs="+", help="Files to check")
 
-    check_parser = subparsers.add_parser("check", help="Check files for protection status")
-    check_parser.add_argument("files", nargs="+", help="Files to check")
-
-    subparsers.add_parser("version", help="Show version information")
+    sub.add_parser("version", help="Show version")
 
     return parser
 
 
+def _cmd_build(args: argparse.Namespace) -> int:
+    cfg = load_config(getattr(args, "config", None))
+    project_dir = str(Path(args.project).resolve())
+    output_dir = str(Path(args.output).resolve())
+
+    if not Path(project_dir).is_dir():
+        print(f"Error: project directory not found: {project_dir}", file=sys.stderr)
+        return 1
+
+    if cfg.encrypt.backup:
+        backup_project(project_dir)
+
+    build_project(project_dir, output_dir, cfg)
+
+    print(f"Project '{cfg.project.name}' encrypted successfully.")
+    print(f"  Source:  {project_dir}")
+    print(f"  Output:  {output_dir}")
+    print(f"  Entry:   {cfg.project.entry}")
+    print(f"  Runtime: {Path(output_dir, '_runtime').resolve()}")
+    print()
+    print(f"To run:  python {cfg.project.entry}  (in the output directory)")
+    return 0
+
+
 def _cmd_encrypt(args: argparse.Namespace) -> int:
     cfg = load_config(getattr(args, "config", None))
-
     files = [str(Path(f).resolve()) for f in args.files]
     for f in files:
         if not Path(f).exists():
             print(f"Error: file not found: {f}", file=sys.stderr)
             return 1
-
-    if cfg.encrypt.backup and not getattr(args, "no_backup", False):
-        backup_project(str(Path.cwd()))
-
     outputs = encrypt_files(files, cfg)
     for dst in outputs:
-        src = dst.replace(".pye", ".py")
-        print(f"  Encrypted: {src} -> {dst}")
-    return 0
-
-
-def _cmd_encrypt_project(args: argparse.Namespace) -> int:
-    cfg = load_config(getattr(args, "config", None))
-    proj_dir = str(Path(args.dir).resolve())
-    if not Path(proj_dir).is_dir():
-        print(f"Error: directory not found: {proj_dir}", file=sys.stderr)
-        return 1
-
-    entry = Path(proj_dir) / cfg.project.entry
-    if not entry.exists():
-        print(f"Warning: entry file not found: {entry}")
-
-    if cfg.encrypt.backup:
-        backup_project(proj_dir)
-
-    do_encrypt_project(proj_dir, cfg)
-    print(f"Project '{cfg.project.name}' encrypted successfully.")
-    print(f"  Runtime files: {Path(proj_dir, '_runtime').resolve()}")
-    print(f"  Entry: {cfg.project.entry}")
-    return 0
-
-
-def _cmd_run(args: argparse.Namespace) -> int:
-    proj_dir = str(Path(args.dir).resolve())
-    if not Path(proj_dir).is_dir():
-        print(f"Error: directory not found: {proj_dir}", file=sys.stderr)
-        return 1
-
-    cfg = load_config()
-    cfg.project.entry = cfg.project.entry or "main.py"
-    try:
-        run_encrypted_project(proj_dir, cfg)
-    except Exception as e:
-        print(f"Error running project: {e}", file=sys.stderr)
-        return 1
+        print(f"  Encrypted: {dst}")
     return 0
 
 
@@ -115,13 +92,11 @@ def _cmd_config(args: argparse.Namespace) -> int:
         dest = generate_default_config("sprotect.json5")
         print(f"Default configuration generated: {dest.resolve()}")
         return 0
-
     if args.config_action == "show":
         cfg = load_config()
-        import json5 as _json5
-        print(_json5.dumps(cfg, indent=2, default=str))
+        import json5 as _j
+        print(_j.dumps(cfg, indent=2, default=str))
         return 0
-
     print(f"Error: unknown config action: {args.config_action}", file=sys.stderr)
     return 1
 
@@ -155,16 +130,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    command_map = {
-        "encrypt": _cmd_encrypt,
-        "encrypt-project": _cmd_encrypt_project,
-        "run": _cmd_run,
-        "config": _cmd_config,
-        "check": _cmd_check,
+    handlers = {
+        "build": lambda a: _cmd_build(a),
+        "encrypt": lambda a: _cmd_encrypt(a),
+        "config": lambda a: _cmd_config(a),
+        "check": lambda a: _cmd_check(a),
         "version": lambda a: _cmd_version(),
     }
 
-    handler = command_map.get(args.command)
+    handler = handlers.get(args.command)
     if handler is None:
         parser.print_help()
         return 1

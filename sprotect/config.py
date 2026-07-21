@@ -198,7 +198,7 @@ def gen_default(path: str) -> Path:
             "encrypt_strings":True,"encrypt_numbers":False,"string_min_length":3,"string_encrypt_ratio":1.0,
             "control_flow_flattening":True,"dead_code_injection":True,"dead_code_density":0.3,"opaque_predicate_count":2,
             "remove_docstrings":False,"remove_comments":True,"strip_blank_lines":False,"max_line_length":0,
-            "string_split":False,"obfuscate_imports":False,"obfuscate_calls":False},
+            "string_split":True,"obfuscate_imports":True,"obfuscate_calls":True},
         "encrypt":{"algorithm":"aes-256-gcm","key_source":"auto","interdependency":"chain",
             "backup":True,"backup_max_count":5,"replace_originals":False,
             "shard_count":3,"shard_min_files":2,"compress_level":9,

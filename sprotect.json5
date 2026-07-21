@@ -201,17 +201,17 @@
     // --- 字符串分割 ---
     // 可用: true | false
     // 注意: 将字符串拆为多个碎片，运行时用 + 拼接，隐藏字符串原文
-    string_split: false,
+    string_split: true,
 
     // --- import 混淆 ---
     // 可用: true | false  
     // 注意: import os -> os = __import__(...)，隐藏模块依赖关系
-    obfuscate_imports: false,
+    obfuscate_imports: true,
 
     // --- 函数调用混淆 ---
     // 可用: true | false
     // 注意: func(a,b) -> (lambda _a0: func(_a0))(a)，增加调用栈复杂度
-    obfuscate_calls: false,
+    obfuscate_calls: true,
   },
 
   // ====================================================================

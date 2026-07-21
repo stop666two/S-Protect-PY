@@ -227,21 +227,25 @@ class _ImportObfuscator(ast.NodeTransformer):
     def visit_Import(self, node: ast.Import):
         new_nodes: list[ast.AST] = []
         for alias in node.names:
+            parts = alias.name.split(".")
             imp = ast.Call(func=ast.Name(id="__import__"), args=[ast.Constant(alias.name)], keywords=[])
             if alias.asname:
-                new_nodes.append(ast.Assign(targets=[ast.Name(id=alias.asname, ctx=ast.Store())], value=imp))
+                val = imp
+                for p in parts[1:]:
+                    val = ast.Attribute(value=val, attr=p, ctx=ast.Load())
+                new_nodes.append(ast.Assign(targets=[ast.Name(id=alias.asname, ctx=ast.Store())], value=val))
             else:
-                parts = alias.name.split(".")
-                if len(parts) > 1:
-                    new_nodes.append(ast.Assign(targets=[ast.Name(id=parts[0], ctx=ast.Store())], value=imp))
-                else:
-                    new_nodes.append(ast.Assign(targets=[ast.Name(id=parts[0], ctx=ast.Store())], value=imp))
+                new_nodes.append(ast.Assign(targets=[ast.Name(id=parts[0], ctx=ast.Store())], value=imp))
         return new_nodes if len(new_nodes) != 1 else new_nodes[0]
 
     def visit_ImportFrom(self, node: ast.ImportFrom):
         if not node.module:
             return node
-        base = ast.Call(func=ast.Name(id="__import__"), args=[ast.Constant(node.module)], keywords=[])
+        names_list = ast.List(elts=[ast.Constant(a.name) for a in node.names], ctx=ast.Load())
+        base = ast.Call(
+            func=ast.Name(id="__import__"),
+            args=[ast.Constant(node.module)],
+            keywords=[ast.keyword(arg="fromlist", value=names_list)])
         new_nodes: list[ast.AST] = []
         for alias in node.names:
             attr = ast.Attribute(value=base, attr=alias.name, ctx=ast.Load())
@@ -257,14 +261,16 @@ class _CallObfuscator(ast.NodeTransformer):
         self.generic_visit(node)
         if isinstance(node.func, ast.Name) and node.func.id in ("__import__", "exec", "eval", "compile", "getattr", "hasattr"):
             return node
-        if len(node.args) <= 3 and secrets.randbelow(3) == 0:
+        if isinstance(node.func, ast.Attribute):
+            return node
+        if len(node.args) <= 2 and not node.keywords and secrets.randbelow(4) == 0:
             arg_names = [f"_a{i}" for i in range(len(node.args))]
             lambda_args = ast.arguments(
                 args=[ast.arg(arg=n) for n in arg_names],
                 posonlyargs=[], kwonlyargs=[], kw_defaults=[], defaults=[])
             inner_call = ast.Call(func=node.func,
                 args=[ast.Name(id=n, ctx=ast.Load()) for n in arg_names],
-                keywords=node.keywords)
+                keywords=[])
             lambda_node = ast.Lambda(args=lambda_args, body=inner_call)
             return ast.Call(func=lambda_node,
                 args=node.args, keywords=[])

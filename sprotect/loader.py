@@ -377,47 +377,109 @@ def _rand_hex(n: int) -> str:
     return secrets.token_hex(n)
 
 
-def _gen_decoy_boot_like(count: int) -> str:
-    """Generate decoy functions that look EXACTLY like the real _boot / _xof.
+def _rand_comment() -> str:
+    """Generate a random-looking comment line."""
+    return secrets.choice([
+        f"# TODO: {_rand_hex(16)}",
+        f"# FIXME: {secrets.choice(['refactor','cleanup','optimize','verify'])} {_rand_hex(8)}",
+        f"# HACK: {_rand_hex(24)}",
+        f"# XXX: {secrets.choice(['incomplete','untested','deprecated','workaround'])}",
+        f"# NOTE: {_rand_hex(32)}",
+        f"# BUG: {_rand_hex(16)}",
+        f"# SECURITY: {_rand_hex(24)}",
+        f"# PERFORMANCE: {_rand_hex(20)}",
+    ])
 
-    Uses the SAME imports (cryptography, AESGCM) and SAME patterns so
-    after minification real and decoy are indistinguishable."""
-    parts = []
-    for _ in range(count):
-        fname = _rand_name()
-        fake_key = _rand_hex(32)
-        fake_ct = _rand_hex(secrets.randbelow(80) + 80)
-        fake_f1 = _rand_hex(4)
-        fake_f2 = _rand_hex(4)
-        fake_f3 = _rand_hex(4)
-        parts.append(f"""# {secrets.token_hex(8)}
-def {fname}({secrets.choice(['key','data','path','buf','sig'])}):
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
-    import hashlib, json, os, zlib
-    try:
-        _k = bytes.fromhex('{fake_key}')
-        _d = bytes.fromhex('{fake_ct}')
-        _x = AESGCM(_k).decrypt(_d[:12], _d[12:], b"")
-        _x = bytes(a^b for a,b in zip(_x,hashlib.sha256(_k).digest()*999))[:len(_x)]
-        _x = ChaCha20Poly1305(_k).decrypt(_x[:12], _x[12:], b"")
-        _r = zlib.decompress(_x)
-    except Exception:
-        _r = b''
-    return _r
-""")
-    return "\n".join(parts)
+
+def _gen_one_decoy_func() -> str:
+    """Generate a single structurally randomized decoy decryption function."""
+    fn = _rand_name()
+    fake_key = _rand_hex(secrets.randbelow(16) + 32)
+    fake_ct = _rand_hex(secrets.randbelow(100) + 50)
+    fake_h = _rand_hex(4)
+
+    # Randomly choose which crypto steps to include and in what order
+    steps = []
+    steps.append(f"    _k = bytes.fromhex('{fake_key}')")
+    steps.append(f"    _d = bytes.fromhex('{fake_ct}')")
+
+    if secrets.randbelow(3) > 0:  # 66% include AESGCM
+        steps.append(f"    _x = AESGCM(_k).decrypt(_d[:12], _d[12:], b'')")
+    else:
+        steps.append(f"    _c = Cipher(algorithms.AES(_k), modes.CTR(_d[:16])).decryptor()")
+        steps.append(f"    _x = _c.update(_d[16:]) + _c.finalize()")
+
+    if secrets.randbelow(2) == 0:  # 50% XOR step (not always)
+        steps.append(f"    _x = bytes(ib^j for ib,j in zip(_x, hashlib.sha256(_k).digest()*99))[:_x]")
+
+    if secrets.randbelow(3) > 0:  # 66% include ChaCha20
+        steps.append(f"    _x = ChaCha20Poly1305(_k).decrypt(_x[:12], _x[12:], b'')")
+
+    if secrets.randbelow(2) == 0:  # 50% extra XOR with second key
+        steps.append(f"    _x = bytes(ib^j for ib,j in zip(_x, _k*99))[:len(_x)]")
+
+    # Randomly insert fake validation steps
+    if secrets.randbelow(2) == 0:
+        steps.append(f"    if hashlib.sha256(_x[:16]).hexdigest()[:8] != '{_rand_hex(4)}'")
+        steps.append(f"        _x = _x[::-1]  # reverse fallback")
+
+    # Randomly add or skip hash check/CRC
+    if secrets.randbelow(2) == 0:
+        steps.append(f"    _crc = zlib.crc32(_x) & 0x{_rand_hex(4)}")
+
+    steps.append(f"    _r = zlib.decompress(_x)")
+
+    try_lines = "\n".join(steps)
+    args = secrets.choice(
+        ["key", "data", "path", "sig", "buf"] +
+        ["key, iv", "data, offset", "path, mode", "sig, expected"]
+    )
+    return (
+        f"{_rand_comment()}\n"
+        f"# {secrets.token_hex(secrets.randbelow(8)+8)}\n"
+        f"def {fn}({args}):\n"
+        f"    from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305\n"
+        f"    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes\n"
+        f"    import hashlib, json, os, zlib\n"
+        f"    try:\n"
+        f"{try_lines}\n"
+        f"    except Exception as _{_rand_name()}:\n"
+        f"        _r = b''\n"
+        f"    return _r\n"
+    )
+
+
+def _gen_decoy_boot_like(count: int) -> str:
+    """Generate structurally varied decoy functions."""
+    return "\n".join(_gen_one_decoy_func() for _ in range(count))
 
 
 def _gen_massive_padding(target_kb: int = 55) -> str:
-    """Generate padding comments + string literals to reach target size."""
+    """Generate varied padding with comments, strings, fake logic."""
     lines = []
     size = 0
+    comment_types = [
+        lambda: f"# {secrets.choice(['TODO','FIXME','HACK','XXX','BUG','NOTE','XXX','SECURITY','PERF'])}: {_rand_hex(secrets.randbelow(40)+10)}",
+        lambda: f"# {secrets.choice(['refactor','review','optimize','verify','test','cleanup'])} {_rand_hex(16)}",
+        lambda: f"# v{secrets.randbelow(10)}.{secrets.randbelow(99)}.{secrets.randbelow(999)} - {_rand_hex(20)}",
+        lambda: f"# Copyright (c) 202{secrets.randbelow(6)} {_rand_hex(16)}",
+        lambda: f"# License: {secrets.choice(['MIT','Apache-2.0','GPL-3.0','BSD','Proprietary'])}",
+        lambda: f"# {secrets.choice(['DEPRECATED','UNUSED','LEGACY','EXPERIMENTAL'])}: {_rand_hex(12)}",
+        lambda: f"# {secrets.choice(['assert','ensure','check','validate'])} {_rand_hex(16)}",
+        lambda: f"# type: ignore[{_rand_hex(8)}]",
+        lambda: f"# pragma: {secrets.choice(['no cover','no mutate','skip CI'])}",
+    ]
     while size < target_kb * 1024:
         block = "\n".join(
-            f"# {_rand_hex(64)}"
-            for _ in range(secrets.randbelow(10) + 5)
+            secrets.choice(comment_types)()
+            for _ in range(secrets.randbelow(15) + 8)
         )
-        block += f"\n_{_rand_name()} = '{_rand_hex(secrets.randbelow(200)+100)}'\n"
+        block += f"\n_{_rand_name()} = {secrets.choice([
+            f"'{_rand_hex(secrets.randbelow(200)+100)}'",
+            f"b'{_rand_hex(secrets.randbelow(100)+50)}'",
+            f"0x{_rand_hex(secrets.randbelow(8)+2)}",
+            str(secrets.randbelow(2**32)),
+        ])}\n"
         lines.append(block)
         size += len(block) + 1
     return "\n".join(lines)

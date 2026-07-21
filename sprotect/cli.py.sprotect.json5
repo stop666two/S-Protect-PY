@@ -1,18 +1,47 @@
 {
-  desc: "CLI入口",
+  // ==========================================
+  // CLI 入口模块 - 精细化配置
+  // 控制命令行解析、子命令分发、退出码行为
+  // ==========================================
 
+  // 混淆控制
   obfuscate: {
+    // 混淆等级 1-5（越大越强，但可能影响性能）
     level: 3,
+
+    // 是否重命名局部变量（安全，推荐开启）
     rename_variables: true,
+    // 是否重命名函数名（CLI 函数可能被外部调用，设为 false 保持兼容）
     rename_functions: false,
+    // 是否重命名类名（CLI 类可能被外部引用，设为 false）
     rename_classes: false,
+
+    // 命名规则
+    rename_rules: {
+      // 命名风格: hex | chinese | invisible | math-symbols
+      style: "hex",
+      // 保留名称列表（这些名字不会被混淆）
+      reserved: ["main", "build_parser"],
+    },
+
+    // 是否加密字符串字面量（如提示文字、错误信息）
     encrypt_strings: true,
+    // 是否加密数字字面量（如退出码、常量）
     encrypt_numbers: false,
+
+    // 是否启用控制流平坦化（增加逆向难度，但代码体积增大）
     control_flow_flattening: false,
+    // 是否注入死代码（迷惑静态分析）
     dead_code_injection: false,
   },
 
+  // 反调试控制
   anti_debug: {
+    // 是否启用反调试检测
     enabled: false,
+    // 检测到调试器后的动作: exit | warn | corrupt
+    action: "warn",
+    // 启用的检测项
+    checks: ["pdb", "debugger"],
   },
 }

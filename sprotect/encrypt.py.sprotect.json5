@@ -1,23 +1,20 @@
 {
-  desc: "加密构建引擎 - 混沌管线分发、假文件注入、自定义钩子",
+  // ==========================================
+  // 加密构建引擎 - 精细化配置
+  // 负责 build 完整流程：扫描→混淆→加密→生成启动器
+  // ==========================================
 
   obfuscate: {
     level: 5,
     rename_variables: true,
     rename_functions: true,
     rename_classes: true,
+    rename_rules: { style: "hex", reserved: [] },
     encrypt_strings: true,
     encrypt_numbers: true,
     control_flow_flattening: true,
     dead_code_injection: true,
   },
-
-  anti_debug: {
-    enabled: true,
-  },
-
-  chaos: {
-    enabled: true,
-    algorithm_per_file: true,
-  },  // 混沌引擎：每次构建随机选择加密算法/密钥数量
+  anti_debug: { enabled: true, action: "exit", checks: ["pdb", "debugger", "vm"] },
+  virtualization: { enabled: true, mode: "full" },
 }

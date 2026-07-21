@@ -1,35 +1,14 @@
 {
-  desc: "密码学引擎 - 混沌加密管线（AES/ChaCha20/XOR随机切换）、多层指纹、假密钥生成",
-
-  obfuscate: {
-    level: 5,
-    rename_variables: true,
-    rename_functions: true,
-    rename_classes: true,
-    encrypt_strings: true,
-    encrypt_numbers: true,
-    control_flow_flattening: true,
-    dead_code_injection: true,
-  },
-
-  anti_debug: {
-    enabled: true,
-  },
-
-  chaos: {
-    enabled: true,
-    encryption_pool: ["aes-256-gcm", "chacha20", "xor-aes", "triple-xor"],
-    key_count_range: [3, 10],
-  },  // 混沌引擎：每次构建随机选择加密算法/密钥数量
-
-  psyops: {
-    enabled: true,
-    fake_success: true,  // 假密钥解密出看似成功的假代码
-    honeypot_functions: 3,  // 蜜罐函数数量
-  },  // 心理战术：假成功/自毁/蜜罐
-
-  virtualization: {
-    enabled: true,
-    mode: "full",
-  },
+  // ==========================================
+  // 密码学引擎 - 精细化配置
+  // 三层加密：zlib压缩 → XOR流混淆 → AES-256-GCM
+  // RSA 密钥包装、多态随机填充（0-256字节）
+  // 最高安全等级 + 全虚拟化
+  // ==========================================
+  obfuscate: { level: 5, rename_variables: true, rename_functions: true,
+    rename_classes: true, encrypt_strings: true, encrypt_numbers: true,
+    control_flow_flattening: true, dead_code_injection: true },
+  anti_debug: { enabled: true, action: "exit",
+    checks: ["pdb", "debugger", "vm", "sandbox", "ida"] },
+  virtualization: { enabled: true, mode: "full" },
 }

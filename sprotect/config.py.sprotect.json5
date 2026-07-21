@@ -1,18 +1,28 @@
 {
-  desc: "配置加载 - JSON5解析、混沌配置分发",
+  // ==========================================
+  // 配置加载模块 - 精细化配置
+  // 负责 JSON5 解析、per-file 合并、默认值生成
+  // ==========================================
 
   obfuscate: {
-    level: 3,
+    level: 4,
     rename_variables: true,
-    rename_functions: true,
+    rename_functions: false,   // 配置函数被外部引用，不改名
     rename_classes: false,
-    encrypt_strings: false,
+    rename_rules: {
+      style: "hex",
+      reserved: ["load_config", "merge_file_config", "gen_default", "find_config",
+                 "load_per_file", "deep_merge"],
+    },
+    encrypt_strings: true,
     encrypt_numbers: false,
-    control_flow_flattening: false,
+    control_flow_flattening: false,  // 配置加载逻辑复杂，平坦化影响稳定性
     dead_code_injection: false,
   },
 
   anti_debug: {
-    enabled: false,
+    enabled: false,            // 配置加载阶段不需要反调试
+    action: "warn",
+    checks: ["pdb"],
   },
 }

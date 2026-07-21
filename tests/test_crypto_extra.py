@@ -111,3 +111,30 @@ def test_pye_v2_no_extra_roundtrip():
     pye = encrypt_to_pye(data, key, [])
     pt = decrypt_from_pye(pye)
     assert pt == data
+
+
+from sprotect.crypto import (
+    rsa_generate_keypair, rsa_encrypt_master_key, rsa_decrypt_master_key,
+    ecc_generate_keypair, ecc_encrypt_master_key, ecc_decrypt_master_key,
+)
+
+def test_rsa_roundtrip():
+    mk = b"m" * 32
+    pub, priv = rsa_generate_keypair(2048)
+    enc = rsa_encrypt_master_key(mk, pub)
+    dec = rsa_decrypt_master_key(enc, priv)
+    assert dec == mk
+
+def test_rsa_passphrase():
+    mk = b"m" * 32
+    pub, priv = rsa_generate_keypair(2048, "test123")
+    enc = rsa_encrypt_master_key(mk, pub)
+    dec = rsa_decrypt_master_key(enc, priv, "test123")
+    assert dec == mk
+
+def test_ecc_roundtrip():
+    mk = b"m" * 32
+    pub, priv = ecc_generate_keypair("P-256")
+    enc = ecc_encrypt_master_key(mk, pub)
+    dec = ecc_decrypt_master_key(enc, priv)
+    assert dec == mk

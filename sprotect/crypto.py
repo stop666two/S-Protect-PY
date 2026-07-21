@@ -247,3 +247,119 @@ def decrypt_payload_v2(data: bytes, real_key: bytes, header: dict) -> bytes:
     except Exception:
         pass
     return zlib.decompress(ct)
+
+
+# ---- RSA hybrid encryption for master key wrapping ----
+def rsa_generate_keypair(key_size: int = 4096, passphrase: str = "") -> tuple[bytes, bytes]:
+    from Cryptodome.PublicKey import RSA
+    key = RSA.generate(key_size)
+    if passphrase:
+        priv = key.export_key(passphrase=passphrase, pkcs=8, protection="scryptAndAES256-CBC")
+    else:
+        priv = key.export_key()
+    pub = key.publickey().export_key()
+    return pub, priv
+
+
+def rsa_encrypt_master_key(master_key: bytes, public_key_pem: bytes) -> bytes:
+    from Cryptodome.PublicKey import RSA
+    from Cryptodome.Cipher import PKCS1_OAEP
+    from Cryptodome.Hash import SHA256
+    pub = RSA.import_key(public_key_pem)
+    cipher = PKCS1_OAEP.new(pub, hashAlgo=SHA256)
+    return cipher.encrypt(master_key)
+
+
+def rsa_decrypt_master_key(encrypted_key: bytes, private_key_pem: bytes, passphrase: str = "") -> bytes:
+    from Cryptodome.PublicKey import RSA
+    from Cryptodome.Cipher import PKCS1_OAEP
+    from Cryptodome.Hash import SHA256
+    priv = RSA.import_key(private_key_pem, passphrase=passphrase)
+    cipher = PKCS1_OAEP.new(priv, hashAlgo=SHA256)
+    return cipher.decrypt(encrypted_key)
+
+
+# ---- ECC hybrid encryption for master key wrapping (ECIES) ----
+def ecc_generate_keypair(curve: str = "P-256", passphrase: str = "") -> tuple[bytes, bytes]:
+    from Cryptodome.PublicKey import ECC
+    if curve == "P-256":
+        key = ECC.generate(curve="P-256")
+    elif curve == "P-384":
+        key = ECC.generate(curve="P-384")
+    elif curve == "P-521":
+        key = ECC.generate(curve="P-521")
+    else:
+        key = ECC.generate(curve="P-256")
+    if passphrase:
+        priv = key.export_key(passphrase=passphrase, protection="scryptAndAES256-CBC")
+    else:
+        priv = key.export_key(format="PEM")
+    if isinstance(priv, str):
+        priv = priv.encode()
+    pub = key.public_key().export_key(format="PEM")
+    if isinstance(pub, str):
+        pub = pub.encode()
+    return pub, priv
+
+
+def ecc_encrypt_master_key(master_key: bytes, public_key_pem: bytes) -> bytes:
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.serialization import load_pem_public_key, Encoding, PublicFormat
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+    from cryptography.hazmat.primitives import hashes
+    from Cryptodome.Cipher import AES
+    import json
+
+    if isinstance(public_key_pem, str):
+        public_key_pem = public_key_pem.encode()
+    pub = load_pem_public_key(public_key_pem)
+    ephemeral_priv = ec.generate_private_key(pub.curve)
+    shared_secret = ephemeral_priv.exchange(ec.ECDH(), pub)
+
+    salt = os.urandom(16)
+    hkdf = HKDF(algorithm=hashes.SHA256(), length=32, salt=salt, info=b"sprotect:ecc-hybrid")
+    aes_key = hkdf.derive(shared_secret)
+
+    nonce = os.urandom(12)
+    cipher = AES.new(aes_key, AES.MODE_GCM, nonce=nonce)
+    ct, tag = cipher.encrypt_and_digest(master_key)
+
+    ephem_pub_bytes = ephemeral_priv.public_key().public_bytes(
+        encoding=Encoding.PEM, format=PublicFormat.SubjectPublicKeyInfo
+    )
+
+    result = {
+        "ephemeral_pub": ephem_pub_bytes.decode(),
+        "salt": salt.hex(),
+        "nonce": nonce.hex(),
+        "ct": ct.hex(),
+        "tag": tag.hex(),
+    }
+    return json.dumps(result, separators=(",", ":")).encode()
+
+
+def ecc_decrypt_master_key(encrypted_data: bytes, private_key_pem: bytes, passphrase: str = "") -> bytes:
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.serialization import load_pem_private_key, load_pem_public_key
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+    from cryptography.hazmat.primitives import hashes
+    from Cryptodome.Cipher import AES
+    import json
+
+    data = json.loads(encrypted_data.decode())
+    if isinstance(private_key_pem, str):
+        private_key_pem = private_key_pem.encode()
+    priv = load_pem_private_key(private_key_pem, passphrase.encode() if passphrase else None)
+    ephem_pub = load_pem_public_key(data["ephemeral_pub"].encode())
+    shared_secret = priv.exchange(ec.ECDH(), ephem_pub)
+
+    salt = bytes.fromhex(data["salt"])
+    hkdf = HKDF(algorithm=hashes.SHA256(), length=32, salt=salt, info=b"sprotect:ecc-hybrid")
+    aes_key = hkdf.derive(shared_secret)
+
+    nonce = bytes.fromhex(data["nonce"])
+    ct = bytes.fromhex(data["ct"])
+    tag = bytes.fromhex(data["tag"])
+
+    cipher = AES.new(aes_key, AES.MODE_GCM, nonce=nonce)
+    return cipher.decrypt_and_verify(ct, tag)

@@ -16,7 +16,7 @@ th { background: #333; color: #fff; }
 </head>
 <body>
 <h1>Python 环境测试报告</h1>
-<p class="timestamp">生成时间: 2026-07-21 17:43:54</p>
+<p class="timestamp">生成时间: 2026-07-21 17:47:05</p>
 <table>
 <thead><tr><th>测试项</th><th>状态</th><th>详细信息</th><th>预期</th></tr></thead>
 <tbody>
@@ -190,10 +190,10 @@ th { background: #333; color: #fff; }
 <tr><td>importlib.metadata 读取包版本</td><td style='color:#4caf50'>通过</td><td>tqdm version=4.67.3</td><td>预期通过</td></tr>
 <tr><td>importlib.resources 包内资源</td><td style='color:#f44336'>异常失败</td><td>未找到资源文件</td><td>预期通过</td></tr>
 <tr><td>mmap 内存映射文件</td><td style='color:#4caf50'>通过</td><td>读取=28 bytes, 写入验证=通过</td><td>预期通过</td></tr>
-<tr><td>timeit 代码执行计时</td><td style='color:#4caf50'>通过</td><td>1000 次迭代耗时 15.16 ms</td><td>预期通过</td></tr>
+<tr><td>timeit 代码执行计时</td><td style='color:#4caf50'>通过</td><td>1000 次迭代耗时 18.24 ms</td><td>预期通过</td></tr>
 <tr><td>importlib.reload() 热重载</td><td style='color:#4caf50'>通过</td><td>重载 tests.basic 模块 (14 -> 14 symbols)</td><td>预期通过</td></tr>
 <tr><td>__import__() 内置导入</td><td style='color:#4caf50'>通过</td><td>json 模块含 dumps=True, loads=True</td><td>预期通过</td></tr>
-<tr><td>os.urandom / os.getpid</td><td style='color:#4caf50'>通过</td><td>urandom=16 bytes, PID=19924</td><td>预期通过</td></tr>
+<tr><td>os.urandom / os.getpid</td><td style='color:#4caf50'>通过</td><td>urandom=16 bytes, PID=19020</td><td>预期通过</td></tr>
 <tr><td>sys.gettrace() 调试器检测</td><td style='color:#4caf50'>通过</td><td>trace=未设置</td><td>预期通过</td></tr>
 <tr><td>signal 信号处理</td><td style='color:#4caf50'>通过</td><td>SIGINT handler restore=成功</td><td>预期通过</td></tr>
 <tr><td>typing.get_type_hints</td><td style='color:#4caf50'>通过</td><td>类型提示解析=成功</td><td>预期通过</td></tr>
@@ -205,7 +205,7 @@ th { background: #333; color: #fff; }
 <tr><td>大循环 10 万次</td><td style='color:#4caf50'>通过</td><td>循环 100000 次</td><td>预期通过</td></tr>
 <tr><td>超长路径 (200 字符)</td><td style='color:#4caf50'>通过</td><td>路径长度=208, 读写成功</td><td>预期通过</td></tr>
 <tr><td>ssl 默认 TLS 上下文</td><td style='color:#4caf50'>通过</td><td>协议版本=16</td><td>预期通过</td></tr>
-<tr><td>secrets 密码学随机数</td><td style='color:#4caf50'>通过</td><td>token_hex(16)=e849f3c7cc159d36... (32 chars)</td><td>预期通过</td></tr>
+<tr><td>secrets 密码学随机数</td><td style='color:#4caf50'>通过</td><td>token_hex(16)=89e86e220ec1f7d1... (32 chars)</td><td>预期通过</td></tr>
 <tr><td>atexit 注册退出处理器</td><td style='color:#4caf50'>通过</td><td>处理器已注册</td><td>预期通过</td></tr>
 <tr><td colspan='4' style='background:#f0f0f0;font-weight:bold'>特殊/边缘功能测试</td></tr>
 <tr><td>inspect.getsource 源码获取</td><td style='color:#f44336'>异常失败</td><td>lineno is out of bounds</td><td>预期通过</td></tr>
@@ -232,7 +232,7 @@ th { background: #333; color: #fff; }
 <tr><td>URL 解析 (urllib.parse)</td><td style='color:#4caf50'>通过</td><td>scheme=https, host=api.example.com, port=8443</td><td>预期通过</td></tr>
 <tr><td>URL 编码 (urlencode)</td><td style='color:#4caf50'>通过</td><td>name=%E5%BC%A0%E4%B8%89&age=28</td><td>预期通过</td></tr>
 <tr><td>CSV 读写</td><td style='color:#4caf50'>通过</td><td>数据一致 (2 条)</td><td>预期通过</td></tr>
-<tr><td>日期时间格式化/解析</td><td style='color:#4caf50'>通过</td><td>2026-07-21 17:43:54</td><td>预期通过</td></tr>
+<tr><td>日期时间格式化/解析</td><td style='color:#4caf50'>通过</td><td>2026-07-21 17:47:05</td><td>预期通过</td></tr>
 <tr><td>环境变量读写</td><td style='color:#4caf50'>通过</td><td>写入=test_value_123, 删除后=NOT_FOUND</td><td>预期通过</td></tr>
 <tr><td>正则表达式 (邮件验证)</td><td style='color:#4caf50'>通过</td><td>正例通过=True, 反例拦截=True</td><td>预期通过</td></tr>
 <tr><td>字符串模板 (string.Template)</td><td style='color:#4caf50'>通过</td><td>Hello, 测试! You are 25.</td><td>预期通过</td></tr>
@@ -245,13 +245,13 @@ th { background: #333; color: #fff; }
 <tr><td>shutil copy / rmtree</td><td style='color:#4caf50'>通过</td><td>copy=成功, rmtree=成功</td><td>预期通过</td></tr>
 <tr><td>glob 文件模式匹配</td><td style='color:#4caf50'>通过</td><td>*.txt=2, *.py=2</td><td>预期通过</td></tr>
 <tr><td>pathlib 路径操作</td><td style='color:#4caf50'>通过</td><td>读写=成功, suffix=.txt, stem=_pathlib_test</td><td>预期通过</td></tr>
-<tr><td>dataclasses 数据类</td><td style='color:#4caf50'>通过</td><td>User=_0x992bad2b.<locals>._0x6f5c05ec(name='测试', age=25), asdict={'name': '测试', 'age': 25}</td><td>预期通过</td></tr>
+<tr><td>dataclasses 数据类</td><td style='color:#4caf50'>通过</td><td>User=_0xaa509018.<locals>._0x3ed0ba22(name='测试', age=25), asdict={'name': '测试', 'age': 25}</td><td>预期通过</td></tr>
 <tr><td>enum 枚举</td><td style='color:#4caf50'>通过</td><td>RED.value=1, names=['RED', 'GREEN', 'BLUE']</td><td>预期通过</td></tr>
 <tr><td>functools.lru_cache</td><td style='color:#4caf50'>通过</td><td>fib(10)=55, 调用次数=11</td><td>预期通过</td></tr>
 <tr><td>functools.partial</td><td style='color:#4caf50'>通过</td><td>add_5(3)=8</td><td>预期通过</td></tr>
 <tr><td>logging 日志配置</td><td style='color:#4caf50'>通过</td><td>Logger=_py_test, level=10, handlers=0</td><td>预期通过</td></tr>
 <tr><td>re.sub / findall / split</td><td style='color:#4caf50'>通过</td><td>sub=成功, findall=成功, split=成功</td><td>预期通过</td></tr>
-<tr><td>tempfile.NamedTemporaryFile</td><td style='color:#4caf50'>通过</td><td>读写=成功, name=C:\Users\Administrator\AppData\Local\Temp\_py_j4__dtd8.tmp</td><td>预期通过</td></tr>
+<tr><td>tempfile.NamedTemporaryFile</td><td style='color:#4caf50'>通过</td><td>读写=成功, name=C:\Users\Administrator\AppData\Local\Temp\_py_rweebusl.tmp</td><td>预期通过</td></tr>
 
 </tbody>
 </table>

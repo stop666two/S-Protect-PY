@@ -70,6 +70,12 @@ def build(project_dir: str, output_dir: str, config: Config) -> None:
                 p["f2"] = hashlib.sha256(shards[idx]).hexdigest()[3:11]
             try: p["f3"] = hmac.new(shards[idx], b"S-Protect-v6-key-verify", "sha256").hexdigest()[:8]
             except: p["f3"] = ""
+            # Watermark: embed in payload
+            if config.watermark.enabled:
+                try:
+                    from sprotect.watermark import Watermark as _wm
+                    p["wm"] = _wm(config.watermark).file_payload()
+                except: pass
             payload = json.dumps(p, separators=(",", ":")).encode()
 
             pye_path = os.path.join(rd, hex_name + ".pye")

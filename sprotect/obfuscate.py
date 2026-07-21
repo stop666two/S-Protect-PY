@@ -284,9 +284,16 @@ class _CallObfuscator(ast.NodeTransformer):
 class _ArithmeticObfuscator(ast.NodeTransformer):
     """Obfuscate arithmetic expressions: a+b → a-(-b), a*2 → a<<1, etc."""
 
+    def _is_str(self, node: ast.AST) -> bool:
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return True
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "decode":
+            return True
+        return False
+
     def visit_BinOp(self, node: ast.BinOp):
         self.generic_visit(node)
-        if isinstance(node.op, ast.Add) and secrets.randbelow(3) == 0:
+        if isinstance(node.op, ast.Add) and not self._is_str(node.left) and not self._is_str(node.right) and secrets.randbelow(3) == 0:
             neg = ast.UnaryOp(op=ast.USub(), operand=node.right)
             return ast.BinOp(left=node.left, op=ast.Sub(), right=neg)
         if isinstance(node.op, ast.Sub) and secrets.randbelow(3) == 0:

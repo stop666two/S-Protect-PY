@@ -1,0 +1,17 @@
+{
+  // envtest.py 是核心测试文件，全功能加密
+  obfuscate: {
+    level: 5,
+    rename_variables: true,
+    rename_functions: true,
+    rename_classes: true,
+    encrypt_strings: true,
+    encrypt_numbers: true,
+    control_flow_flattening: true,
+    dead_code_injection: true,
+  },
+  virtualization: {
+    enabled: true,
+    mode: "full",
+  },
+}

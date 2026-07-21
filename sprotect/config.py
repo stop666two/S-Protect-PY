@@ -23,6 +23,7 @@ from sprotect.types import (
     EncryptConfig,
     EnvironmentConfig,
     ExpirationConfig,
+    FilesConfig,
     InterdependencyMode,
     NamingStyle,
     ObfuscateConfig,
@@ -180,6 +181,16 @@ def _dict_to_project_config(data: dict[str, Any]) -> ProjectConfig:
     )
 
 
+def _dict_to_files_config(data: dict[str, Any]) -> FilesConfig:
+    """Convert a dict to FilesConfig."""
+    return FilesConfig(
+        include=data.get("include", ["**/*.py"]),
+        exclude=data.get("exclude", ["**/__pycache__/**", "**/.git/**",
+                                      "**/_runtime/**", "**/_backup/**",
+                                      "**/_test_temp/**"]),
+    )
+
+
 def _dict_to_output_config(data: dict[str, Any]) -> OutputConfig:
     """Convert a dict to OutputConfig."""
     return OutputConfig(
@@ -191,6 +202,7 @@ def _dict_to_output_config(data: dict[str, Any]) -> OutputConfig:
 def _dict_to_config(data: dict[str, Any]) -> Config:
     """Convert a nested dict to a Config object."""
     return Config(
+        files=_dict_to_files_config(data.get("files", {})),
         obfuscate=_dict_to_obfuscate_config(data.get("obfuscate", {})),
         encrypt=_dict_to_encrypt_config(data.get("encrypt", {})),
         anti_debug=_dict_to_anti_debug_config(data.get("anti_debug", {})),
@@ -234,6 +246,73 @@ def _find_config(path: Optional[str] = None) -> Optional[Path]:
     return None
 
 
+def load_per_file_config(py_path: str) -> dict:
+    """Load per-file overrides from ``<py_path>.sprotect.json5``.
+
+    Each Python file can have a companion JSON5 file with the same
+    base name plus ``.sprotect.json5`` suffix, containing field-level
+    overrides for that specific file (e.g. ``main.py.sprotect.json5``).
+
+    Args:
+        py_path: Absolute path to the .py file.
+
+    Returns:
+        Dict of overrides, or empty dict if no per-file config exists.
+    """
+    candidates = [py_path + ".sprotect.json5", py_path.replace(".py", ".json5")]
+    for c in candidates:
+        if os.path.isfile(c):
+            with open(c, "r", encoding="utf-8") as f:
+                return json5.load(f)
+    return {}
+
+
+def _deep_merge(base: dict, overrides: dict) -> dict:
+    """Deep-merge override dict into base dict.
+
+    Nested dicts are merged recursively; other values are replaced.
+    """
+    result = dict(base)
+    for key, val in overrides.items():
+        if key in result and isinstance(result[key], dict) and isinstance(val, dict):
+            result[key] = _deep_merge(result[key], val)
+        else:
+            result[key] = val
+    return result
+
+
+def merge_file_config(main_config: Config, py_path: str) -> Config:
+    """Merge per-file config overrides into the main Config.
+
+    Loads ``<py_path>.sprotect.json5`` (if exists), deep-merges the
+    overrides into the main config, and returns a new Config instance.
+
+    Per-file configs CANNOT override ``rename_functions`` / ``rename_classes``
+    because those affect cross-module consistency via the shared rename map.
+
+    Args:
+        main_config: The base project-wide Config.
+        py_path: Absolute path to the .py file being encrypted.
+
+    Returns:
+        A new Config with per-file overrides applied.
+    """
+    overrides = load_per_file_config(py_path)
+    if not overrides:
+        return main_config
+
+    obf = overrides.get("obfuscate", {})
+    obf.pop("rename_functions", None)
+    obf.pop("rename_classes", None)
+    if not obf:
+        overrides.pop("obfuscate", None)
+
+    import dataclasses
+    d = dataclasses.asdict(main_config)
+    merged = _deep_merge(d, overrides)
+    return _dict_to_config(merged)
+
+
 def load_config(path: Optional[str] = None) -> Config:
     """Load configuration from a JSON5 file.
 
@@ -266,6 +345,11 @@ def generate_default_config(path: str) -> Path:
         Path to the generated file.
     """
     default = {
+        "files": {
+            "include": ["**/*.py"],
+            "exclude": ["**/__pycache__/**", "**/.git/**", "**/_runtime/**",
+                        "**/_backup/**", "**/_test_temp/**"],
+        },
         "obfuscate": {
             "level": 3,
             "rename_variables": True,

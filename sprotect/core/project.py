@@ -2,42 +2,89 @@
 
 Provides functions to locate Python source files within a project
 directory and validate their syntax and existence.
-
-Author: S-Protect Team
-Version: 0.1.0
 """
 
 from __future__ import annotations
 
 import ast
 import os
+from pathlib import PurePath
 from typing import Optional
 
 from sprotect.types import Config
 
-_EXCLUDED_DIRS = frozenset({"_runtime", "_backup", "__pycache__", ".git", ".pytest_cache", "_test_temp"})
+
+def _glob_match(path: str, pattern: str) -> bool:
+    """Match a path against a glob pattern, supporting ``**``.
+
+    Args:
+        path: Relative file path (e.g. ``subdir/file.py``).
+        pattern: Glob pattern (e.g. ``**/*.py``, ``tests/**``).
+
+    Returns:
+        True if the path matches the pattern.
+    """
+    import fnmatch
+    parts = path.replace("\\", "/").split("/")
+    pat_parts = pattern.replace("\\", "/").split("/")
+
+    def _match(pp, pi, si):
+        if pi == len(pat_parts) and si == len(parts):
+            return True
+        if pi >= len(pat_parts):
+            return False
+        if pat_parts[pi] == "**":
+            if pi + 1 == len(pat_parts):
+                return True
+            for i in range(si, len(parts) + 1):
+                if _match(pp, pi + 1, i):
+                    return True
+            return False
+        if si >= len(parts):
+            return False
+        if fnmatch.fnmatch(parts[si], pat_parts[pi]):
+            return _match(pp, pi + 1, si + 1)
+        return False
+
+    return _match(pattern, 0, 0)
 
 
 def find_python_files(project_dir: str, config: Config) -> list[str]:
     """Recursively find all .py files in a project directory.
 
-    Excludes _runtime, _backup, __pycache__, .git, and .pytest_cache
-    directories. The project's entry file (from config) is always
-    included when found.
+    Applies include/exclude patterns from ``config.files``.
+    Skips files not matching include patterns.
 
     Args:
         project_dir: Root directory of the project.
-        config: Project configuration (used for entry file info).
+        config: Project configuration (files.include, files.exclude).
 
     Returns:
         Sorted list of absolute paths to .py files.
     """
+    inc = config.files.include or ["**/*.py"]
+    exc = config.files.exclude or []
+    root_abs = os.path.abspath(project_dir)
     result: list[str] = []
-    for root, dirs, files in os.walk(project_dir):
-        dirs[:] = [d for d in dirs if d not in _EXCLUDED_DIRS]
+    for root, dirs, files in os.walk(root_abs):
+        dirs[:] = [d for d in dirs if not d.startswith("_") and not d.startswith(".")]
         for f in files:
-            if f.endswith(".py"):
-                result.append(os.path.join(root, f))
+            if not f.endswith(".py"):
+                continue
+            fp = os.path.join(root, f)
+            rel = os.path.relpath(fp, root_abs).replace("\\", "/")
+
+            def _any_match(patterns: list[str], p: str) -> bool:
+                for pat in patterns:
+                    if _glob_match(p, pat):
+                        return True
+                return False
+
+            if not _any_match(inc, rel):
+                continue
+            if _any_match(exc, rel):
+                continue
+            result.append(fp)
     result.sort()
     return result
 

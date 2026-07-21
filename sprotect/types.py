@@ -154,6 +154,16 @@ class ProjectConfig:
 
 
 @dataclass
+class FilesConfig:
+    """File inclusion/exclusion patterns for project scanning."""
+    include: list[str] = field(default_factory=lambda: ["**/*.py"])
+    exclude: list[str] = field(default_factory=lambda: [
+        "**/__pycache__/**", "**/.git/**", "**/_runtime/**",
+        "**/_backup/**", "**/_test_temp/**",
+    ])
+
+
+@dataclass
 class OutputConfig:
     """Output directory and artifact settings."""
     dir: str = "./dist"
@@ -163,6 +173,7 @@ class OutputConfig:
 @dataclass
 class Config:
     """Top-level configuration aggregating all sub-configs."""
+    files: FilesConfig = field(default_factory=FilesConfig)
     obfuscate: ObfuscateConfig = field(default_factory=ObfuscateConfig)
     encrypt: EncryptConfig = field(default_factory=EncryptConfig)
     anti_debug: AntiDebugConfig = field(default_factory=AntiDebugConfig)

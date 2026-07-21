@@ -17,6 +17,7 @@ from pathlib import Path
 from sprotect.core.obfuscator import Obfuscator
 from sprotect.core.project import find_python_files
 from sprotect.core.bootloader import generate_bootloader, generate_runtime_loader
+from sprotect.config import merge_file_config
 from sprotect.types import Config
 
 
@@ -118,11 +119,12 @@ def build_project(project_dir: str, output_dir: str, config: Config) -> None:
     shared_mapping = _build_shared_mapping(py_files, config)
 
     for py_path in py_files:
+        file_cfg = merge_file_config(config, py_path)
         rel = os.path.relpath(py_path, project_dir)
         pye_name = rel.replace(".py", ".pye")
         pye_path = os.path.join(runtime_dir, pye_name)
         os.makedirs(os.path.dirname(pye_path), exist_ok=True)
-        payload = encrypt_file(py_path, config, shared_mapping=shared_mapping)
+        payload = encrypt_file(py_path, file_cfg, shared_mapping=shared_mapping)
         with open(pye_path, "wb") as f:
             f.write(payload)
 

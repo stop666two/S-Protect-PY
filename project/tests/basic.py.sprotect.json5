@@ -1,0 +1,14 @@
+{
+  // 这个文件只做基础混淆
+  // 注意: rename_functions/rename_classes 是项目级设置,
+  //        per-file 配置不能覆盖它们（影响跨模块一致性）
+  obfuscate: {
+    level: 3,
+    encrypt_numbers: false,
+    control_flow_flattening: false,
+    dead_code_injection: false,
+  },
+  anti_debug: {
+    enabled: false,
+  },
+}

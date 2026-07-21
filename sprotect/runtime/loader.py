@@ -71,7 +71,10 @@ class EncryptedModuleLoader(importlib.abc.Loader):
             encrypted_data = f.read()
         source_code, _ = decrypt_file(encrypted_data)
         code = compile(source_code, self.path, "exec")
-        exec(code, module.__dict__)
+        namespace = module.__dict__
+        if "__file__" not in namespace and self.path:
+            namespace["__file__"] = self.path
+        exec(code, namespace)
 
     def get_code(self, fullname: str) -> Any:
         """Get the compiled code object for the module.
@@ -214,27 +217,34 @@ def _decrypt_config(
 def run_encrypted_project(project_dir: str, config: Config) -> None:
     """Run an encrypted project from its _runtime directory.
 
-    Loads and decrypts the index, reconstructs the private key from
-    embedded shards, decrypts the RSA-encrypted JSON5 configuration,
-    then installs the EncryptedPathFinder and executes the entry point.
+    Two modes:
+      1. Full secure mode: loads index.sig, reconstructs private key from
+         shards, decrypts RSA-encrypted config, installs import hook.
+      2. Simple mode: directly decrypts the entry .pye file and runs it.
 
     Args:
         project_dir: Root directory of the encrypted project.
-        config: Initial project configuration (used for entry file name).
+        config: Project configuration (used for entry file name).
     """
     runtime_dir = os.path.join(project_dir, "_runtime")
     if not os.path.isdir(runtime_dir):
         raise FileNotFoundError(f"Runtime directory not found: {runtime_dir}")
 
-    index, signing_key, rsa_encrypted_config = _load_index_sig(runtime_dir)
-
-    reconstructor = ShardReconstructor(runtime_dir, index)
-    private_key = reconstructor.reconstruct_private_key()
-
-    resolved_config = _decrypt_config(rsa_encrypted_config, private_key)
+    sig_path = os.path.join(runtime_dir, "index.sig")
+    if os.path.isfile(sig_path):
+        index, signing_key, rsa_encrypted_config = _load_index_sig(runtime_dir)
+        reconstructor = ShardReconstructor(runtime_dir, index)
+        private_key = reconstructor.reconstruct_private_key()
+        resolved_config = _decrypt_config(rsa_encrypted_config, private_key)
+        entry_module = resolved_config.project.entry.replace(".py", "")
+    else:
+        entry_module = config.project.entry.replace(".py", "")
 
     finder = EncryptedPathFinder(runtime_dir)
     sys.meta_path.insert(0, finder)
 
-    entry_module = resolved_config.project.entry.replace(".py", "")
-    __import__(entry_module)
+    mod = __import__(entry_module)
+    mod.__dict__.setdefault("__name__", "__main__")
+    main_fn = mod.__dict__.get("main")
+    if main_fn is not None and callable(main_fn):
+        main_fn()

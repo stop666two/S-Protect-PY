@@ -40,6 +40,7 @@ class Obfuscator(ast.NodeTransformer):
             custom_dict=config.rename_rules.dictionary,
         )
         self._class_depth = 0
+        self._fstring_depth = 0
 
     def _get_new_name(self, old_name: str) -> str:
         """Get or create an obfuscated replacement for an identifier.
@@ -165,6 +166,18 @@ class Obfuscator(ast.NodeTransformer):
         self.generic_visit(node)
         return node
 
+    def visit_FormattedValue(self, node: ast.FormattedValue) -> ast.FormattedValue:
+        self._fstring_depth += 1
+        self.generic_visit(node)
+        self._fstring_depth -= 1
+        return node
+
+    def visit_JoinedStr(self, node: ast.JoinedStr) -> ast.JoinedStr:
+        self._fstring_depth += 1
+        self.generic_visit(node)
+        self._fstring_depth -= 1
+        return node
+
     def visit_Constant(self, node: ast.Constant) -> ast.AST:
         """Encrypt string and numeric literals.
 
@@ -179,15 +192,23 @@ class Obfuscator(ast.NodeTransformer):
         Returns:
             The original Constant or an encrypted expression node.
         """
-        if isinstance(node.value, str) and self.config.encrypt_strings and len(node.value) > 1:
+        if isinstance(node.value, str) and self.config.encrypt_strings and len(node.value) > 1 and self._fstring_depth == 0:
             encoded = base64.b64encode(node.value.encode()).decode()
             return ast.Call(
                 func=ast.Attribute(
-                    value=ast.Name(id="base64", ctx=ast.Load()),
-                    attr="b64decode",
+                    value=ast.Call(
+                        func=ast.Attribute(
+                            value=ast.Name(id="base64", ctx=ast.Load()),
+                            attr="b64decode",
+                            ctx=ast.Load(),
+                        ),
+                        args=[ast.Constant(value=encoded)],
+                        keywords=[],
+                    ),
+                    attr="decode",
                     ctx=ast.Load(),
                 ),
-                args=[ast.Constant(value=encoded)],
+                args=[],
                 keywords=[],
             )
         if (

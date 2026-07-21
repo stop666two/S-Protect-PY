@@ -212,6 +212,15 @@ class ProjectConfig:
     author: str = ""                                 # 作者
 
 @dataclass
+class PackConfig:
+    """打包配置 - 将加密输出打包为单文件 exe（需 PyInstaller）"""
+    enabled: bool = False                              # 是否启用打包
+    onefile: bool = True                               # 单文件模式
+    console: bool = True                                # 是否显示控制台窗口
+    icon: Optional[str] = None                         # 图标文件路径
+    extra_args: list[str] = field(default_factory=list) # 额外 PyInstaller 参数
+
+@dataclass
 class OutputConfig:
     """输出配置"""
     dir: str = "./output"
@@ -233,5 +242,6 @@ class Config:
     environment: EnvironmentConfig = field(default_factory=EnvironmentConfig)
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
     bootloader: BootloaderConfig = field(default_factory=BootloaderConfig)
+    pack: PackConfig = field(default_factory=PackConfig)
     project: ProjectConfig = field(default_factory=ProjectConfig)
     output: OutputConfig = field(default_factory=OutputConfig)

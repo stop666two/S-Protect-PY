@@ -115,6 +115,12 @@ def _bl(d): return BootloaderConfig(
     anti_dump=d.get("anti_dump",True),
     periodic_check_interval=d.get("periodic_check_interval",5.0))
 
+def _pack(d): return PackConfig(
+    enabled=d.get("enabled",False),
+    onefile=d.get("onefile",True),
+    console=d.get("console",True),
+    icon=d.get("icon"), extra_args=d.get("extra_args",[]))
+
 def _proj(d): return ProjectConfig(
     name=d.get("name","unnamed"), version=d.get("version","1.0.0"),
     entry=d.get("entry","main.py"), description=d.get("description",""),
@@ -147,6 +153,7 @@ def _to_cfg(d):
         environment=_env(d.get("environment",{})),
         sandbox=_san(d.get("sandbox",{})),
         bootloader=_bl(d.get("bootloader",{})),
+        pack=_pack(d.get("pack",{})),
         project=_proj(d.get("project",{})),
         output=_out(d.get("output",{})))
 
@@ -208,6 +215,7 @@ def gen_default(path: str) -> Path:
         "sandbox":{"enabled":True,"detect_cuckoo":True,"detect_sandboxie":True,"detect_docker":False,"detect_ci":False},
         "bootloader":{"name":"main.py","include_runtime_loader":True,"minimal_boot":False,
             "hide_python_windows":False,"anti_dump":True,"periodic_check_interval":5.0},
+        "pack":{"enabled":False,"onefile":True,"console":True,"icon":None,"extra_args":[]},
         "project":{"name":"unnamed","version":"1.0.0","entry":"main.py","description":"","author":""},
         "output":{"dir":"./output","keep_source_map":False,"runtime_dir_name":"_runtime","verbose":False}
     }

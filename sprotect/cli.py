@@ -42,6 +42,14 @@ def _parser() -> argparse.ArgumentParser:
     wl = ws.add_parser("list", help="List watermarks in a directory")
     wl.add_argument("dir", default="./output/_runtime", nargs="?", help="Directory containing .pye files")
 
+    pk = s.add_parser("pack", help="Pack encrypted output into single exe (requires PyInstaller)")
+    pk.add_argument("--output", default="./output", help="Output directory (the one from sprotect build)")
+    pk.add_argument("--onefile", action="store_true", default=True, help="Single exe file (default)")
+    pk.add_argument("--onedir", action="store_true", help="Directory with exe + dependencies")
+    pk.add_argument("--console", action="store_true", default=True, help="Show console window")
+    pk.add_argument("--noconsole", action="store_true", help="Hide console window")
+    pk.add_argument("--icon", help="Custom .exe icon")
+
     s.add_parser("version", help="Show version")
     return p
 
@@ -118,6 +126,17 @@ def main(argv: list[str] | None = None) -> int:
 
     cfg = load_config(getattr(a, "config", None))
 
+    if a.cmd == "pack":
+        from sprotect.pack import pack as do_pack
+        out = str(Path(a.output).resolve())
+        pcfg = cfg.pack
+        if hasattr(a, "onefile") and a.onefile: pcfg.onefile = True
+        if hasattr(a, "onedir") and a.onedir: pcfg.onefile = False
+        if hasattr(a, "noconsole") and a.noconsole: pcfg.console = False
+        if hasattr(a, "icon") and a.icon: pcfg.icon = a.icon
+        exe = do_pack(out, pcfg)
+        return 0 if exe else 1
+
     if a.cmd == "build":
         proj = str(Path(a.project).resolve())
         out = str(Path(a.output).resolve())
@@ -128,6 +147,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Project '{cfg.project.name}' encrypted.")
         print(f"  Output: {out}")
         print(f"  Entry:  {cfg.project.entry}")
+        if cfg.pack.enabled:
+            from sprotect.pack import pack as do_pack
+            exe = do_pack(out, cfg.pack)
+            if exe:
+                print(f"  Packed: {exe}")
         return 0
 
     if a.cmd == "encrypt":

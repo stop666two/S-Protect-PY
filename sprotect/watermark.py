@@ -1,26 +1,38 @@
-"""Three-level watermark injection + extraction."""
+"""Three-level watermark: timestamp, authenticity verification, batch ID."""
 
 from __future__ import annotations
-import hashlib, hmac, secrets, json
+import hashlib, hmac, secrets, json, time
+from datetime import datetime, timezone
+
 
 class Watermark:
     def __init__(self, cfg):
         self.cfg = cfg
         self.bid = cfg.batch_id or secrets.token_hex(8)
+        self._key = cfg.watermark_key or secrets.token_hex(16)
     
     def file_payload(self) -> dict:
-        """Return watermark dict to embed inside JSON/msgpack payload.
-        Usage: payload["wm"] = Watermark(cfg).file_payload()"""
+        """Watermark payload with timestamp + authenticity code.
+        
+        Fields:
+        - bid: batch ID (identifies customer/build)
+        - ts: ISO 8601 timestamp of build
+        - sig: SHA256(bid)[:16] quick integrity check
+        - auth: HMAC-SHA256(bid + ts, secret_key)[:16] authenticity proof
+        """
+        ts = datetime.now(timezone.utc).isoformat()
         sig = hashlib.sha256(self.bid.encode()).hexdigest()[:16]
-        return {"bid": self.bid, "sig": sig, "t": "file"}
+        auth_data = f"{self.bid}|{ts}"
+        auth = hmac.new(self._key.encode(), auth_data.encode(), "sha256").hexdigest()[:16]
+        return {"bid": self.bid, "ts": ts, "sig": sig, "auth": auth, "t": "file"}
     
     def code(self, src: str) -> str:
-        """Inject code-level watermark into source."""
+        """Code-level watermark."""
         sig = hashlib.sha256(f"code_wm:{self.bid}".encode()).hexdigest()[:16]
         return src + f"\n_=lambda:None if __import__('hashlib').sha256(b'{sig}').hexdigest()[:16]=='{sig}' else None\n"
     
     def runtime(self) -> str:
-        """Generate runtime watermark verification code."""
+        """Runtime watermark check code."""
         sig = hmac.new(self.bid.encode(), b"runtime_watermark", "sha256").hexdigest()[:16]
         return (
             f'def _verify_wm():\n'
@@ -31,46 +43,54 @@ class Watermark:
         )
 
 
-def extract_watermark(pye_path: str) -> dict | None:
-    """Extract watermark from an encrypted .pye file.
+def extract_watermark(pye_path: str, secret_key: str = "") -> dict | None:
+    """Extract watermark from a .pye file.
     
-    Usage:
-        wm = extract_watermark("output/_runtime/main.pye")
-        if wm:
-            print(f"Batch ID: {wm['bid']}")
-            print(f"Signature: {wm['sig']}")
+    If secret_key is provided, also validates the authenticity code.
+    
+    Returns dict with: bid, ts, sig, auth, t, valid (bool)
     """
     try:
         raw = open(pye_path, "rb").read()
-        # Try JSON first
         try:
             p = json.loads(raw.decode())
         except:
-            # Try msgpack
             if raw[:3] == b"Sv7":
                 import msgpack
                 p = msgpack.unpackb(raw[3:], strict_map_key=False)
-                # Convert integer keys to strings if needed
                 p = {str(k) if isinstance(k, int) else k: v for k, v in p.items()}
             else:
                 return None
         wm = p.get("wm") or p.get("WM")
-        if wm and isinstance(wm, dict) and "bid" in wm:
-            return wm
-        return None
+        if not wm or not isinstance(wm, dict) or "bid" not in wm:
+            return None
+        
+        result = dict(wm)
+        result["valid"] = False
+        
+        # Verify signature (quick integrity)
+        expected_sig = hashlib.sha256(wm["bid"].encode()).hexdigest()[:16]
+        result["sig_ok"] = wm.get("sig") == expected_sig
+        
+        # Verify authenticity (if key provided)
+        if secret_key and "ts" in wm:
+            auth_data = f"{wm['bid']}|{wm['ts']}"
+            expected_auth = hmac.new(secret_key.encode(), auth_data.encode(), "sha256").hexdigest()[:16]
+            result["auth_ok"] = wm.get("auth") == expected_auth
+        else:
+            result["auth_ok"] = False
+        
+        result["valid"] = result.get("sig_ok", False)
+        return result
     except:
         return None
 
 
-def verify_watermark(pye_path: str) -> bool:
-    """Verify a .pye file's watermark signature.
-    
-    Usage:
-        if verify_watermark("output/_runtime/main.pye"):
-            print("Watermark valid")
-    """
-    wm = extract_watermark(pye_path)
+def verify_watermark(pye_path: str, secret_key: str = "") -> bool:
+    """Verify watermark: signature check + optional authenticity check."""
+    wm = extract_watermark(pye_path, secret_key)
     if not wm:
         return False
-    expected = hashlib.sha256(wm["bid"].encode()).hexdigest()[:16]
-    return wm.get("sig") == expected
+    if secret_key:
+        return wm.get("sig_ok", False) and wm.get("auth_ok", False)
+    return wm.get("sig_ok", False)

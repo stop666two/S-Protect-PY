@@ -34,11 +34,16 @@ def _xof(l: int, s: bytes) -> bytes:
 def xor_stream(d: bytes, k: bytes) -> bytes:
     return bytes(a ^ b for a, b in zip(d, _xof(len(d), k)))
 
-def chain_hash(payloads: list[dict], key: bytes) -> list[str]:
+def chain_hash(payloads, key):
+    import json
     n = len(payloads)
     sigs = []
     for i in range(n):
-        h = hashlib.sha256(payloads[(i + 1) % n].get("d", "").encode()).digest()
+        p = payloads[(i + 1) % n]
+        if isinstance(p, dict): d = p.get("d", "")
+        elif isinstance(p, bytes): d = json.loads(p.decode()).get("d", "")
+        else: d = ""
+        h = hashlib.sha256(d.encode()).digest()
         sigs.append(hmac.new(key, h, "sha256").hexdigest())
     return sigs
 

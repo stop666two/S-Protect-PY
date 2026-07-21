@@ -35,8 +35,12 @@ def _parser() -> argparse.ArgumentParser:
     ws = w.add_subparsers(dest="wa", required=True)
     we = ws.add_parser("extract", help="Extract watermark from a .pye file")
     we.add_argument("file", help="Path to .pye file")
-    wv = ws.add_parser("verify", help="Verify watermark signature")
+    we.add_argument("--key", help="Secret key for authenticity verification")
+    wv = ws.add_parser("verify", help="Verify watermark signature + authenticity")
     wv.add_argument("file", help="Path to .pye file")
+    wv.add_argument("--key", help="Secret key for authenticity verification")
+    wl = ws.add_parser("list", help="List watermarks in a directory")
+    wl.add_argument("dir", default="./output/_runtime", nargs="?", help="Directory containing .pye files")
 
     s.add_parser("version", help="Show version")
     return p
@@ -49,19 +53,43 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "watermark":
         from sprotect.watermark import extract_watermark, verify_watermark
         if a.wa == "extract":
-            wm = extract_watermark(a.file)
+            key = getattr(a, "key", "")
+            wm = extract_watermark(a.file, key)
             if wm:
-                print(f"Batch ID:   {wm.get('bid', 'N/A')}")
-                print(f"Signature:  {wm.get('sig', 'N/A')}")
-                print(f"Type:       {wm.get('t', 'N/A')}")
+                print(f"Batch ID:     {wm.get('bid', 'N/A')}")
+                print(f"Timestamp:    {wm.get('ts', 'N/A')}")
+                print(f"Signature:    {wm.get('sig', 'N/A')} {'OK' if wm.get('sig_ok') else 'BAD'}")
+                if key:
+                    print(f"Authenticity: {wm.get('auth', 'N/A')} {'OK' if wm.get('auth_ok') else 'BAD'}")
+                print(f"Type:         {wm.get('t', 'N/A')}")
             else:
-                print("No watermark found in file.")
+                print("No watermark found.")
                 return 1
             return 0
         elif a.wa == "verify":
-            ok = verify_watermark(a.file)
+            key = getattr(a, "key", "")
+            ok = verify_watermark(a.file, key)
             print(f"Watermark: {'VALID' if ok else 'INVALID or not found'}")
             return 0 if ok else 1
+        elif a.wa == "list":
+            import os, glob
+            path = a.dir
+            if not os.path.isdir(path):
+                print(f"Directory not found: {path}")
+                return 1
+            files = sorted(glob.glob(os.path.join(path, "*.pye")))
+            found = 0
+            for f in files:
+                wm = extract_watermark(f)
+                if wm:
+                    fn = os.path.basename(f)
+                    bid = wm.get("bid", "?")
+                    ts = wm.get("ts", "?")[:19]
+                    ok = "[OK]" if wm.get("sig_ok") else "[BAD]"
+                    print(f"  {fn:30s} bid={bid:20s} ts={ts} {ok}")
+                    found += 1
+            print(f"\n{found} watermarked files found in {path}")
+            return 0
 
     if a.cmd == "version":
         print(f"S-Protect-PY v{__version__}"); return 0

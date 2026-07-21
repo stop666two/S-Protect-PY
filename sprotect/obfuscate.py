@@ -76,11 +76,16 @@ class Obfuscator(ast.NodeTransformer):
         # Feature detection flags for protected patterns
         self._in_dataclass = False
         self._in_enum = False
-        self._enum_bases: set[str] = set()
         self._protected_names: set[str] = set()
+        self._class_names: set[str] = set()
+
+    _BUILTIN_RESERVED = frozenset({
+        "property", "staticmethod", "classmethod", "setter", "deleter",
+        "getter", "__init__", "__new__", "__call__",
+    })
 
     def _name(self, old: str) -> str:
-        if old.startswith("_") or old in self.reserved: return old
+        if old.startswith("_") or old in self.reserved or old in self._BUILTIN_RESERVED: return old
         self.map.setdefault(old, self.gen.gen())
         return self.map[old]
 
@@ -149,7 +154,8 @@ class Obfuscator(ast.NodeTransformer):
         if (self.cfg.rename_variables and node.id in self.map
             and not self._is_param(node.id) and node.id not in self.param_names
             and node.id not in self._protected_names
-            and node.id not in ("setter", "deleter")):
+            and node.id not in self._BUILTIN_RESERVED
+            and node.id not in self._class_names):
             node.id = self.map[node.id]
         return node
 
@@ -161,6 +167,17 @@ class Obfuscator(ast.NodeTransformer):
         if self.cfg.rename_functions and self._class_depth == 0: node.name = self._name(node.name)
         self._push_params(node); self.generic_visit(node); self._pop_params(); return node
 
+    def _collect_class_names(self, node: ast.ClassDef) -> set[str]:
+        """Collect names defined directly in a class (methods, attributes)."""
+        names: set[str] = set()
+        for child in ast.walk(node):
+            if child is node: continue
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                names.add(child.name)
+            elif isinstance(child, ast.ClassDef):
+                names.add(child.name)
+        return names
+
     def visit_ClassDef(self, node: ast.ClassDef):
         if self.cfg.rename_classes: node.name = self._name(node.name)
         prev_dc, prev_enum = self._in_dataclass, self._in_enum
@@ -170,6 +187,7 @@ class Obfuscator(ast.NodeTransformer):
             and (b.id if isinstance(b, ast.Name) else b.attr) in ("Enum", "IntEnum", "StrEnum", "IntFlag", "Flag")
             for b in node.bases
         )
+        self._class_names = self._collect_class_names(node)
         protected_before = set(self._protected_names)
         self._class_depth += 1; self.generic_visit(node); self._class_depth -= 1
         if self._in_dataclass or self._in_enum:

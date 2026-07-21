@@ -52,7 +52,9 @@ def _enc(d): return EncryptConfig(
     compress_level=d.get("compress_level",9),
     polymorphic_padding=d.get("polymorphic_padding",True),
     polymorphic_padding_max=d.get("polymorphic_padding_max",512),
-    aad_context=d.get("aad_context","S-Protect-PY"))
+    aad_context=d.get("aad_context","S-Protect-PY"),
+    extra_layers=d.get("extra_layers",[]),
+    hybrid=_extral_hybrid(d.get("hybrid",{})))
 
 def _adbc(d): return AntiDebugCheckConfig(check=d.get("check",""), enabled=d.get("enabled",True), action=d.get("action"))
 
@@ -127,6 +129,12 @@ def _files(d): return FilesConfig(
     include=d.get("include",["**/*.py"]), exclude=d.get("exclude",[]),
     exclude_dirs=d.get("exclude_dirs",["_runtime","_backup","__pycache__",".git"]))
 
+def _extral_hybrid(d): return HybridEncryptConfig(
+    enabled=d.get("enabled",False),
+    algorithm=d.get("algorithm","RSA"),
+    key_size=d.get("key_size",4096),
+    key_file=d.get("key_file","key.pem"))
+
 def _to_cfg(d):
     return Config(
         files=_files(d.get("files",{})),
@@ -183,7 +191,8 @@ def gen_default(path: str) -> Path:
         "encrypt":{"algorithm":"aes-256-gcm","key_source":"auto","interdependency":"chain",
             "backup":True,"backup_max_count":5,"replace_originals":False,
             "shard_count":3,"shard_min_files":2,"compress_level":9,
-            "polymorphic_padding":True,"polymorphic_padding_max":512,"aad_context":"S-Protect-PY"},
+            "polymorphic_padding":True,"polymorphic_padding_max":512,"aad_context":"S-Protect-PY",
+            "extra_layers":[],"hybrid":{}},
         "anti_debug":{"enabled":True,"action":"exit",
             "checks":["pdb","ptrace","debugger","vm","sandbox","timing","cuckoo","ida","procmon"],
             "per_check_actions":[],"process_whitelist":[],"block_tracing":True,

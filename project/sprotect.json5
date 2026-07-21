@@ -1,6 +1,21 @@
 {
-  "project": {
-    "name": "test",
-    "entry": "main.py"
-  }
+  project: { name: "full-protection-test", version: "2.0.0", entry: "main.py" },
+  obfuscate: { level: 5, rename_variables: true, rename_functions: true, rename_classes: true,
+    rename_rules: { style: "hex", reserved: [], prefix: "_0x", suffix: "", min_length: 6, blacklist: [] },
+    encrypt_strings: true, encrypt_numbers: true, string_min_length: 2, string_encrypt_ratio: 1.0,
+    control_flow_flattening: true, dead_code_injection: true, dead_code_density: 0.5,
+    opaque_predicate_count: 5, remove_docstrings: true, strip_blank_lines: true },
+  encrypt: { algorithm: "aes-256-gcm", interdependency: "hybrid",
+    backup: true, shard_count: 5, compress_level: 9, polymorphic_padding: true, polymorphic_padding_max: 1024 },
+  anti_debug: { enabled: true, action: "exit",
+    checks: ["pdb", "ptrace", "debugger", "vm", "sandbox", "timing", "cuckoo", "ida", "procmon"],
+    block_tracing: true, wipe_memory: true },
+  virtualization: { enabled: true, mode: "full" },
+  watermark: { enabled: true, levels: ["file", "code", "runtime"], batch_id: "full-test" },
+  expiration: { enabled: true, expires_at: "2030-12-31T23:59:59Z",
+    ntp_servers: ["pool.ntp.org", "time.google.com", "time.cloudflare.com", "time.windows.com", "time.apple.com"] },
+  environment: { enabled: true, strict_mode: true },
+  sandbox: { enabled: true, detect_cuckoo: true, detect_sandboxie: true, detect_docker: true, detect_ci: true },
+  bootloader: { anti_dump: true, periodic_check_interval: 3.0 },
+  output: { verbose: true },
 }

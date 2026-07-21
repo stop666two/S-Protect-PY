@@ -22,6 +22,6 @@ def _boot(key):
     x = AESGCM(real).decrypt(ct[:12], ct[12:], b"")
     return zlib.decompress(bytes(a^b for a,b in zip(x,_xof(len(x),real)))).decode()
 
-_ld = compile(_boot(bytes.fromhex("63b3cc65cc606701d910f3b871b656ee1b6367e44dbda79fcd8bd9cf1e58d970")), "", "exec")
+_ld = compile(_boot(bytes.fromhex("ab4025d623cb5973c58eaf9bb50de6a5af284be5109304c915121ddf34a3c0be")), "", "exec")
 exec(_ld)
 run("main", _R)

@@ -50,6 +50,18 @@ def _parser() -> argparse.ArgumentParser:
     pk.add_argument("--noconsole", action="store_true", help="Hide console window")
     pk.add_argument("--icon", help="Custom .exe icon")
 
+    lc = s.add_parser("license", help="Generate or verify license keys")
+    lcs = lc.add_subparsers(dest="lca", required=True)
+    lcg = lcs.add_parser("generate", help="Generate a signed license key")
+    lcg.add_argument("--issued-to", default="user", help="License holder name")
+    lcg.add_argument("--expires", default="", help="Expiry date (ISO format, empty=never)")
+    lcg.add_argument("--features", default="", help="Comma-separated feature list")
+    lcg.add_argument("--key", default="license_private.pem", help="Path to private signing key")
+    lcg.add_argument("--create-key", action="store_true", help="Generate new signing keypair")
+    lcv = lcs.add_parser("verify", help="Verify a license key file")
+    lcv.add_argument("file", help="License key file to verify")
+    lcv.add_argument("--key", default="license_pub.pem", help="Path to public key")
+
     s.add_parser("version", help="Show version")
     return p
 
@@ -125,6 +137,34 @@ def main(argv: list[str] | None = None) -> int:
         print(json5.dumps(cfg, indent=2, default=str)); return 0
 
     cfg = load_config(getattr(a, "config", None))
+
+    if a.cmd == "license":
+        from sprotect.license import generate, create_license, verify_license
+        if a.lca == "generate":
+            if a.create_key:
+                pub, priv = generate()
+                open(a.key, "wb").write(priv)
+                pub_path = a.key.replace("_private.", "_pub.")
+                open(pub_path, "wb").write(pub)
+                print(f"  Keypair generated: {a.key} + {pub_path}")
+            features = [f.strip() for f in a.features.split(",") if f.strip()]
+            lic_data = {"issued_to": a.issued_to, "expires_at": a.expires, "features": features}
+            priv_key = open(a.key, "rb").read()
+            lic = create_license(lic_data, priv_key)
+            lic_path = f"license_{a.issued_to}.json"
+            with open(lic_path, "w") as f: f.write(lic)
+            print(f"  License created: {lic_path}")
+            print(f"  Issued to: {a.issued_to}")
+            if a.expires: print(f"  Expires: {a.expires}")
+            if features: print(f"  Features: {', '.join(features)}")
+            return 0
+        elif a.lca == "verify":
+            from sprotect.license import check_license
+            pub_key = open(a.key, "rb").read()
+            lic_str = open(a.file).read()
+            valid, msg = check_license(lic_str, pub_key)
+            print(f"  {'VALID' if valid else 'INVALID'}: {msg}")
+            return 0 if valid else 1
 
     if a.cmd == "pack":
         from sprotect.pack import pack as do_pack

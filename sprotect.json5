@@ -63,6 +63,13 @@
     polymorphic_padding: true,  // 多态填充（每次构建大小不同）
     polymorphic_padding_max: 512, // 最大随机填充字节
     aad_context: "S-Protect-PY", // AAD 附加认证数据
+    extra_layers: [],            // 额外加密层: serpent | twofish | camellia | salsa20
+    hybrid: {                    // 混合加密（RSA/ECC 密钥包装）
+      enabled: false,            // 是否启用
+      algorithm: "RSA",          // RSA | ECC
+      key_size: 4096,            // RSA 位长 / ECC 曲线
+      key_file: "key.pem",       // 私钥保存路径
+    },
   },
 
   // ========== 反调试/反VM/反沙箱 ==========

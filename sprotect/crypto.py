@@ -63,19 +63,15 @@ def sha256(d: bytes) -> str:
     return hashlib.sha256(d).hexdigest()
 
 
-# ---- PyCryptodome ChaCha20-Poly1305 layer ----
+# ---- ChaCha20-Poly1305 layer (via cryptography library) ----
 def chacha20_encrypt(data: bytes, key: bytes) -> bytes:
-    from Cryptodome.Cipher import ChaCha20_Poly1305
+    from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
     nonce = os.urandom(12)
-    cipher = ChaCha20_Poly1305.new(key=key, nonce=nonce)
-    ct, tag = cipher.encrypt_and_digest(data)
-    return nonce + tag + ct
+    return nonce + ChaCha20Poly1305(key).encrypt(nonce, data, b"")
 
 def chacha20_decrypt(ct: bytes, key: bytes) -> bytes:
-    from Cryptodome.Cipher import ChaCha20_Poly1305
-    nonce, tag, data = ct[:12], ct[12:28], ct[28:]
-    cipher = ChaCha20_Poly1305.new(key=key, nonce=nonce)
-    return cipher.decrypt_and_verify(data, tag)
+    from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
+    return ChaCha20Poly1305(key).decrypt(ct[:12], ct[12:], b"")
 
 
 # ---- blake3 hashing ----

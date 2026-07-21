@@ -156,13 +156,17 @@ def {f_filter}(mk, shards):
         if not p or not p.get("c"): continue
 
 def {f_load}(p, mk):
-    """Full decrypt: AES-GCM then XOR."""
+    """Full decrypt: AES-GCM then XOR then ChaCha20 then zlib."""
     ct = bytes.fromhex(p["d"])
     hdr = p.get("h", "")
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
     x = AESGCM(mk).decrypt(ct[:12], ct[12:], b"")
     ks = {f_xof}(len(x), hashlib.sha256(mk).digest())
     x = bytes(a^b for a,b in zip(x,ks))
+    try:
+        x = ChaCha20Poly1305(mk).decrypt(x[:12], x[12:], b"")
+    except Exception:
+        pass
     if hdr:
         x = {f_extra}(x, mk, hdr)
     return zlib.decompress(x).decode()
@@ -273,7 +277,7 @@ def _xof(l, s):
     return bytes(r[:l])
 
 def _boot(key):
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
     p = json.loads(open(os.path.join(_R,"{rd}","loader.pye"),"rb").read().decode())
     real = key
     for kn in ["k1","k2","k3","k4","k5"]:
@@ -284,7 +288,12 @@ def _boot(key):
                 real = v; break
     ct = bytes.fromhex(p["d"])
     x = AESGCM(real).decrypt(ct[:12], ct[12:], b"")
-    return zlib.decompress(bytes(a^b for a,b in zip(x,_xof(len(x),real)))).decode()
+    x = bytes(a^b for a,b in zip(x,_xof(len(x),real)))
+    try:
+        x = ChaCha20Poly1305(real).decrypt(x[:12], x[12:], b"")
+    except Exception:
+        pass
+    return zlib.decompress(x).decode()
 
 _ld = compile(_boot(bytes.fromhex("{lk}")), "", "exec")
 exec(_ld)
@@ -345,11 +354,16 @@ def _xof(l, s):
     return bytes(r[:l])
 
 def _run(mk):
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
     p = json.loads(open(os.path.join(_R,"{rd}","loader.pye"),"rb").read().decode())
     ct = bytes.fromhex(p["d"])
     x = AESGCM(mk).decrypt(ct[:12], ct[12:], b"")
-    ld = zlib.decompress(bytes(a^b for a,b in zip(x,_xof(len(x),mk)))).decode()
+    x = bytes(a^b for a,b in zip(x,_xof(len(x),mk)))
+    try:
+        x = ChaCha20Poly1305(mk).decrypt(x[:12], x[12:], b"")
+    except Exception:
+        pass
+    ld = zlib.decompress(x).decode()
     exec(compile(ld, "", "exec"))
     run("{entry}", _R)
 

@@ -292,11 +292,82 @@ run("{entry}", _R)
 '''
 
 
+_HYBRID_BOOT_STUB = '''"""S-Protect bootloader v7 (hybrid)."""
+import sys, os, json, hashlib, zlib
+_R = os.path.dirname(os.path.abspath(__file__))
+
+def _boot(key_path):
+    import getpass
+    if not os.path.isfile(key_path):
+        key_path = input(f"Enter private key path [{key_path}]: ") or key_path
+    if not os.path.isfile(key_path):
+        print("ERROR: Private key not found"); sys.exit(1)
+    priv = open(key_path, "rb").read()
+    enc_data = bytes.fromhex("{hk}")
+    algo = "{ha}"
+    if algo == "RSA":
+        from Cryptodome.PublicKey import RSA
+        from Cryptodome.Cipher import PKCS1_OAEP
+        from Cryptodome.Hash import SHA256
+        try:
+            key_obj = RSA.import_key(priv)
+            mk = PKCS1_OAEP.new(key_obj, hashAlgo=SHA256).decrypt(enc_data)
+        except Exception:
+            pw = getpass.getpass("Private key passphrase: ")
+            key_obj = RSA.import_key(priv, passphrase=pw)
+            mk = PKCS1_OAEP.new(key_obj, hashAlgo=SHA256).decrypt(enc_data)
+    else:
+        from Cryptodome.PublicKey import ECC
+        from Cryptodome.Cipher import AES
+        try:
+            key_obj = ECC.import_key(priv)
+        except:
+            pw = getpass.getpass("Private key passphrase: ")
+            key_obj = ECC.import_key(priv, passphrase=pw)
+        import json as _j
+        data = _j.loads(enc_data.decode())
+        ephem = ECC.import_key(data["ephemeral_pub"])
+        shared = key_obj.dh(ephem)
+        shared_bytes = int(shared.x).to_bytes(32, 'big')
+        from cryptography.hazmat.primitives.kdf.hkdf import HKDF as _H
+        from cryptography.hazmat.primitives import hashes as _hs
+        salt = bytes.fromhex(data["salt"])
+        aes_k = _H(algorithm=_hs.SHA256(), length=32, salt=salt, info=b"sprotect:ecc-hybrid").derive(shared_bytes)
+        n = bytes.fromhex(data["nonce"])
+        c = AES.new(aes_k, AES.MODE_GCM, nonce=n)
+        mk = c.decrypt_and_verify(bytes.fromhex(data["ct"]), bytes.fromhex(data["tag"]))
+    _run(mk)
+
+def _xof(l, s):
+    r, c = bytearray(), 0
+    while len(r) < l:
+        r.extend(hashlib.sha256(s + c.to_bytes(4,"big")).digest()); c += 1
+    return bytes(r[:l])
+
+def _run(mk):
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    p = json.loads(open(os.path.join(_R,"{rd}","loader.pye"),"rb").read().decode())
+    ct = bytes.fromhex(p["d"])
+    x = AESGCM(mk).decrypt(ct[:12], ct[12:], b"")
+    ld = zlib.decompress(bytes(a^b for a,b in zip(x,_xof(len(x),mk)))).decode()
+    exec(compile(ld, "", "exec"))
+    run("{entry}", _R)
+
+_boot("{kp}")
+'''
+
+
 def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
-             per_file_configs: dict[str, str], loader_key: bytes) -> str:
+             per_file_configs: dict[str, str], loader_key: bytes,
+             hybrid_key: bytes | None = None, algorithm: str = "RSA") -> str:
     ep = os.path.join(output_dir, entry_module.replace(".", os.sep) + ".py")
     os.makedirs(os.path.dirname(ep), exist_ok=True)
-    boot = _BOOT_STUB.format(lk=loader_key.hex(), rd="_runtime", entry=entry_module)
+    if hybrid_key is not None:
+        boot = _HYBRID_BOOT_STUB.format(
+            rd="_runtime", entry=entry_module,
+            hk=hybrid_key.hex(), ha=algorithm, kp="sprotect_private.pem")
+    else:
+        boot = _BOOT_STUB.format(lk=loader_key.hex(), rd="_runtime", entry=entry_module)
     from sprotect.minify import minify_source
     boot = minify_source(boot, add_garbage=True)
     with open(ep, "w", encoding="utf-8") as f: f.write(boot)

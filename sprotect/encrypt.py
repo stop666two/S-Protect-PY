@@ -7,7 +7,7 @@ from sprotect.types import Config
 from sprotect.config import merge_file_config
 from sprotect.obfuscate import Obfuscator, collect_defs
 from sprotect.project import find_py_files
-from sprotect.crypto import aes_key, split_key, chain_hash, encrypt_payload, encrypt_payload_v2, generate_decoy_payload
+from sprotect.crypto import aes_key, split_key, chain_hash, encrypt_payload, encrypt_payload_v2, generate_decoy_payload, rsa_generate_keypair, rsa_encrypt_master_key, ecc_generate_keypair, ecc_encrypt_master_key
 from sprotect.loader import gen_boot, gen_loader_source
 from sprotect.backup import backup
 from sprotect.minify import minify_source
@@ -39,6 +39,24 @@ def build(project_dir, output_dir, config):
 
     loader_key = aes_key()
     master_key = aes_key()
+    hybrid_key = None
+    if config.encrypt.hybrid.enabled:
+        hc = config.encrypt.hybrid
+        if hc.algorithm == "RSA":
+            pub, priv = rsa_generate_keypair(hc.key_size)
+        elif hc.algorithm == "ECC":
+            curve = f"P-{hc.key_size}" if hc.key_size <= 521 else "P-256"
+            pub, priv = ecc_generate_keypair(curve)
+        else:
+            pub, priv = rsa_generate_keypair(hc.key_size)
+        key_path = os.path.join(output_dir, hc.key_file)
+        with open(key_path, "wb") as f:
+            f.write(priv)
+        print(f"  Private key saved: {key_path}")
+        if hc.algorithm == "RSA":
+            hybrid_key = rsa_encrypt_master_key(master_key, pub)
+        else:
+            hybrid_key = ecc_encrypt_master_key(master_key, pub)
     shards = split_key(master_key, len(py_files))
 
     module_map = {}
@@ -171,7 +189,8 @@ def build(project_dir, output_dir, config):
 
     entry_mod = config.project.entry.replace(".py", "")
     entry_hex = module_map.get(entry_mod, "")
-    gen_boot(output_dir, entry_mod, entry_hex, {}, loader_key)
+    hc = config.encrypt.hybrid
+    gen_boot(output_dir, entry_mod, entry_hex, {}, loader_key, hybrid_key, hc.algorithm if hybrid_key else "RSA")
 
     for f in ["run.bat", "requirements.txt"]:
         s = os.path.join(project_dir, f)

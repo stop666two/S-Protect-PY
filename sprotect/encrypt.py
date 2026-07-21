@@ -149,22 +149,21 @@ def build(project_dir: str, output_dir: str, config: Config) -> None:
 
     # ========== PyArmor post-processing ==========
     try:
-        import pyarmor
-        pa_out = os.path.join(output_dir, "_pyarmored")
-        result = subprocess.run(
-            [sys.executable, "-m", "pyarmor", "gen", "--output", pa_out,
-             os.path.join(output_dir, "main.py")],
-            capture_output=True, text=True, timeout=30)
+        import subprocess as _sp
+        pa_out = os.path.join(output_dir, "_pa")
+        result = _sp.run(["pyarmor", "gen", "-O", pa_out,
+                          os.path.join(output_dir, "main.py")],
+                         capture_output=True, text=True, timeout=60)
         if result.returncode == 0 and os.path.isdir(pa_out):
             import shutil as _sh
             for item in os.listdir(pa_out):
                 s = os.path.join(pa_out, item)
                 d = os.path.join(output_dir, item)
-                if os.path.isdir(s):
-                    _sh.copytree(s, d, dirs_exist_ok=True)
-                else:
-                    _sh.copy2(s, d)
+                if os.path.isdir(s): _sh.copytree(s, d, dirs_exist_ok=True)
+                else: _sh.copy2(s, d)
             _sh.rmtree(pa_out, ignore_errors=True)
-            print("  PyArmor: post-processed bootloader")
+            print("  PyArmor: bootloader obfuscated")
+        else:
+            print(f"  PyArmor: skipped ({result.stderr[:100]})")
     except Exception as e:
         print(f"  PyArmor: skipped ({e})")

@@ -1,59 +1,45 @@
-{
+﻿{
   // ==========================================
-  // 类型定义模块 — 所有 Enum 和 Dataclass
+  // 绫诲瀷瀹氫箟妯″潡 鈥?鎵€鏈?Enum 鍜?Dataclass
   // ==========================================
-  // 此模块包含:
-  //   • 6 个 Enum: ObfuscateLevel, InterdependencyMode, NamingStyle,
+  // 姝ゆā鍧楀寘鍚?
+  //   鈥?6 涓?Enum: ObfuscateLevel, InterdependencyMode, NamingStyle,
   //                AntiDebugAction, VirtualizationMode, WatermarkLevel
-  //   • 1 个 Enum: EncryptAlgorithm
-  //   • 14 个 @dataclass: 从 RenameRules 到 Config（顶层聚合）
-  //   • HybridEncryptConfig（混合加密配置）
+  //   鈥?1 涓?Enum: EncryptAlgorithm
+  //   鈥?14 涓?@dataclass: 浠?RenameRules 鍒?Config锛堥《灞傝仛鍚堬級
+  //   鈥?HybridEncryptConfig锛堟贩鍚堝姞瀵嗛厤缃級
   //
-  // ════════════════════════════════════════════
-  // ⚠️  关 键 约 束（违反将导致运行时崩溃）
-  // ════════════════════════════════════════════
-  //   1. Enum 名称不能混淆 — enum 的 name/value 属性被反射访问
-  //      (如: ObfuscateLevel.L5.value → 5 被 config.py 比较)
-  //   2. Dataclass 字段名不能混淆 — 被 config.py 的 d.get("field") 访问
-  //      (如: d.get("level", 3) 匹配 ObfuscateConfig.level)
-  //   3. 类名不能混淆 — 被 isinstance() 和类型注解引用
-  //      (如: EncryptConfig 被 _enc() 显式构造)
-  //   4. 字符串不能加密 — 枚举值和配置默认值以字符串形式出现
-  //      (如: "chain", "exit", "hex" 被 config.py 匹配)
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+  // 鈿狅笍  鍏?閿?绾?鏉燂紙杩濆弽灏嗗鑷磋繍琛屾椂宕╂簝锛?  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+  //   1. Enum 鍚嶇О涓嶈兘娣锋穯 鈥?enum 鐨?name/value 灞炴€ц鍙嶅皠璁块棶
+  //      (濡? ObfuscateLevel.L5.value 鈫?5 琚?config.py 姣旇緝)
+  //   2. Dataclass 瀛楁鍚嶄笉鑳芥贩娣?鈥?琚?config.py 鐨?d.get("field") 璁块棶
+  //      (濡? d.get("level", 3) 鍖归厤 ObfuscateConfig.level)
+  //   3. 绫诲悕涓嶈兘娣锋穯 鈥?琚?isinstance() 鍜岀被鍨嬫敞瑙ｅ紩鐢?  //      (濡? EncryptConfig 琚?_enc() 鏄惧紡鏋勯€?
+  //   4. 瀛楃涓蹭笉鑳藉姞瀵?鈥?鏋氫妇鍊煎拰閰嶇疆榛樿鍊间互瀛楃涓插舰寮忓嚭鐜?  //      (濡? "chain", "exit", "hex" 琚?config.py 鍖归厤)
   //
-  // 结论: 此模块只能做最低限度混淆（仅变量重命名）。
-  // ==========================================
+  // 缁撹: 姝ゆā鍧楀彧鑳藉仛鏈€浣庨檺搴︽贩娣嗭紙浠呭彉閲忛噸鍛藉悕锛夈€?  // ==========================================
 
   obfuscate: {
-    // --- 混淆等级 ---
-    // 为什么用 2:
-    //   level 1: 仅修改变量名（安全）
-    //   level 2: 额外进行一些安全变换（对类型模块无影响）
-    //   level 3+: 会改变类结构（Enum 的元类、dataclass 的生成方法），不可接受
-    level: 2,
+    // --- 娣锋穯绛夌骇 ---
+    // 涓轰粈涔堢敤 2:
+    //   level 1: 浠呬慨鏀瑰彉閲忓悕锛堝畨鍏級
+    //   level 2: 棰濆杩涜涓€浜涘畨鍏ㄥ彉鎹紙瀵圭被鍨嬫ā鍧楁棤褰卞搷锛?    //   level 3+: 浼氭敼鍙樼被缁撴瀯锛圗num 鐨勫厓绫汇€乨ataclass 鐨勭敓鎴愭柟娉曪級锛屼笉鍙帴鍙?    level: 2,
 
-    // --- 重命名变量 ---
-    // ✅ 可以开启
-    // 原因: 类型模块中变量很少（主要是 Enum 成员和 dataclass 字段）
-    //       局部变量改名不影响外部访问
+    // --- 閲嶅懡鍚嶅彉閲?---
+    // 鉁?鍙互寮€鍚?    // 鍘熷洜: 绫诲瀷妯″潡涓彉閲忓緢灏戯紙涓昏鏄?Enum 鎴愬憳鍜?dataclass 瀛楁锛?    //       灞€閮ㄥ彉閲忔敼鍚嶄笉褰卞搷澶栭儴璁块棶
     rename_variables: true,
 
-    // --- 重命名函数 ---
-    // ❗ 必须为 false
-    // 原因:
-    //   • Enum 的 __init__、__new__、__format__ 等魔术方法被 Python 运行时隐式调用
-    //   • dataclass 的 __init__、__repr__、__eq__、__hash__ 由 @dataclass 装饰器自动生成
-    //   • 如果这些方法被改名, Python 运行时无法找到正确入口, 触发 TypeError
-    //   • 手写的 __post_init__ 如果被改名也会失效
-    rename_functions: false,
+    // --- 閲嶅懡鍚嶅嚱鏁?---
+    // 鉂?蹇呴』涓?false
+    // 鍘熷洜:
+    //   鈥?Enum 鐨?__init__銆乢_new__銆乢_format__ 绛夐瓟鏈柟娉曡 Python 杩愯鏃堕殣寮忚皟鐢?    //   鈥?dataclass 鐨?__init__銆乢_repr__銆乢_eq__銆乢_hash__ 鐢?@dataclass 瑁呴グ鍣ㄨ嚜鍔ㄧ敓鎴?    //   鈥?濡傛灉杩欎簺鏂规硶琚敼鍚? Python 杩愯鏃舵棤娉曟壘鍒版纭叆鍙? 瑙﹀彂 TypeError
+    //   鈥?鎵嬪啓鐨?__post_init__ 濡傛灉琚敼鍚嶄篃浼氬け鏁?    rename_functions: false,
 
-    // --- 重命名类 ---
-    // ❗ 必须为 false
-    // 原因:
-    //   • Config 聚合类被所有模块引用（from types import Config）
-    //   • EncryptConfig、ObfuscateConfig 等子 config 被 config.py 的 _enc() 显式构造
-    //   • AntiDebugConfig 被 anti_debug.py 的 _check() 用 isinstance 检查
-    //   • 类名一改, 所有 import 和 isinstance 全部 NameError
+    // --- 閲嶅懡鍚嶇被 ---
+    // 鉂?蹇呴』涓?false
+    // 鍘熷洜:
+    //   鈥?Config 鑱氬悎绫昏鎵€鏈夋ā鍧楀紩鐢紙from types import Config锛?    //   鈥?EncryptConfig銆丱bfuscateConfig 绛夊瓙 config 琚?config.py 鐨?_enc() 鏄惧紡鏋勯€?    //   鈥?AntiDebugConfig 琚?anti_debug.py 鐨?_check() 鐢?isinstance 妫€鏌?    //   鈥?绫诲悕涓€鏀? 鎵€鏈?import 鍜?isinstance 鍏ㄩ儴 NameError
     rename_classes: false,
 
     rename_rules: {
@@ -61,47 +47,52 @@
       reserved: [],
     },
 
-    // --- 加密字符串 ---
-    // ❗ 必须为 false
-    // 原因:
-    //   • Enum 的 value 属性以字符串形式存在, 如:
-    //     - AntiDebugAction.CHAIN.value → "chain"（被 config.py 的 d.get("action") 匹配）
-    //     - NamingStyle.HEX.value → "hex"
-    //   • 加密后: d.get("action") 匹配到的是乱码, 永远不等于 "chain"
-    //   • 结果: 所有配置反序列化异常, 程序启动即崩
+    // --- 鍔犲瘑瀛楃涓?---
+    // 鉂?蹇呴』涓?false
+    // 鍘熷洜:
+    //   鈥?Enum 鐨?value 灞炴€т互瀛楃涓插舰寮忓瓨鍦? 濡?
+    //     - AntiDebugAction.CHAIN.value 鈫?"chain"锛堣 config.py 鐨?d.get("action") 鍖归厤锛?    //     - NamingStyle.HEX.value 鈫?"hex"
+    //   鈥?鍔犲瘑鍚? d.get("action") 鍖归厤鍒扮殑鏄贡鐮? 姘歌繙涓嶇瓑浜?"chain"
+    //   鈥?缁撴灉: 鎵€鏈夐厤缃弽搴忓垪鍖栧紓甯? 绋嬪簭鍚姩鍗冲穿
     encrypt_strings: false,
 
-    // --- 加密数字 ---
-    // ❗ 必须为 false
-    // 原因:
-    //   • Enum 的整数值被用于比较, 如 ObfuscateLevel.L5 = 5
-    //   • config.py 中 d.get("level", 3) 返回 int, 与 Enum 成员比较
-    //   • 数字加密后使用 EncryptedInt 包装, 比较操作返回 False
-    //   • 结果: level 判断永远不匹配, 默认值接管, 逻辑混乱
+    // --- 鍔犲瘑鏁板瓧 ---
+    // 鉂?蹇呴』涓?false
+    // 鍘熷洜:
+    //   鈥?Enum 鐨勬暣鏁板€艰鐢ㄤ簬姣旇緝, 濡?ObfuscateLevel.L5 = 5
+    //   鈥?config.py 涓?d.get("level", 3) 杩斿洖 int, 涓?Enum 鎴愬憳姣旇緝
+    //   鈥?鏁板瓧鍔犲瘑鍚庝娇鐢?EncryptedInt 鍖呰, 姣旇緝鎿嶄綔杩斿洖 False
+    //   鈥?缁撴灉: level 鍒ゆ柇姘歌繙涓嶅尮閰? 榛樿鍊兼帴绠? 閫昏緫娣蜂贡
     encrypt_numbers: false,
 
-    // --- 控制流平坦化 ---
-    // ❗ 必须为 false
-    // 原因:
-    //   • dataclass 不包含复杂控制流（只有字段定义）
-    //   • __init__ 由 @dataclass 装饰器自动生成, 平坦化不作用于装饰器生成的字节码
-    //   • 安全起见强制关闭, 避免意外
+    // --- 鎺у埗娴佸钩鍧﹀寲 ---
+    // 鉂?蹇呴』涓?false
+    // 鍘熷洜:
+    //   鈥?dataclass 涓嶅寘鍚鏉傛帶鍒舵祦锛堝彧鏈夊瓧娈靛畾涔夛級
+    //   鈥?__init__ 鐢?@dataclass 瑁呴グ鍣ㄨ嚜鍔ㄧ敓鎴? 骞冲潶鍖栦笉浣滅敤浜庤楗板櫒鐢熸垚鐨勫瓧鑺傜爜
+    //   鈥?瀹夊叏璧疯寮哄埗鍏抽棴, 閬垮厤鎰忓
     control_flow_flattening: false,
 
-    // --- 死代码注入 ---
-    // ❗ 必须为 false
-    // 原因: 类型模块无函数体, 死代码注入无目标, 设置无效
+    // --- 姝讳唬鐮佹敞鍏?---
+    // 鉂?蹇呴』涓?false
+    // 鍘熷洜: 绫诲瀷妯″潡鏃犲嚱鏁颁綋, 姝讳唬鐮佹敞鍏ユ棤鐩爣, 璁剧疆鏃犳晥
     dead_code_injection: false,
+    // --- 字符串分割 ---
+    string_split: true,
+    // --- import 混淆 ---
+    obfuscate_imports: true,
+    // --- 函数调用混淆 ---
+    obfuscate_calls: true,
   },
 
   anti_debug: {
-    // --- 总开关 ---
-    // 为什么 false:
-    //   类型定义在 build 机器上运行（受保护环境）, 最终用户不直接执行此模块
-    //   反调试检查只应部署在最终交付物中, 而非中间构建产物
+    // --- 鎬诲紑鍏?---
+    // 涓轰粈涔?false:
+    //   绫诲瀷瀹氫箟鍦?build 鏈哄櫒涓婅繍琛岋紙鍙椾繚鎶ょ幆澧冿級, 鏈€缁堢敤鎴蜂笉鐩存帴鎵ц姝ゆā鍧?    //   鍙嶈皟璇曟鏌ュ彧搴旈儴缃插湪鏈€缁堜氦浠樼墿涓? 鑰岄潪涓棿鏋勫缓浜х墿
     enabled: false,
 
     action: "warn",
     checks: [],
   },
 }
+

@@ -201,6 +201,22 @@
     //   对行为正确性的要求压倒一切。任何死代码注入可能
     //   引入的非常规控制流，在配置模块中都是不可接受的。
     dead_code_injection: false,
+
+    // --- string_split: 字符串分割 ---
+    // 可用: true | false
+    // 注意: 字符串分割为多个碎片运行时拼接，增加搜索难度
+    string_split: true,
+
+    // --- obfuscate_imports: import 混淆 ---
+    // 可用: true | false
+    // 注意: import os -> os = __import__(...)，隐藏模块依赖
+    obfuscate_imports: true,
+
+    // --- obfuscate_calls: 调用混淆 ---
+    // 可用: true | false
+    // 注意: func(a, b) -> (lambda _a0, _a1: func(_a0, _a1))(a, b)
+    //       跳过属性调用和多参调用（>2个参数）以避免兼容性问题
+    obfuscate_calls: true,
   },
 
   // ===================================================================

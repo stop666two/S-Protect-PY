@@ -1,26 +1,163 @@
 {
-  // ==========================================
+  // ===================================================================
   // 随机名生成器 — 混淆标识符
-  // ==========================================
-  // 5 种命名风格（hex/chinese/invisible/math-symbols/custom），
-  // 20 种前缀样式。逻辑约 20 行。
-  // ==========================================
+  // ===================================================================
+  // 此模块负责：
+  //   • generate_name(): 生成随机标识符
+  //   • 支持 5 种命名风格：hex / chinese / invisible / math-symbols / custom
+  //   • 20 种前缀样式可选
+  //
+  // 此模块为整个混淆流程提供标识符命名服务。
+  // 逻辑约 20 行，不包含敏感逻辑。
+  // 安全等级：低 — 但此模块的输出（随机名）会影响最终混淆质量。
+  //
+  // ⚠️ 注意:
+  //   • generate_name() 函数被 obfuscate.py 直接调用
+  //   → rename_functions 必须 false
+  //   • 此模块包含字符串池（如 hex 字符表、数学符号表等）
+  //   → encrypt_strings 可以 true，不影响功能
+  // ===================================================================
 
   obfuscate: {
+    // --- level: 混淆强度 ---
+    // 可用值: 0 | 1 | 2 | 3 | 4 | 5
+    //         0 = 不混淆
+    //         1 = 最低
+    //         2 = 低（适合纯工具/服务类模块）
+    //         3 = 中等
+    //         4 = 高
+    //         5 = 最高
+    // 推荐值: 2
+    // 禁止值: 0
+    // ⚠️ 模块特殊原因: 此模块是工具服务类模块，被 obfuscate.py
+    //   调用。它自身不需要高强度保护（暴露了"这是一个随机名
+    //   生成器"也无害），但保持 level 2 的轻度混淆可以维持
+    //   构建产物中各模块混淆程度的一致性。
     level: 2,
+
+    // --- rename_variables: 局部变量重命名 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 变量名（如 name_pool、prefix_list、
+    //   char_table）暴露了命名池的实现细节。虽然此模块不是
+    //   核心安全模块，但变量名本身揭示了命名算法，混淆后
+    //   可以增加攻击者理解命名规律的难度。
     rename_variables: true,
+
+    // --- rename_functions: 函数重命名 ---
+    // ❌ 必须 false
+    // 可用值: true | false
+    // 推荐值: false
+    // 禁止值: true
+    // ⚠️ 模块特殊原因:
+    //   generate_name(style: str, length: int) -> str 是此模块
+    //   的唯一公开 API，被 obfuscate.py 直接引用：
+    //     from random_gen import generate_name
+    //     new_name = generate_name("hex", 16)
+    //   重命名后 obfuscate.py 无法调用此函数。
+    //   obfuscate.py 是整个混淆流程的调度核心，改名会导致
+    //   整个构建链断裂。
     rename_functions: false,
+
+    // --- rename_classes: 类重命名 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 此模块仅包含函数，无自定义类。
     rename_classes: false,
+
+    // --- encrypt_strings: 字符串加密 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 此模块包含大量字符池字符串：
+    //   • hex 字符表："0123456789abcdef"
+    //   • 中文对照表：几百个中文字符的列表
+    //   • 数学符号表："∑∏∫√∞≈≠±×÷"
+    //   • 不可见字符表：零宽空格等
+    //   这些字符表如果明文存在，攻击者可以：
+    //   ① 通过搜索字符表快速定位随机名生成逻辑
+    //   ② 根据字符集推断出命名风格，从而尝试预测随机名
+    //   ③ 了解命名模式后，更易在混淆产物中定位关键函数
+    //   加密这些字符串表可以大幅增加上述攻击的难度。
+    //   此模块不生成模板代码，字符串加密不会产生副作用。
     encrypt_strings: true,
+
+    // --- encrypt_numbers: 数字常量加密 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 唯一的数字是默认长度（如 8、16、32），
+    //   这些数字没有保护价值。
     encrypt_numbers: false,
+
+    // --- control_flow_flattening: 控制流平坦化 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: generate_name() 的核心是 random.choice()
+    //   循环，控制流简单直接。平坦化对于这种"选择 → 拼接 →
+    //   返回"的模式几乎没有混淆效果，只会增加构建时间。
     control_flow_flattening: false,
+
+    // --- dead_code_injection: 死代码注入 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 此模块函数体极小（约 5-10 行有效代码），
+    //   注入死代码会导致代码膨胀比例过高（200%+），
+    //   而安全收益极低，性价比差。
     dead_code_injection: false,
+
+    // --- string_split: 字符串拆分 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 字符表字符串拆分后不影响 random.choice()
+    //   的索引访问。即使 encrypt_strings=true，额外拆分可以
+    //   进一步增加字符串分析的难度。
     string_split: true,
+
+    // --- obfuscate_imports: 导入混淆 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 导入 random、string 等标准库，
+    //   混淆后维持构建产物风格统一。
     obfuscate_imports: true,
+
+    // --- obfuscate_calls: 调用混淆 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: random.choice() 和 random.randint() 等
+    //   调用混淆后不影响命名生成结果。
     obfuscate_calls: true,
+
+    // --- obfuscate_arithmetic: 算术表达式混淆 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 命名长度计算、索引计算等简单算术
+    //   混淆后不影响执行结果。
     obfuscate_arithmetic: true,
+
+    // --- obfuscate_booleans: 布尔表达式混淆 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 风格选择（if style == "hex": ...）等
+    //   条件判断混淆后不影响功能。
     obfuscate_booleans: true,
   },
 
-  anti_debug: { enabled: false },
+  anti_debug: {
+    // --- enabled: 反调试开关 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // 禁止值: true
+    // ⚠️ 模块特殊原因:
+    //   ① 此模块仅在构建时的混淆阶段执行
+    //   ② 不涉及运行时安全，无防逆向需求
+    //   ③ 开发者可能需要调试命名生成逻辑
+    //      （如排查某一命名风格是否正确输出）
+    enabled: false,
+  },
 }

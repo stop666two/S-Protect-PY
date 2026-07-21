@@ -1,35 +1,224 @@
 {
-  // ==========================================
+  // ===================================================================
   // 反篡改模块 — 运行时文件完整性校验
-  // ==========================================
-  // 此模块负责文件哈希校验、内存完整性检测、反 Hook、反 Dump。
-  // 伴随 loader 启动后运行，防止 .pye 被篡改。
-  // ==========================================
+  // ===================================================================
+  // 此模块负责：
+  //   • verify_files(): SHA256 校验每个 .pye 文件
+  //   • check_memory(): mtime 与加载时间一致性
+  //   • detect_hooks(): 模块 hook/patch 检测
+  //   • start_periodic_check(): 后台线程周期检查
+  //
+  // 安全等级：最高。此模块确保加密文件未被篡改。
+  // 若此模块被攻破，整个保护链失效，因此所有防护手段必须全开。
+  // ===================================================================
 
   obfuscate: {
+    // --- level: 混淆强度 ---
+    // 可用值: 0 | 1 | 2 | 3 | 4 | 5
+    //         0 = 不混淆（纯透传）
+    //         1 = 最低（仅基础重命名）
+    //         2 = 低
+    //         3 = 中等
+    //         4 = 高
+    //         5 = 最高（启用所有可用变换）
+    // 不适用值: 无（所有整数合法，但 <3 无实际防护效果）
+    // 推荐值: 5
+    // 禁止值: 0, 1（完全裸露，极易被绕过）
+    // ⚠️ 模块特殊原因: 反篡改是保护链的最后一环，必须使用最高强度。
+    //   任何低于 4 的级别都意味着此模块逻辑可以被轻易逆向分析
+    //   并绕过，导致 .pye 文件可被篡改。
     level: 5,
+
+    // --- rename_variables: 局部变量重命名 ---
+    // 可用值: true | false
+    // true  = 将局部变量名替换为无意义标识符
+    // false = 保留原始变量名
+    // 推荐值: true
+    // 禁止值: false（变量名暴露逻辑意图，降低逆向难度）
+    // ⚠️ 模块特殊原因: 此模块包含 hash 校验、hook 检测等关键逻辑，
+    //   变量名（如 is_tampered, original_hash）直接揭示功能，
+    //   必须混淆。
     rename_variables: true,
+
+    // --- rename_functions: 函数重命名 ---
+    // 可用值: true | false
+    // true  = 将函数名替换为无意义标识符
+    // false = 保留原始函数名
+    // 推荐值: true
+    // 禁止值: false（除非被外部代码直接引用）
+    // ⚠️ 模块特殊原因: verify_files(), detect_hooks() 等函数名
+    //   直接暴露安全检查意图，必须重命名。
+    //   此模块的函数不被 loader 外部直接引用（loader 通过
+    //   import_module 动态加载），所以重命名安全。
     rename_functions: true,
+
+    // --- rename_classes: 类重命名 ---
+    // 可用值: true | false
+    // true  = 将类名替换为无意义标识符
+    // false = 保留原始类名
+    // 推荐值: true
+    // 禁止值: false（除非被外部代码直接引用）
+    // ⚠️ 模块特殊原因: 此模块内部类（如 IntegrityChecker）名称
+    //   暴露功能，必须重命名。无外部直接引用。
     rename_classes: true,
+
+    // --- encrypt_strings: 字符串加密 ---
+    // 可用值: true | false
+    // true  = 所有字符串常量在运行时解密
+    // false = 字符串以明文存在于字节码中
+    // 推荐值: true
+    // 禁止值: false（字符串是最容易泄露信息的载体）
+    // ⚠️ 模块特殊原因: 此模块包含:
+    //   • "SHA256 mismatch" 等错误消息 → 泄露校验算法
+    //   • "pdb", "pydevd" 等调试器检测字符串 → 泄露检测方式
+    //   • 文件路径模板字符串 → 泄露目录结构
+    //   所有字符串必须加密。
     encrypt_strings: true,
+
+    // --- encrypt_numbers: 数字常量加密 ---
+    // 可用值: true | false
+    // true  = 数字常量在运行时动态计算
+    // false = 数字以明文存在
+    // 推荐值: true
+    // 禁止值: false（数字常量同样容易被定位）
+    // ⚠️ 模块特殊原因: 此模块包含 hash 缓存大小、检查周期间隔、
+    //   超时阈值等数值。这些数字是静态分析的锚点，必须加密。
     encrypt_numbers: true,
+
+    // --- control_flow_flattening: 控制流平坦化 ---
+    // 可用值: true | false
+    // true  = 将顺序执行代码改为 switch-case 分发器结构
+    // false = 保持原始控制流
+    // 推荐值: true
+    // 禁止值: false（平坦化是反逆向的核心手段）
+    // ⚠️ 模块特殊原因: 反篡改模块的 verify_files() 逻辑是典型的
+    //   顺序执行流程（打开文件 → 读内容 → 算 hash → 比较），
+    //   不平坦化则极易通过反编译跟踪。
     control_flow_flattening: true,
+
+    // --- dead_code_injection: 死代码注入 ---
+    // 可用值: true | false
+    // true  = 注入永远不会被执行到的干扰代码
+    // false = 不注入
+    // 推荐值: true
+    // 禁止值: false（增加反编译阅读成本）
+    // ⚠️ 模块特殊原因: 在 hash 校验循环中注入虚假的 hash 比较
+    //   分支可以大量增加静态分析的噪声。
     dead_code_injection: true,
+
+    // --- string_split: 字符串拆分 ---
+    // 可用值: true | false
+    // true  = 长字符串拆分为多段拼接
+    // false = 保持完整字符串
+    // 推荐值: true
+    // 禁止值: 无特定禁止值
+    // ⚠️ 模块特殊原因: 即使 encrypt_strings=true，拆分可以进一步
+    //   防止通过内存搜索完整字符串来定位关键逻辑。
     string_split: true,
+
+    // --- obfuscate_imports: 导入混淆 ---
+    // 可用值: true | false
+    // true  = 将 import 语句转为动态 __import__() 调用
+    // false = 保持 import 语句
+    // 推荐值: true
+    // 禁止值: false（import 直接暴露依赖关系）
+    // ⚠️ 模块特殊原因: 此模块导入 hashlib、threading、ctypes 等，
+    //   直接暴露了"hash + 多线程 + 系统调用"的安全检测模式。
     obfuscate_imports: true,
+
+    // --- obfuscate_calls: 调用混淆 ---
+    // 可用值: true | false
+    // true  = 函数调用转为间接调用
+    // false = 保持直接调用
+    // 推荐值: true
+    // 禁止值: false（降低调用的可读性）
+    // ⚠️ 模块特殊原因: hash 校验函数调用、hook 检测函数调用
+    //   如果直接暴露，逆向人员可以快速定位调用栈。
     obfuscate_calls: true,
+
+    // --- obfuscate_arithmetic: 算术表达式混淆 ---
+    // 可用值: true | false
+    // true  = 简单算术替换为等效复杂表达式
+    // false = 保持原始算术
+    // 推荐值: true
+    // 禁止值: 无特定禁止值
+    // ⚠️ 模块特殊原因: hash 比较中的偏移量计算、缓存大小计算等
+    //   数值运算都可以通过混淆增加理解难度。
     obfuscate_arithmetic: true,
+
+    // --- obfuscate_booleans: 布尔表达式混淆 ---
+    // 可用值: true | false
+    // true  = 布尔逻辑替换为等效复杂表达式
+    // false = 保持原始布尔表达式
+    // 推荐值: true
+    // 禁止值: 无特定禁止值
+    // ⚠️ 模块特殊原因: if is_tampered: 等布尔判断是攻击者最关注
+    //   的逻辑点，必须混淆使其难以定位关键判断。
     obfuscate_booleans: true,
   },
 
   anti_debug: {
+    // --- enabled: 反调试开关 ---
+    // 可用值: true | false
+    // true  = 启用反调试检测
+    // false = 禁用反调试检测
+    // 推荐值: true
+    // 禁止值: false（反篡改模块必须配合反调试）
+    // ⚠️ 模块特殊原因: 如果攻击者附加调试器来动态分析
+    //   hash 校验逻辑，所有混淆措施都可能被绕过。
+    //   反调试必须在反篡改之前运行。
     enabled: true,
+
+    // --- action: 检测到调试器后的行为 ---
+    // 可用值: "exit" | "raise" | "crash" | "ignore"
+    //   "exit"   = 立即 sys.exit(0) 退出进程
+    //   "raise"  = 抛出 RuntimeError
+    //   "crash"  = 触发段错误或死循环
+    //   "ignore" = 仅记录日志，不阻止运行（不推荐）
+    // 推荐值: "exit"
+    // 禁止值: "ignore"（检测到调试器却不阻止 = 无意义）
+    // ⚠️ 模块特殊原因: 此模块是安全核心，检测到调试器后必须
+    //   立即终止进程，不能给攻击者任何继续分析的机会。
+    //   "crash" 虽然同样有效但行为不可预测，"exit" 是最干净的方式。
     action: "exit",
+
+    // --- checks: 检测方式列表 ---
+    // 可用值: ["pdb"] | ["debugger"] | ["vm"] | 任意组合 | ["all"]
+    //   "pdb"      = 检测 pdb / trace / sys.settrace
+    //   "debugger" = 检测 pydevd（PyCharm）、pywingdb 等
+    //   "vm"       = 检测虚拟机/沙箱环境
+    //   "all"      = 启用所有已知检测方式
+    // 推荐值: ["all"]
+    // 禁止值: []（空数组 = 不检测任何调试器）
+    // ⚠️ 模块特殊原因: 反篡改模块的逆向分析场景多样：
+    //   • 本地动态分析依赖 pdb/pydevd → 必须检测 "pdb"+"debugger"
+    //   • 自动分析沙箱会使用静态分析工具 → 必须检测 "vm"
+    //   三个缺一不可。
     checks: ["pdb", "debugger", "vm"],
   },
 
   virtualization: {
+    // --- enabled: 虚拟化开关 ---
+    // 可用值: true | false
+    // true  = 启用字节码虚拟化
+    // false = 禁用字节码虚拟化
+    // 推荐值: true
+    // 禁止值: false（反篡改模块应使用最强保护）
+    // ⚠️ 模块特殊原因: 虚拟化将 Python 字节码翻译为自定义 VM
+    //   指令集，即使反编译工具也无法直接还原逻辑。
+    //   此模块的 hash 校验逻辑经虚拟化后可以抵抗
+    //   uncompyle6、decompyle3 等几乎所有 Python 反编译工具。
     enabled: true,
+
+    // --- mode: 虚拟化模式 ---
+    // 可用值: "full" | "light" | "off"
+    //   "full"  = 所有函数全部虚拟化
+    //   "light" = 仅虚拟化关键函数
+    //   "off"   = 不虚拟化（等同于 enabled: false）
+    // 推荐值: "full"
+    // 禁止值: "off"
+    // ⚠️ 模块特殊原因: 此模块体量小但极其关键，完全虚拟化
+    //   的性能开销可以忽略不计，应全部虚拟化以保证无死角。
     mode: "full",
   },
 }

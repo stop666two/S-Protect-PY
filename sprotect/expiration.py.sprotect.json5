@@ -1,19 +1,59 @@
 {
-  // ==========================================
+  // ===================================================================
   // 过期控制模块 — 时间验证
-  // ==========================================
-  // Expiration.check() 执行时间比较 + NTP 验证 + 漂移检测。
-  // ==========================================
+  // ===================================================================
+  // 此模块负责运行时时间校验 + NTP 联网验证 + 时间漂移检测。
+  //
+  // ⚠️ 约束:
+  //   • Expiration.check() 被 loader 调用，包含 NTP 请求
+  //   • 时间比较逻辑中的字符串（错误消息、时间格式）应加密
+  //   • 时间戳数字常量可加密（不会影响 NTP 协议）
+  // ===================================================================
 
   obfuscate: {
+    // --- level: 混淆等级 ---
+    // 可用值: 1-5
+    // 推荐值: 4
+    // 不推荐: 5（控制流平坦化会破坏 NTP 请求的重试逻辑）
     level: 4,
+
+    // --- rename_variables: 变量重命名 ---
+    // 可用值: true | false
+    // 推荐值: true（隐藏时间变量、NTP 服务器地址的实际用途）
     rename_variables: true,
+
+    // --- rename_functions: 函数重命名 ---
+    // 可用值: true | false
+    // 注意事项: check() 和 _ntp() 被 loader 调用，
+    //   通过模块对象引用，改名不影响
     rename_functions: true,
+
+    // --- rename_classes: 类重命名 ---
     rename_classes: true,
+
+    // --- encrypt_strings: 字符串加密 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // 注意事项: NTP 服务器地址、错误消息等字符串被隐藏
     encrypt_strings: true,
+
+    // --- encrypt_numbers: 数字加密 ---
+    // 可用值: true | false
+    // 不推荐: true（时间戳、超时值等数字被加密后
+    //   运行时计算开销在时间敏感场景中可能影响精度）
     encrypt_numbers: false,
+
+    // --- control_flow_flattening: 控制流平坦化 ---
+    // ❌ 必须 false
+    // 原因: NTP 请求包含复杂的超时/重试逻辑，
+    //   平坦化可能破坏异常处理链，导致 NTP 请求永久挂起
     control_flow_flattening: false,
+
+    // --- dead_code_injection: 死代码注入 ---
+    // ❌ 必须 false
+    // 原因: 死代码注入可能影响 NTP 请求的超时计时
     dead_code_injection: false,
+
     string_split: true,
     obfuscate_imports: true,
     obfuscate_calls: true,
@@ -22,6 +62,10 @@
   },
 
   anti_debug: {
+    // --- enabled: 总开关 ---
+    // 推荐值: true
+    // 为什么用 true: 过期控制是运行时限制分发范围的关键组件，
+    //   如果被绕过，过期保护完全失效
     enabled: true,
     action: "exit",
     checks: ["pdb", "debugger"],

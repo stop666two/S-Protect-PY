@@ -83,6 +83,19 @@ def build(project_dir: str, output_dir: str, config: Config) -> None:
             dst = os.path.join(rd, f"{hex_name}.sprotect.json5")
             import shutil; shutil.copy2(pfc, dst)
 
+    # Build integrity database for anti-tamper
+    integrity_db = {}
+    for (rel, _) in [(fp, "") for fp in py_files]:
+        mod_name = os.path.relpath(fp, project_dir).replace("\\", "/")
+        mod_name = mod_name.replace(".py", "").replace("/", ".")
+        if mod_name.endswith(".__init__"): mod_name = mod_name[:-9]
+        hex_n = module_map.get(mod_name, "")
+        if not hex_n: continue
+        pye_path = os.path.join(rd, hex_n + ".pye")
+        if os.path.isfile(pye_path):
+            h = hashlib.sha256(open(pye_path, "rb").read()).hexdigest()
+            integrity_db[hex_n + ".pye"] = h
+    
     # Chain signatures
     payloads = [json.loads(d.decode()) for _, d in file_data]
     sigs = chain_hash(payloads, master_key)

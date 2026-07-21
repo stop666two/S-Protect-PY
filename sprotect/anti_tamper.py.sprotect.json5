@@ -1,14 +1,12 @@
 {
   // ==========================================
-  // 密码学引擎 - 精细化配置
-  // 三层加密：zlib压缩 → XOR流混淆 → AES-256-GCM
-  // RSA 密钥包装、多态随机填充（0-256字节）
-  // 最高安全等级 + 全虚拟化
+  // 反篡改模块 - 精细化配置
+  // 文件完整性校验、内存完整性检测、反 Hook、反 Dump
+  // 最高安全等级
   // ==========================================
   obfuscate: { level: 5, rename_variables: true, rename_functions: true,
     rename_classes: true, encrypt_strings: true, encrypt_numbers: true,
     control_flow_flattening: true, dead_code_injection: true },
-  anti_debug: { enabled: true, action: "exit",
-    checks: ["pdb", "debugger", "vm", "sandbox", "ida"] },
+  anti_debug: { enabled: true, action: "exit", checks: ["pdb", "debugger", "vm"] },
   virtualization: { enabled: true, mode: "full" },
 }

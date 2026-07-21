@@ -3,26 +3,35 @@
 from __future__ import annotations
 import os, shutil
 
-_RUNTIME_SRC = r'''"""S-Protect runtime - auto-generated. Zero external deps."""
-import sys, os, json, hmac, hashlib, importlib.abc, importlib.machinery
+_RUNTIME_SRC = r'''"""S-Protect runtime v2 - auto-generated."""
+import sys, os, json, hmac, hashlib, zlib, importlib.abc, importlib.machinery
 _D = os.path.dirname(os.path.abspath(__file__))
 
-def _xor(k, d):
-    o = bytearray(len(d))
-    for i in range(0, len(d), 32):
-        s = hmac.new(k, (i // 32).to_bytes(8, "big"), "sha256").digest()
-        for j in range(min(32, len(d) - i)): o[i+j] = d[i+j] ^ s[j]
-    return bytes(o)
+def _xof(l, s):
+    r = bytearray()
+    c = 0
+    while len(r) < l:
+        r.extend(hashlib.sha256(s + c.to_bytes(4, "big")).digest())
+        c += 1
+    return bytes(r[:l])
+
+def _xor(d, k):
+    ks = _xof(len(d), k)
+    return bytes(a ^ b for a, b in zip(d, ks))
 
 def _dec(p):
-    k = bytes.fromhex(p["k"]); d = bytes.fromhex(p["d"])
-    if p.get("a") == "aes":
-        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-        return AESGCM(k).decrypt(d[:12], d[12:], b"").decode()
-    s = p.get("h","")
-    if s and not hmac.compare_digest(s, hmac.new(k, d, "sha256").hexdigest()):
+    if p.get("v") != 2: raise ValueError("Bad payload version")
+    ak = bytes.fromhex(p["k"]); ct = bytes.fromhex(p["d"])
+    s = p.get("s", "")
+    if s and not hmac.compare_digest(s, hmac.new(ak, ct, "sha256").hexdigest()):
         raise ValueError("Integrity check failed")
-    return _xor(k, d).decode()
+    try:
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        x = AESGCM(ak).decrypt(ct[:12], ct[12:], b"S-Protect-v2")
+    except ImportError:
+        raise RuntimeError("AES-GCM requires cryptography library")
+    xk = bytes.fromhex(p["x"])
+    return zlib.decompress(_xor(x, xk)).decode()
 
 def _load(p):
     return _dec(json.loads(open(p, "rb").read().decode()))

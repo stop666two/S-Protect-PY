@@ -12,8 +12,6 @@ import os
 
 _RUNTIME_LOADER_SRC = r'''"""S-Protect runtime loader - auto-generated. Zero external deps."""
 import sys, os, json, hmac, hashlib, importlib.abc, importlib.machinery
-from types import ModuleType
-from typing import Any
 
 _RUNTIME_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -38,10 +36,15 @@ def _decrypt_payload(payload: dict) -> str:
     return plain.decode("utf-8")
 
 class _EncryptedLoader(importlib.abc.Loader):
-    def __init__(self, fullname: str, path: str):
-        self.fullname, self.path = fullname, path
-    def create_module(self, spec): return None
+    def __init__(self, fullname, path, is_pkg=False):
+        self.fullname, self.path, self.is_pkg = fullname, path, is_pkg
+    def create_module(self, spec):
+        return None
     def exec_module(self, module):
+        module.__dict__.setdefault("__file__", self.path)
+        module.__dict__.setdefault("__package__", self.fullname)
+        if self.is_pkg:
+            module.__dict__.setdefault("__path__", [os.path.dirname(self.path)])
         with open(self.path, "rb") as f:
             src = _decrypt_payload(json.loads(f.read().decode("utf-8")))
         exec(compile(src, self.path, "exec"), module.__dict__)
@@ -50,28 +53,39 @@ class _EncryptedFinder(importlib.abc.MetaPathFinder):
     def __init__(self):
         self.runtime_dir = _RUNTIME_DIR
     def find_spec(self, fullname, path=None, target=None):
-        pye = os.path.join(self.runtime_dir, fullname + ".pye")
+        rel = fullname.replace(".", os.sep)
+        pye = os.path.join(self.runtime_dir, rel + ".pye")
         if os.path.isfile(pye):
             return importlib.machinery.ModuleSpec(
                 fullname, _EncryptedLoader(fullname, pye), origin=pye)
+        init_pye = os.path.join(self.runtime_dir, rel, "__init__.pye")
+        if os.path.isfile(init_pye):
+            spec = importlib.machinery.ModuleSpec(
+                fullname, _EncryptedLoader(fullname, init_pye, is_pkg=True),
+                origin=init_pye, is_package=True)
+            spec.submodule_search_locations = [os.path.join(self.runtime_dir, rel)]
+            return spec
         return None
 
-def run_entry(entry_module: str) -> None:
+def run_entry(entry_module: str, project_dir: str = "") -> None:
     sys.meta_path.insert(0, _EncryptedFinder())
-    entry_pye = os.path.join(_RUNTIME_DIR, entry_module + ".pye")
+    rel = entry_module.replace(".", os.sep) + ".pye"
+    entry_pye = os.path.join(_RUNTIME_DIR, rel)
     if not os.path.isfile(entry_pye):
         raise FileNotFoundError(f"Entry not found: {entry_pye}")
     with open(entry_pye, "rb") as f:
         src = _decrypt_payload(json.loads(f.read().decode("utf-8")))
-    exec(compile(src, entry_pye, "exec"), {"__name__": "__main__", "__file__": entry_pye})
+    fake_main = os.path.join(project_dir or os.path.dirname(_RUNTIME_DIR), entry_module + ".py")
+    exec(compile(src, entry_pye, "exec"), {"__name__": "__main__", "__file__": fake_main})
 '''
 
 
 _BOOTLOADER_ENTRY_SRC = '''"""S-Protect encrypted entry point - auto-generated."""
 import sys, os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_project_root = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _project_root)
 from _runtime.loader import run_entry
-run_entry("{entry}")
+run_entry("{entry}", _project_root)
 '''
 
 

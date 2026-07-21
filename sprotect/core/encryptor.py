@@ -31,7 +31,7 @@ def _xor_stream(key: bytes, data: bytes) -> bytes:
     return bytes(out)
 
 
-def encrypt_file(file_path: str, config: Config) -> bytes:
+def encrypt_file(file_path: str, config: Config, shared_mapping: dict[str, str] | None = None) -> bytes:
     """Encrypt a single Python source file.
 
     Reads source, optionally obfuscates, encrypts with HMAC stream cipher,
@@ -40,6 +40,8 @@ def encrypt_file(file_path: str, config: Config) -> bytes:
     Args:
         file_path: Path to .py file.
         config: Project configuration.
+        shared_mapping: Shared rename map for cross-file consistency.
+                        Pass same dict across all files in a project build.
 
     Returns:
         JSON-encoded bytes: {key, data, hmac, source_hash}
@@ -49,7 +51,7 @@ def encrypt_file(file_path: str, config: Config) -> bytes:
     source_code = source_bytes.decode("utf-8")
 
     if config.obfuscate.level.value >= 1:
-        obf = Obfuscator(config.obfuscate)
+        obf = Obfuscator(config.obfuscate, shared_mapping=shared_mapping)
         source_code = obf.obfuscate(source_code)
 
     source_data = source_code.encode("utf-8")
@@ -69,11 +71,37 @@ def encrypt_file(file_path: str, config: Config) -> bytes:
     return json.dumps(payload, indent=2).encode("utf-8")
 
 
+def _build_shared_mapping(py_files: list[str], config: Config) -> dict[str, str]:
+    """First pass: scan all files to build a complete shared rename map.
+
+    This ensures cross-module function/class renames are consistent
+    regardless of file processing order.
+
+    Args:
+        py_files: List of .py file paths.
+        config: Project configuration.
+
+    Returns:
+        Dict mapping original names to obfuscated names.
+    """
+    from sprotect.core.obfuscator import _collect_definitions
+    mapping: dict[str, str] = {}
+    obf_cfg = config.obfuscate
+    for fp in py_files:
+        try:
+            with open(fp, "rb") as f:
+                source = f.read().decode("utf-8")
+            _collect_definitions(source, obf_cfg, mapping)
+        except Exception:
+            continue
+    return mapping
+
+
 def build_project(project_dir: str, output_dir: str, config: Config) -> None:
     """Build an encrypted project from project/ to output/.
 
     1. Scans all .py files in project_dir
-    2. Obfuscates + encrypts each file
+    2. Two-pass: builds shared rename map, then encrypts each file
     3. Writes encrypted .pye files to output/_runtime/
     4. Generates bootloader entry point in output/
     5. Structure mirrors the original project
@@ -87,12 +115,14 @@ def build_project(project_dir: str, output_dir: str, config: Config) -> None:
     runtime_dir = os.path.join(output_dir, "_runtime")
     os.makedirs(runtime_dir, exist_ok=True)
 
+    shared_mapping = _build_shared_mapping(py_files, config)
+
     for py_path in py_files:
         rel = os.path.relpath(py_path, project_dir)
         pye_name = rel.replace(".py", ".pye")
         pye_path = os.path.join(runtime_dir, pye_name)
         os.makedirs(os.path.dirname(pye_path), exist_ok=True)
-        payload = encrypt_file(py_path, config)
+        payload = encrypt_file(py_path, config, shared_mapping=shared_mapping)
         with open(pye_path, "wb") as f:
             f.write(payload)
 
@@ -100,10 +130,21 @@ def build_project(project_dir: str, output_dir: str, config: Config) -> None:
     entry_module = config.project.entry.replace(".py", "")
     generate_bootloader(output_dir, entry_module)
 
-    req_path = os.path.join(output_dir, "requirements.txt")
-    if not os.path.exists(req_path):
-        with open(req_path, "w", encoding="utf-8") as f:
-            f.write("# Add your project dependencies here\n")
+    _copy_non_py_files(project_dir, output_dir)
+
+
+def _copy_non_py_files(project_dir: str, output_dir: str) -> None:
+    """Copy non-Python project files (run.bat, requirements.txt, etc.) to output.
+
+    Preserves the relative structure for non-PY files in the project root.
+    """
+    for name in os.listdir(project_dir):
+        src = os.path.join(project_dir, name)
+        if os.path.isfile(src) and not name.endswith(".py"):
+            dst = os.path.join(output_dir, name)
+            if not os.path.exists(dst):
+                import shutil
+                shutil.copy2(src, dst)
 
 
 def encrypt_files(file_paths: list[str], config: Config) -> list[str]:

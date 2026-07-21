@@ -17,6 +17,35 @@ from sprotect.types import ObfuscateConfig
 from sprotect.utils.random_gen import RandomNameGenerator
 
 
+def _collect_definitions(source: str, config: ObfuscateConfig, mapping: dict[str, str]) -> None:
+    """Scan source code and collect all function/class definitions into mapping.
+
+    First-pass helper for project builds: builds the rename map without
+    transforming code, ensuring cross-module consistency.
+
+    Args:
+        source: Python source code.
+        config: Obfuscation configuration.
+        mapping: Shared rename dict to populate.
+    """
+    reserved = set(config.rename_rules.reserved or [])
+    gen = RandomNameGenerator(
+        style=config.rename_rules.style,
+        custom_dict=config.rename_rules.dictionary,
+    )
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name not in reserved and not node.name.startswith("__"):
+                mapping.setdefault(node.name, gen.generate())
+        elif isinstance(node, ast.ClassDef):
+            if node.name not in reserved and not node.name.startswith("__"):
+                mapping.setdefault(node.name, gen.generate())
+
+
 class Obfuscator(ast.NodeTransformer):
     """AST-based code obfuscation engine.
 
@@ -25,15 +54,18 @@ class Obfuscator(ast.NodeTransformer):
     numeric literals via base64 and struct expressions.
     """
 
-    def __init__(self, config: ObfuscateConfig) -> None:
+    def __init__(self, config: ObfuscateConfig, shared_mapping: dict[str, str] | None = None) -> None:
         """Initialize the obfuscator with configuration.
 
         Args:
             config: Obfuscation configuration including rename rules
                     and encryption settings.
+            shared_mapping: Optional shared rename map for cross-file consistency.
+                            When building a multi-file project, pass the same dict
+                            to all Obfuscator instances so renames stay in sync.
         """
         self.config = config
-        self.name_mapping: dict[str, str] = {}
+        self.name_mapping: dict[str, str] = shared_mapping if shared_mapping is not None else {}
         self.reserved = config.rename_rules.reserved
         self.name_gen = RandomNameGenerator(
             style=config.rename_rules.style,
@@ -89,6 +121,21 @@ class Obfuscator(ast.NodeTransformer):
             tree.body.insert(0, ast.Import(names=[ast.alias(name="struct", asname=None)]))
         if self.config.encrypt_strings or self.config.encrypt_numbers:
             tree.body.insert(0, ast.Import(names=[ast.alias(name="base64", asname=None)]))
+
+    def visit_alias(self, node: ast.alias) -> ast.alias:
+        """Rename imported names (e.g. ``from mod import func``).
+
+        Ensures cross-module imports remain consistent after renaming.
+
+        Args:
+            node: The alias AST node.
+
+        Returns:
+            The (potentially renamed) alias node.
+        """
+        if node.name in self.name_mapping:
+            node.name = self.name_mapping[node.name]
+        return node
 
     def visit_Name(self, node: ast.Name) -> ast.Name:
         """Rename identifier references that have been obfuscated.
@@ -153,17 +200,8 @@ class Obfuscator(ast.NodeTransformer):
         return node
 
     def visit_arg(self, node: ast.arg) -> ast.arg:
-        """Rename function and method arguments.
-
-        Args:
-            node: The arg AST node.
-
-        Returns:
-            The transformed arg node.
+        """Skip parameter renaming to preserve keyword argument compatibility.
         """
-        if self.config.rename_variables:
-            node.arg = self._get_new_name(node.arg)
-        self.generic_visit(node)
         return node
 
     def visit_FormattedValue(self, node: ast.FormattedValue) -> ast.FormattedValue:
@@ -216,7 +254,11 @@ class Obfuscator(ast.NodeTransformer):
             and not isinstance(node.value, bool)
             and self.config.encrypt_numbers
         ):
-            packed = struct.pack("d", node.value)
+            if isinstance(node.value, int):
+                fmt = "i" if -2**31 <= node.value < 2**31 else "q"
+            else:
+                fmt = "d"
+            packed = struct.pack(fmt, node.value)
             encoded = base64.b64encode(packed).decode()
             return ast.Subscript(
                 value=ast.Call(
@@ -226,7 +268,7 @@ class Obfuscator(ast.NodeTransformer):
                         ctx=ast.Load(),
                     ),
                     args=[
-                        ast.Constant(value="d"),
+                        ast.Constant(value=fmt),
                         ast.Call(
                             func=ast.Attribute(
                                 value=ast.Name(id="base64", ctx=ast.Load()),

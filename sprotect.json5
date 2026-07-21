@@ -1,9 +1,9 @@
 {
   "obfuscate": {
     "level": 3,
-    "rename_variables": true,
-    "rename_functions": true,
-    "rename_classes": true,
+    "rename_variables": false,
+    "rename_functions": false,
+    "rename_classes": false,
     "rename_rules": {
       "style": "hex",
       "reserved": [

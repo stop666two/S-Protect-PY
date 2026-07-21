@@ -1,28 +1,15 @@
-"""Encryption: random hex names, module map, mixed real/decoy keys."""
+"""Encryption: external libs (PyArmor/PyCryptodome/blake3), random build artifacts."""
 
 from __future__ import annotations
-import os, json, secrets, hashlib, zlib
+import os, json, secrets, hashlib, zlib, subprocess, sys
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from sprotect.types import Config
 from sprotect.config import merge_file_config
 from sprotect.obfuscate import Obfuscator, collect_defs
 from sprotect.project import find_py_files
-from sprotect.crypto import aes_key, split_key, chain_hash, encrypt_payload, generate_decoy_payload, fp as key_fingerprint
+from sprotect.crypto import aes_key, split_key, chain_hash, encrypt_payload, generate_decoy_payload
 from sprotect.loader import gen_boot, gen_loader_source
 from sprotect.backup import backup
-
-
-def encrypt_loader(loader_src: str, loader_key: bytes) -> str:
-    """Encrypt loader source and return encoded module map + encrypted payload."""
-    compressed = zlib.compress(loader_src.encode(), level=9)
-    from sprotect.crypto import xor_stream as _xs
-    xored = _xs(compressed, loader_key)
-    nonce = os.urandom(12)
-    ct = nonce + AESGCM(loader_key).encrypt(nonce, xored, b"")
-    return json.dumps({"v":6,"d":ct.hex(),"k1":loader_key.hex(),"k2":os.urandom(32).hex(),
-                        "k3":os.urandom(32).hex(),"f1":key_fingerprint(loader_key),
-                        "f2":key_fingerprint(os.urandom(32)),"f3":key_fingerprint(os.urandom(32))},
-                       separators=(",",":"))
 
 
 def build(project_dir: str, output_dir: str, config: Config) -> None:
@@ -44,7 +31,7 @@ def build(project_dir: str, output_dir: str, config: Config) -> None:
     master_key = aes_key()
     shards = split_key(master_key, len(py_files))
 
-    # Build module map: module_name -> random hex filename
+    # Build module map
     module_map: dict[str, str] = {}
     file_data: list[tuple[str, bytes]] = []
     per_file_configs: dict[str, str] = {}
@@ -52,10 +39,11 @@ def build(project_dir: str, output_dir: str, config: Config) -> None:
     for idx, fp in enumerate(py_files):
         fc = merge_file_config(config, fp)
         rel = os.path.relpath(fp, project_dir)
-        mod_name = rel.replace(".py", "").replace("\\", "/").replace("/", ".")
+        rel = rel.replace("\\", "/")
+        mod_name = rel.replace(".py", "").replace("/", ".")
         if mod_name.endswith(".__init__"):
-            mod_name = mod_name[:-9]  # helpers.__init__ -> helpers
-        hex_name = secrets.token_hex(6)  # 12-char random name
+            mod_name = mod_name[:-9]
+        hex_name = secrets.token_hex(6)
 
         try:
             src = open(fp, encoding="utf-8-sig").read()
@@ -67,14 +55,20 @@ def build(project_dir: str, output_dir: str, config: Config) -> None:
                                        config.encrypt.polymorphic_padding_max)
             p = json.loads(payload_bytes.decode())
             p["k1"] = shards[idx].hex()
-            # Recompute fingerprints to match this file's k1
-            f1 = key_fingerprint(shards[idx])
-            f2 = key_fingerprint(os.urandom(32))
-            f3 = key_fingerprint(os.urandom(32))
-            pos = secrets.randbelow(3)
-            fps = [f1, f2, f3]
-            fps[0], fps[pos] = fps[pos], fps[0]
-            p["f1"], p["f2"], p["f3"] = fps
+            # Recompute fingerprints using the payload's k1/k2/k3
+            import hashlib as _hl
+            k1_b = shards[idx]
+            k2_b = bytes.fromhex(p.get("k2","0"*64))
+            k3_b = bytes.fromhex(p.get("k3","0"*64))
+            xored = bytearray(32)
+            for kb in [k1_b, k2_b, k3_b]:
+                for i in range(min(32, len(kb))): xored[i] ^= kb[i]
+            from sprotect.crypto import blake3_hash, sha256 as _sh
+            p["f1"] = _hl.sha256(bytes(xored)).hexdigest()[5:13]
+            try: p["f2"] = blake3_hash(k1_b)[3:11]
+            except: p["f2"] = _hl.sha256(k1_b).hexdigest()[3:11]
+            import hmac as _hm
+            p["f3"] = _hm.new(k1_b, b"S-Protect-v6-key-verify", "sha256").hexdigest()[:8]
             payload = json.dumps(p, separators=(",", ":")).encode()
 
             pye_path = os.path.join(rd, hex_name + ".pye")
@@ -92,55 +86,85 @@ def build(project_dir: str, output_dir: str, config: Config) -> None:
     payloads = [json.loads(d.decode()) for _, d in file_data]
     sigs = chain_hash(payloads, master_key)
     for idx, (rel, _) in enumerate(file_data):
-        mod_name = rel.replace(".py", "").replace("\\", "/").replace("/", ".")
-        if mod_name.endswith(".__init__"):
-            mod_name = mod_name[:-9]
-        hex_n = module_map[mod_name]
+        mod_name = rel.replace(".py", "").replace("/", ".")
+        if mod_name.endswith(".__init__"): mod_name = mod_name[:-9]
+        hex_n = module_map.get(mod_name, "")
+        if not hex_n: continue
         pye_path = os.path.join(rd, hex_n + ".pye")
         p = json.loads(open(pye_path, "rb").read().decode())
         p["c"] = sigs[idx]
         open(pye_path, "wb").write(json.dumps(p, separators=(",", ":")).encode())
 
-    # Inject decoy files (SAME random hex format)
+    # Decoy files
     from sprotect.crypto import generate_decoy_payload as _gdp
-    import secrets as _sec
-    decoy_count = max(1, len(py_files) // 3)
-    for i in range(decoy_count):
+    dc = max(1, len(py_files) // 3)
+    for i in range(dc):
         decoy = _gdp()
-        # Give decoys random chain sigs that look real but won't verify
-        d_p = json.loads(decoy.decode())
-        d_p["c"] = os.urandom(32).hex()
-        decoy = json.dumps(d_p, separators=(",", ":")).encode()
-        dn = _sec.token_hex(6) + ".pye"
+        dp = json.loads(decoy.decode())
+        dp["c"] = os.urandom(32).hex()
+        decoy = json.dumps(dp, separators=(",", ":")).encode()
+        dn = secrets.token_hex(6) + ".pye"
         with open(os.path.join(rd, dn), "wb") as f: f.write(decoy)
-        # Subdirectory decoys
         if i % 2 == 0:
-            sub = _sec.token_hex(4)
+            sub = secrets.token_hex(4)
             os.makedirs(os.path.join(rd, sub), exist_ok=True)
             for _ in range(2):
-                sn = _sec.token_hex(6) + ".pye"
+                sn = secrets.token_hex(6) + ".pye"
                 with open(os.path.join(rd, sub, sn), "wb") as f:
                     f.write(_gdp())
 
-    # Encrypt module map and embed in loader
+    # Build loader with embedded module map
     map_json = json.dumps(module_map, separators=(",", ":"))
-    map_encrypted = encrypt_loader(map_json, loader_key)
-    # Embed map into loader source
     loader_src = gen_loader_source()
-    import json as _json
-    escaped = _json.dumps(map_encrypted)  # JSON string properly escaped for Python
-    loader_src = loader_src.replace('_MAP_ENCRYPTED = ""', f"_MAP_ENCRYPTED = {escaped}")
+    # Map is in JSON format, embedded via _MAP variable
+    import json as _js
+    escaped_map = _js.dumps(map_json)
+    loader_src = loader_src.replace('_MAP = ""', f"_MAP = {escaped_map}")
 
     # Encrypt loader
-    encrypted_loader = encrypt_loader(loader_src, loader_key)
-    open(os.path.join(rd, "loader.pye"), "wb").write(encrypted_loader.encode())
+    compressed = zlib.compress(loader_src.encode(), 9)
+    from sprotect.crypto import xor_stream as _xs
+    xored = _xs(compressed, loader_key)
+    nonce = os.urandom(12)
+    ct = nonce + AESGCM(loader_key).encrypt(nonce, xored, b"")
+    # Use make_keys_complex for loader.pye too
+    from sprotect.crypto import make_keys_complex as _mkc
+    keys3, _ = _mkc(loader_key, 2)
+    loader_payload = {"v": 7, "d": ct.hex(), "k1": loader_key.hex(),
+                       "k2": os.urandom(32).hex(), "k3": os.urandom(32).hex(),
+                       "f1": keys3["f1"], "f2": keys3["f2"], "f3": keys3["f3"]}
+    open(os.path.join(rd, "loader.pye"), "wb").write(
+        json.dumps(loader_payload, separators=(",", ":")).encode())
 
     # Bootloader
     entry_mod = config.project.entry.replace(".py", "")
     entry_hex = module_map.get(entry_mod, "")
     gen_boot(output_dir, entry_mod, entry_hex, per_file_configs, loader_key)
 
+    # Copy non-py files
     for f in ["run.bat", "requirements.txt"]:
         s = os.path.join(project_dir, f)
         if os.path.isfile(s):
             import shutil; shutil.copy2(s, os.path.join(output_dir, f))
+
+    # ========== PyArmor post-processing ==========
+    try:
+        import pyarmor
+        pa_out = os.path.join(output_dir, "_pyarmored")
+        result = subprocess.run(
+            [sys.executable, "-m", "pyarmor", "gen", "--output", pa_out,
+             os.path.join(output_dir, "main.py")],
+            capture_output=True, text=True, timeout=30)
+        if result.returncode == 0 and os.path.isdir(pa_out):
+            import shutil as _sh
+            for item in os.listdir(pa_out):
+                s = os.path.join(pa_out, item)
+                d = os.path.join(output_dir, item)
+                if os.path.isdir(s):
+                    _sh.copytree(s, d, dirs_exist_ok=True)
+                else:
+                    _sh.copy2(s, d)
+            _sh.rmtree(pa_out, ignore_errors=True)
+            print("  PyArmor: post-processed bootloader")
+    except Exception as e:
+        print(f"  PyArmor: skipped ({e})")

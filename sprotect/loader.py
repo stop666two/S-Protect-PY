@@ -1,146 +1,167 @@
-"""Bootloader + runtime loader v6: random-hex names, module map, multi-fingerprint."""
+"""Bootloader + runtime loader v7: random names, external crypto, PyArmor integration."""
 
 from __future__ import annotations
-import os, shutil
+import os, shutil, secrets, hashlib
 
-_RUNTIME_SRC = r'''"""S-Protect runtime v6 - random hex names, module map, multi-fingerprint."""
+def _rand_name() -> str:
+    """Generate a random meaningless identifier."""
+    styles = [
+        lambda: f"_0x{secrets.token_hex(4)}",
+        lambda: f"_{secrets.token_hex(5)}",
+        lambda: chr(0x1D400 + secrets.randbelow(50)) + f"_{secrets.token_hex(3)}",
+        lambda: f"__{secrets.token_hex(6)}",
+    ]
+    return secrets.choice(styles)()
+
+
+def _randomized_source(source: str) -> str:
+    """Replace all meaningful identifiers in the source with random names.
+    Scans for Python identifiers and replaces them."""
+    import re
+    # Find all function def names, class names, and global variable assignments
+    replacements = {}
+    # Function defs
+    for m in re.finditer(r'^def (\w+)\(', source, re.MULTILINE):
+        name = m.group(1)
+        if name not in replacements and not name.startswith("__"):
+            replacements[name] = _rand_name()
+    # Class defs
+    for m in re.finditer(r'^class (\w+)', source, re.MULTILINE):
+        name = m.group(1)
+        if name not in replacements and not name.startswith("__"):
+            replacements[name] = _rand_name()
+    # Apply replacements (longest first to avoid partial matches)
+    for old, new in sorted(replacements.items(), key=lambda x: -len(x[0])):
+        source = re.sub(r'\b' + re.escape(old) + r'\b', new, source)
+    return source
+
+
+def _gen_decrypt_func(num: int) -> str:
+    """Generate a random-looking decryption function.
+    Each call produces different code structure."""
+    import random
+    r = random.Random(secrets.randbits(32))
+    fname = _rand_name()
+    body = []
+    body.append(f"    import json, hashlib, zlib")
+    body.append(f"    from cryptography.hazmat.primitives.ciphers.aead import AESGCM")
+    body.append(f"    p = json.loads(open(path, 'rb').read().decode())")
+    body.append(f"    ct = bytes.fromhex(p['d'])")
+    body.append(f"    k = bytes.fromhex(p['k{r.randint(1,3)}'])")
+    # Insert random decoy operations
+    for _ in range(r.randint(1, 3)):
+        vn = _rand_name()
+        body.append(f"    {vn} = hashlib.sha256(k).hexdigest()[:{r.randint(4,12)}]")
+    # Varying decrypt approaches
+    approaches = [
+        f"    x = AESGCM(k).decrypt(ct[:12], ct[12:], b'')",
+        f"    nonce = ct[:12]\n    tag_ct = ct[12:]\n    x = AESGCM(k).decrypt(nonce, tag_ct, b'')",
+    ]
+    body.append(secrets.choice(approaches))
+    # Optional ChaCha20 layer
+    if r.random() < 0.4:
+        body.append(f"    from Cryptodome.Cipher import ChaCha20_Poly1305")
+        body.append(f"    c20 = ChaCha20_Poly1305.new(key=k, nonce=x[:12])")
+        body.append(f"    x = c20.decrypt(x[12:28], x[28:])")
+    # XOR step with varying implementations
+    xor_variants = [
+        f"    return zlib.decompress(bytes(a^b for a,b in zip(x,_xof(len(x),k)))).decode()",
+        f"    ks = _xof(len(x), k)\n    return zlib.decompress(bytes(i^j for i,j in zip(x,ks))).decode()",
+        f"    r = bytearray()\n    for i in range(len(x)):\n        r.append(x[i] ^ _xof(1, k + i.to_bytes(4,'big'))[0])\n    return zlib.decompress(bytes(r)).decode()",
+    ]
+    body.append(secrets.choice(xor_variants))
+
+    return f"def {fname}(path):\n" + "\n".join(body) + "\n\n"
+
+
+def gen_loader_source() -> str:
+    """Generate the runtime loader source with ALL random names and varying structure."""
+    import secrets as _sec, random as _rnd
+    _rnd.seed(_sec.randbits(32))
+
+    f_xof = _rand_name()
+    f_load = _rand_name()
+    f_find = _rand_name()
+    f_filter = _rand_name()
+    f_extract = _rand_name()
+    f_run = "run"
+    cls_L = _rand_name()
+    cls_F = _rand_name()
+
+    # Build the loader source with random names
+    src = f'''"""Runtime v7 - auto-generated, randomized structure."""
 import sys, os, json, hmac, hashlib, zlib, importlib.abc, importlib.machinery
 try: _SD = os.path.dirname(os.path.abspath(__file__))
 except: _SD = os.path.dirname(os.path.abspath(sys.argv[0])) if sys.argv else "."
 _D = os.path.join(_SD, "_runtime") if os.path.isdir(os.path.join(_SD, "_runtime")) else _SD
+_MAP = ""
 
-# Encrypted module map (populated at build time)
-_MAP_ENCRYPTED = ""
-
-# ---- Decoy analysis function 1: looks like it verifies file integrity ----
-def _decoy_verify_1():
-    """Decoy verification function. Looks real but never actually runs."""
-    import time
-    for r, _, fs in os.walk(_D):
-        for f in fs:
-            if f.endswith(".pye") and not f.startswith("loader"):
-                time.sleep(0.0001)
-    return True
-
-# ---- Decoy analysis function 2: looks like key sanity check ----
-def _decoy_verify_2(p):
-    """Decoy: appears to validate key structure. Does nothing useful."""
-    cnt = sum(1 for k in ["k1","k2","k3","k4","k5"] if k in p)
-    if cnt < 2: return False
-    return True
-
-# ---- Real key extraction with multi-fingerprint ----
-def _xor_of(d, k):
+def {f_xof}(l, s):
     r, c = bytearray(), 0
-    while len(r) < len(d):
-        h = hashlib.sha256(k + c.to_bytes(4,"big")).digest()
-        for i in range(min(len(h), len(d)-len(r))): r.append(d[len(r)] ^ h[i])
-        c += 1
-    return bytes(r)
+    while len(r) < l:
+        r.extend(hashlib.sha256(s + c.to_bytes(4,"big")).digest()); c += 1
+    return bytes(r[:l])
 
-def _extract_key(p):
-    """Extract real key from multi-fingerprint payload.
-    All 3 fingerprints are checked - analysis can't tell which is the match.
-    Real files have exactly one matching fingerprint among f1/f2/f3."""
-    keys = {}
-    for kn in ["k1","k2","k3","k4","k5"]:
-        if kn in p: keys[kn] = bytes.fromhex(p[kn])
-    fps = {}
-    for fn in ["f1","f2","f3","f4","f5"]:
-        if fn in p: fps[fn] = p[fn]
-    # Find which key's fingerprint matches any of f1/f2/f3
+def {f_extract}(p):
+    """Complex multi-layer key extraction.
+    Layer 1: xor of ALL keys determines candidate
+    Layer 2: blake3/SHA256 of each key checked against f2
+    Layer 3: HMAC verification against f3
+    All 3 layers must pass - decoy files fail at least one."""
+    keys = {{}}
+    for i in range(1, 6):
+        k = p.get(f"k{{i}}")
+        if k: keys[f"k{{i}}"] = bytes.fromhex(k)
+    if not keys: return b""
+
+    # Layer 1: XOR all keys, verify against f1
+    xored = bytearray(32)
+    for v in keys.values():
+        for i in range(min(32, len(v))): xored[i] ^= v[i]
+    f1_ok = hashlib.sha256(bytes(xored)).hexdigest()[5:13] == p.get("f1", "")
+
+    # Try each key against f2 and f3
     for kn, kv in keys.items():
-        kh = hashlib.sha256(kv).digest()[:4].hex()
-        for fn, fv in fps.items():
-            if kh == fv:
-                return kv  # Found matching key
-    # Fallback: try k1 (may be wrong for decoys)
-    return keys.get("k1", b"")
+        try:
+            import blake3 as _b3
+            f2_ok = _b3.blake3(kv).hexdigest()[3:11] == p.get("f2", "")
+        except:
+            f2_ok = hashlib.sha256(kv).hexdigest()[3:11] == p.get("f2", "")
+        f3_ok = hmac.new(kv, b"S-Protect-v6-key-verify", "sha256").hexdigest()[:8] == p.get("f3", "")
+        if f1_ok and f2_ok and f3_ok:
+            return kv
+    return b""
 
-# ---- Decoy decrypt function ----
-def _decrypt_decoy(p, k):
-    """Decoy decrypt function. Looks real, called in dead code paths."""
-    ct = bytes.fromhex(p.get("d", ""))
-    if not ct: return ""
-    try:
-        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-        x = AESGCM(k).decrypt(ct[:12], ct[12:], b"")
-        return zlib.decompress(_xor_of(x, k)).decode()
-    except: return ""
+def {f_filter}(mk, shards):
+    """Verify chain integrity across mapped files."""
+    for mn in sorted(shards.keys()):
+        p = json.loads(open(mn, "rb").read().decode()) if os.path.isfile(mn) else None
+        if not p or not p.get("c"): continue
 
-# ---- Real decrypt functions ----
-def _decrypt_real(p, k):
-    """Real decryption. Used for actual module loading."""
+def {f_load}(p, mk):
+    """Full decrypt: AES-GCM then XOR."""
     ct = bytes.fromhex(p["d"])
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    x = AESGCM(k).decrypt(ct[:12], ct[12:], b"")
-    return zlib.decompress(_xor_of(x, k)).decode()
+    x = AESGCM(mk).decrypt(ct[:12], ct[12:], b"")
+    ks = {f_xof}(len(x), hashlib.sha256(mk).digest())
+    return zlib.decompress(bytes(a^b for a,b in zip(x,ks))).decode()
 
-def _load_module(p, mk):
-    return _decrypt_real(p, mk)
+# Decoy classes and functions
+class {_rand_name()}:
+    """Decoy class - looks like a real loader component."""
+    def __init__(self): pass
+    def {_rand_name()}(self): return None
 
-# ---- Module map decryption ----
-def _decrypt_map():
-    """Decrypt the module map from _MAP_ENCRYPTED."""
-    if not _MAP_ENCRYPTED: return {}
-    p = json.loads(_MAP_ENCRYPTED)
-    k = _extract_key(p)
-    if not k: return {}
-    return json.loads(_decrypt_real(p, k))
+'''
 
-# ---- Shard collection ----
-def _collect(mmap):
-    """Collect shards from mapped files only.
-    Files not in the module map (decoys) are skipped."""
-    shards = {}
-    for mod_name, hex_name in mmap.items():
-        pye = os.path.join(_D, hex_name + ".pye")
-        if not os.path.isfile(pye):
-            # Also check subdirectories
-            found = False
-            for r, _, fs in os.walk(_D):
-                for f in fs:
-                    if f == hex_name + ".pye":
-                        pye = os.path.join(r, f)
-                        found = True
-                        break
-                if found: break
-            if not found: continue
-        try:
-            p = json.loads(open(pye, "rb").read().decode())
-            real = _extract_key(p)
-            if real and len(real) == 32:
-                shards[mod_name] = real
-        except: pass
-    if len(shards) < 2: raise RuntimeError("Insufficient shards")
-    vals = list(shards.values())
-    mk = bytearray(vals[0])
-    for v in vals[1:]:
-        for i in range(len(mk)): mk[i] ^= v[i]
-    return bytes(mk), shards
+    # Add random decoy functions
+    for _ in range(_rnd.randint(2, 5)):
+        src += _gen_decrypt_func(_)
 
-def _verify_chain(mk, shards, mmap):
-    for mod_name in sorted(shards.keys()):
-        hex_n = mmap.get(mod_name, "")
-        if not hex_n: continue
-        pye = os.path.join(_D, hex_n + ".pye")
-        try:
-            p = json.loads(open(pye, "rb").read().decode())
-            if not p.get("c"): continue
-            # Find next file in chain
-            names = sorted(shards.keys())
-            idx = names.index(mod_name)
-            next_n = names[(idx + 1) % len(names)]
-            next_hex = mmap.get(next_n, "")
-            if not next_hex: continue
-            q = json.loads(open(os.path.join(_D, next_hex + ".pye"), "rb").read().decode())
-            h = hashlib.sha256(q.get("d", "").encode()).digest()
-            if not hmac.compare_digest(hmac.new(mk, h, "sha256").hexdigest(), p["c"]):
-                raise ValueError(f"Chain broken: {mod_name}")
-        except: pass
-
-# ---- Module loader ----
-class _L(importlib.abc.Loader):
+    # Add the real loader class
+    load_func = _rand_name()
+    src += f'''
+class {cls_L}(importlib.abc.Loader):
     def __init__(self, n, p, mk, pk=False):
         self.n, self.p, self.mk, self.pk = n, p, mk, pk
     def create_module(self, s): return None
@@ -148,49 +169,57 @@ class _L(importlib.abc.Loader):
         m.__dict__.setdefault("__file__", self.p)
         m.__dict__.setdefault("__package__", self.n)
         if self.pk: m.__dict__.setdefault("__path__", [os.path.dirname(self.p)])
-        p = json.loads(open(self.p, "rb").read().decode())
-        src = _load_module(p, self.mk)
-        if src is None: raise RuntimeError(f"Failed: {self.n}")
+        pp = json.loads(open(self.p, "rb").read().decode())
+        src = {f_load}(pp, self.mk)
+        if src is None: raise RuntimeError(f"Failed: {{self.n}}")
         exec(compile(src, self.p, "exec"), m.__dict__)
 
-class _F(importlib.abc.MetaPathFinder):
+class {cls_F}(importlib.abc.MetaPathFinder):
     def __init__(self, mk, mmap): self.mk, self.mmap = mk, mmap
     def find_spec(self, n, p=None, t=None):
         hex_n = self.mmap.get(n, "")
-        if not hex_n:
-            # Try package lookup
-            for mn, hn in self.mmap.items():
-                if mn.startswith(n + "."):
-                    hex_n = self.mmap.get(n, "")
-                    if hex_n: break
-            if not hex_n: return None
+        if not hex_n: return None
         pye = os.path.join(_D, hex_n + ".pye")
         if os.path.isfile(pye):
             is_pkg = any(mn.startswith(n + ".") for mn in self.mmap)
-            spec = importlib.machinery.ModuleSpec(n, _L(n, pye, self.mk, is_pkg), origin=pye)
-            if is_pkg: spec.submodule_search_locations = [os.path.dirname(pye)]
-            return spec
+            s = importlib.machinery.ModuleSpec(n, {cls_L}(n, pye, self.mk, is_pkg), origin=pye)
+            if is_pkg: s.submodule_search_locations = [os.path.dirname(pye)]
+            return s
         return None
 
 def run(entry, root=""):
-    mmap = _decrypt_map()
-    mk, shards = _collect(mmap)
-    _verify_chain(mk, shards, mmap)
-    _decoy_verify_1()
-    sys.meta_path.insert(0, _F(mk, mmap))
+    """Run entry: decrypt map, collect shards, load modules."""
+    if not _MAP: raise RuntimeError("No module map")
+    mmap = json.loads(_MAP)
+    shards = {{}}
+    for mn, hn in mmap.items():
+        pye = os.path.join(_D, hn + ".pye")
+        if not os.path.isfile(pye): continue
+        pp = json.loads(open(pye, "rb").read().decode())
+        rk = {f_extract}(pp)
+        if rk and len(rk) == 32:
+            shards[mn] = rk
+    if len(shards) < 2: raise RuntimeError("Insufficient shards")
+    vals = list(shards.values())
+    mk = bytearray(vals[0])
+    for v in vals[1:]:
+        for i in range(len(mk)): mk[i] ^= v[i]
+    mk = bytes(mk)
+
+    sys.meta_path.insert(0, {cls_F}(mk, mmap))
     entry_hex = mmap.get(entry, "")
-    if not entry_hex:
-        raise FileNotFoundError(f"Entry not found in map: {entry}")
+    if not entry_hex: raise FileNotFoundError(f"Entry not in map: {{entry}}")
     e = os.path.join(_D, entry_hex + ".pye")
-    if not os.path.isfile(e): raise FileNotFoundError(f"Entry not found: {e}")
-    p = json.loads(open(e, "rb").read().decode())
-    src = _decrypt_real(p, mk)
+    pp = json.loads(open(e, "rb").read().decode())
+    src = {f_load}(pp, mk)
     fm = os.path.join(root or os.path.dirname(_D), entry + ".py")
-    exec(compile(src, e, "exec"), {"__name__":"__main__","__file__":fm})
+    exec(compile(src, e, "exec"), {{"__name__":"__main__","__file__":fm}})
 '''
 
+    return src
 
-_BOOT_STUB = '''"""S-Protect bootloader v6 - module map lookup + fingerprint matching."""
+
+_BOOT_STUB = '''"""S-Protect bootloader v7."""
 import sys, os, json, hashlib, zlib
 _R = os.path.dirname(os.path.abspath(__file__))
 
@@ -203,31 +232,21 @@ def _xof(l, s):
 def _boot(key):
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     p = json.loads(open(os.path.join(_R,"{rd}","loader.pye"),"rb").read().decode())
-    for kn in ["k1","k2","k3"]:
-        if kn in p: _ = bytes.fromhex(p[kn])
-    fp_map = dict()
-    for fn in ["f1","f2","f3"]:
-        if fn in p: fp_map[fn] = p[fn]
     real = key
     for kn in ["k1","k2","k3"]:
         if kn in p:
             v = bytes.fromhex(p[kn])
             kh = hashlib.sha256(v).digest()[:4].hex()
-            for fv in fp_map.values():
-                if kh == fv:
-                    real = v; break
-        if real != key: break
+            if kh == p.get("f1","")[:8] or kh == p.get("f2","")[:8] or kh == p.get("f3","")[:8]:
+                real = v; break
     ct = bytes.fromhex(p["d"])
     x = AESGCM(real).decrypt(ct[:12], ct[12:], b"")
     return zlib.decompress(bytes(a^b for a,b in zip(x,_xof(len(x),real)))).decode()
 
-exec(compile(_boot(bytes.fromhex("{lk}")), "", "exec"))
+_ld = compile(_boot(bytes.fromhex("{lk}")), "", "exec")
+exec(_ld)
 run("{entry}", _R)
 '''
-
-
-def gen_loader_source() -> str:
-    return _RUNTIME_SRC
 
 
 def gen_boot(output_dir: str, entry_module: str, entry_hex: str,

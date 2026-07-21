@@ -31,6 +31,13 @@ def _parser() -> argparse.ArgumentParser:
     i.add_argument("--project", default="./project", help="Source directory")
     i.add_argument("--output", default="./output", help="Output directory")
 
+    w = s.add_parser("watermark", help="Extract or verify watermark from .pye files")
+    ws = w.add_subparsers(dest="wa", required=True)
+    we = ws.add_parser("extract", help="Extract watermark from a .pye file")
+    we.add_argument("file", help="Path to .pye file")
+    wv = ws.add_parser("verify", help="Verify watermark signature")
+    wv.add_argument("file", help="Path to .pye file")
+
     s.add_parser("version", help="Show version")
     return p
 
@@ -38,6 +45,23 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     p = _parser()
     a = p.parse_args(argv)
+
+    if a.cmd == "watermark":
+        from sprotect.watermark import extract_watermark, verify_watermark
+        if a.wa == "extract":
+            wm = extract_watermark(a.file)
+            if wm:
+                print(f"Batch ID:   {wm.get('bid', 'N/A')}")
+                print(f"Signature:  {wm.get('sig', 'N/A')}")
+                print(f"Type:       {wm.get('t', 'N/A')}")
+            else:
+                print("No watermark found in file.")
+                return 1
+            return 0
+        elif a.wa == "verify":
+            ok = verify_watermark(a.file)
+            print(f"Watermark: {'VALID' if ok else 'INVALID or not found'}")
+            return 0 if ok else 1
 
     if a.cmd == "version":
         print(f"S-Protect-PY v{__version__}"); return 0

@@ -73,6 +73,7 @@ class Obfuscator(ast.NodeTransformer):
         )
         self._class_depth = 0
         self._fstring_depth = 0
+        self._param_stack: list[set[str]] = []
 
     def _get_new_name(self, old_name: str) -> str:
         """Get or create an obfuscated replacement for an identifier.
@@ -103,24 +104,9 @@ class Obfuscator(ast.NodeTransformer):
             The obfuscated Python source code.
         """
         tree = ast.parse(source_code)
-        self._inject_imports(tree)
         tree = self.visit(tree)
         ast.fix_missing_locations(tree)
         return ast.unparse(tree)
-
-    def _inject_imports(self, tree: ast.Module) -> None:
-        """Inject required import statements for encryption helpers.
-
-        Inserts 'import base64' and 'import struct' at the top of the
-        module when string or number encryption is enabled.
-
-        Args:
-            tree: The AST module to modify.
-        """
-        if self.config.encrypt_numbers:
-            tree.body.insert(0, ast.Import(names=[ast.alias(name="struct", asname=None)]))
-        if self.config.encrypt_strings or self.config.encrypt_numbers:
-            tree.body.insert(0, ast.Import(names=[ast.alias(name="base64", asname=None)]))
 
     def visit_alias(self, node: ast.alias) -> ast.alias:
         """Rename imported names (e.g. ``from mod import func``).
@@ -137,8 +123,34 @@ class Obfuscator(ast.NodeTransformer):
             node.name = self.name_mapping[node.name]
         return node
 
+    def _push_params(self, node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda) -> None:
+        params: set[str] = set()
+        for arg in node.args.args + node.args.posonlyargs + node.args.kwonlyargs:
+            params.add(arg.arg)
+        if node.args.vararg:
+            params.add(node.args.vararg.arg)
+        if node.args.kwarg:
+            params.add(node.args.kwarg.arg)
+        self._param_stack.append(params)
+
+    def _pop_params(self) -> None:
+        if self._param_stack:
+            self._param_stack.pop()
+
+    def _is_param(self, name: str) -> bool:
+        return any(name in s for s in self._param_stack)
+
+    def visit_Lambda(self, node: ast.Lambda) -> ast.Lambda:
+        self._push_params(node)
+        node = self.generic_visit(node)
+        self._pop_params()
+        return node
+
     def visit_Name(self, node: ast.Name) -> ast.Name:
         """Rename identifier references that have been obfuscated.
+
+        Skips parameter names of the enclosing function to preserve
+        correct parameter binding (e.g. ``lambda a: a + 1``).
 
         Args:
             node: The Name AST node.
@@ -146,7 +158,7 @@ class Obfuscator(ast.NodeTransformer):
         Returns:
             The (potentially renamed) Name node.
         """
-        if node.id in self.name_mapping:
+        if node.id in self.name_mapping and not self._is_param(node.id):
             node.id = self.name_mapping[node.id]
         return node
 
@@ -164,7 +176,9 @@ class Obfuscator(ast.NodeTransformer):
         """
         if self.config.rename_functions and self._class_depth == 0:
             node.name = self._get_new_name(node.name)
+        self._push_params(node)
         self.generic_visit(node)
+        self._pop_params()
         return node
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> ast.AsyncFunctionDef:
@@ -178,7 +192,9 @@ class Obfuscator(ast.NodeTransformer):
         """
         if self.config.rename_functions and self._class_depth == 0:
             node.name = self._get_new_name(node.name)
+        self._push_params(node)
         self.generic_visit(node)
+        self._pop_params()
         return node
 
     def visit_ClassDef(self, node: ast.ClassDef) -> ast.ClassDef:
@@ -236,7 +252,11 @@ class Obfuscator(ast.NodeTransformer):
                 func=ast.Attribute(
                     value=ast.Call(
                         func=ast.Attribute(
-                            value=ast.Name(id="base64", ctx=ast.Load()),
+                            value=ast.Call(
+                                func=ast.Name(id="__import__", ctx=ast.Load()),
+                                args=[ast.Constant(value="base64")],
+                                keywords=[],
+                            ),
                             attr="b64decode",
                             ctx=ast.Load(),
                         ),
@@ -263,7 +283,11 @@ class Obfuscator(ast.NodeTransformer):
             return ast.Subscript(
                 value=ast.Call(
                     func=ast.Attribute(
-                        value=ast.Name(id="struct", ctx=ast.Load()),
+                        value=ast.Call(
+                            func=ast.Name(id="__import__", ctx=ast.Load()),
+                            args=[ast.Constant(value="struct")],
+                            keywords=[],
+                        ),
                         attr="unpack",
                         ctx=ast.Load(),
                     ),
@@ -271,7 +295,11 @@ class Obfuscator(ast.NodeTransformer):
                         ast.Constant(value=fmt),
                         ast.Call(
                             func=ast.Attribute(
-                                value=ast.Name(id="base64", ctx=ast.Load()),
+                                value=ast.Call(
+                                    func=ast.Name(id="__import__", ctx=ast.Load()),
+                                    args=[ast.Constant(value="base64")],
+                                    keywords=[],
+                                ),
                                 attr="b64decode",
                                 ctx=ast.Load(),
                             ),

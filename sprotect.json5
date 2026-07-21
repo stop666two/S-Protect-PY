@@ -1,172 +1,719 @@
 {
-  // ==========================================
-  // S-Protect-PY 全局配置文件（完整版）
-  // ==========================================
+  // ====================================================================
+  // S-Protect-PY 全局配置文件（完整版·详细注释）
+  // ====================================================================
+  // 【文件格式说明】
+  //   本文件使用 JSON5 格式，相比标准 JSON 更宽松：
+  //     ✓ 键名可不加引号（如 name: "myapp"）
+  //     ✓ 支持单行 // 和多行 /* */ 注释
+  //     ✓ 允许末尾逗号
+  //   注意：
+  //     ✗ 字符串必须用双引号或单引号（不能裸写）
+  //     ✗ 布尔值写 true/false（小写）
+  //     ✗ null 必须写 null（大写 NULL 不行）
+  // ====================================================================
 
-  // ========== 项目信息 ==========
+  // ====================================================================
+  // 项目信息
+  // ====================================================================
   project: {
-    name: "myapp",              // 项目名称
-    version: "1.0.0",           // 版本号
-    entry: "main.py",           // 入口文件（相对 project/）
-    description: "",             // 项目描述
-    author: "",                  // 作者
+    // --- 项目名称 ---
+    // 可用: 任意字符串（建议英文、数字、下划线组合）
+    // 不可用: 不能含路径分隔符 (\ /) 和控制字符
+    // 注意: 用于水印报告和输出目录标识，建议不长于 32 字符
+    name: "myapp",
+
+    // --- 版本号 ---
+    // 可用: semver 格式 "1.0.0" / "v2.3.1-beta" / "2026.07.21"
+    // 不可用: 不含空格的字符串即可，不会做语义校验
+    version: "1.0.0",
+
+    // --- 入口文件 ---
+    // 可用: "main.py" / "src/main.py" / "app.py" / "server/app.py"
+    // 不可用: "main"（缺后缀） / "main.exe"（非 .py）
+    // 注意: 相对于 project_dir，必须存在于项目中，build 后作为启动入口
+    entry: "main.py",
+
+    // --- 项目描述 ---
+    // 可用: "My powerful CLI tool" / ""（空）
+    // 不可用: 超过 65535 字符（不会截断但浪费空间）
+    description: "",
+
+    // --- 作者 ---
+    // 可用: "John Doe" / "team@example.com" / ""（空）
+    author: "",
   },
 
-  // ========== 文件过滤 ==========
+  // ====================================================================
+  // 文件过滤
+  // ====================================================================
   files: {
-    include: ["**/*.py"],       // 包含的文件模式
-    exclude: [],                 // 排除的文件模式
+    // --- 包含的文件模式（glob） ---
+    // 可用: "**/*.py"（所有 py）/ "src/**/*.py"（仅 src 下）
+    //       "**/*.{py,pyx}" 多个扩展名（仅 v2 格式支持）
+    // 不可用: "*.py"（仅当前目录，不含子目录）
+    // 注意: 使用 ** 匹配任意层子目录，* 只匹配当前层
+    include: ["**/*.py"],
+
+    // --- 排除的文件模式 ---
+    // 可用: ["setup.py", "tests/**"] / ["**/*_test.py"] / []（空）
+    // 不可用: 用反斜杠 \（在 glob 中无意义）
+    // 注意: 优先级高于 include，匹配到的文件会被跳过
+    exclude: [],
+
+    // --- 排除的目录 ---
+    // 可用: ["__pycache__", ".git", "tests", "_runtime", "_backup"]
+    // 不可用: 不含 .py 文件的目录不需要加
+    // 注意: 这些目录下的所有文件都会被跳过，通配符匹配目录名
     exclude_dirs: ["_runtime", "_backup", "__pycache__", ".git"],
   },
 
-  // ========== 混淆设置 ==========
+  // ====================================================================
+  // 混淆设置（AST 级别）
+  // ====================================================================
   obfuscate: {
-    level: 5,                   // 混淆等级 1-5
-    rename_variables: true,     // 重命名变量
-    rename_functions: true,     // 重命名函数
-    rename_classes: true,       // 重命名类
+    // --- 混淆等级 ---
+    // 可用: 1 | 2 | 3 | 4 | 5   （数字）
+    // 不可用: "5"（字符串） / 0 / 6 / -1 / 3.5
+    // 各等级含义:
+    //   L1: 仅修改变量名和函数名，最轻量
+    //   L2: + 字符串加密
+    //   L3（默认）: + 控制流平坦化 + 不透明谓词
+    //   L4: + 数字加密 + 死代码注入
+    //   L5: 全部启用，最强混淆但性能最差
+    level: 5,
+
+    // --- 重命名变量 ---
+    // 可用: true | false
+    // 注意: 设为 false 时变量保持原名，混淆效果大幅下降
+    rename_variables: true,
+
+    // --- 重命名函数 ---
+    // 可用: true | false
+    // 注意: 设为 false 可保留函数名便于调试，但会暴露 API 接口名
+    rename_functions: true,
+
+    // --- 重命名类 ---
+    // 可用: true | false
+    rename_classes: true,
+
     rename_rules: {
-      style: "hex",             // 命名风格: hex | chinese | invisible | math-symbols | custom
-      reserved: ["__init__", "main"],  // 保留名称（不改名）
-      prefix: "_0x",            // 混淆名前缀
-      suffix: "",               // 混淆名后缀
-      min_length: 6,            // 混淆名最小长度
-      blacklist: [],            // 黑名单（强制不改名的标识符）
+      // --- 命名风格 ---
+      // 可用:
+      //   "hex"           -> _0xa1b2c3 （十六进制，默认）
+      //   "chinese"       -> _变量 （中文字符）
+      //   "invisible"     -> 零宽字符（肉眼不可见，但某些编辑器会显示异常）
+      //   "math-symbols"  -> _∑∫∂ （数学符号）
+      //   "custom"        -> 自定义，需搭配 prefix/suffix 使用
+      // 不可用: "unicode" / "base64" / "random"（不存在）
+      // 注意: invisible 风格在源码被复制到网页等场景可能失效
+      style: "hex",
+
+      // --- 保留名称（不改名） ---
+      // 可用: ["__init__", "main", "__main__", "run", "app"]
+      // 不可用: 保留名中出现的标识符不会被混淆
+      // 注意: 入口函数名必须保留，否则运行时找不到入口
+      reserved: ["__init__", "main"],
+
+      // --- 混淆名前缀 ---
+      // 可用: "_0x" / "_" / ""（空）/ "f_" / "var_"
+      // 注意: 仅当 style="custom" 时生效；空字符串表示无前缀
+      prefix: "_0x",
+
+      // --- 混淆名后缀 ---
+      // 可用: "_" / "_v1" / "" / "_hidden"
+      // 注意: 建议保持为空，加后缀会增加代码长度
+      suffix: "",
+
+      // --- 混淆名最小长度 ---
+      // 可用: 4 ~ 32 之间的整数
+      // 注意: 越长越难逆向但代码体积越大，推荐 6-10
+      min_length: 6,
+
+      // --- 黑名单（强制不改名的标识符） ---
+      // 可用: ["request", "response", "session"] / ["self", "cls"]
+      // 不可用: 不要放太多（多了等于没混淆）
+      // 注意: 与 reserved 的区别——reserved 是全局保留，blacklist 是额外禁用
+      blacklist: [],
     },
-    encrypt_strings: true,      // 加密字符串
-    encrypt_numbers: false,     // 加密数字
-    string_min_length: 3,       // 字符串最小加密长度
-    string_encrypt_ratio: 1.0,  // 字符串加密比例 0-1
-    control_flow_flattening: true,  // 控制流平坦化
-    dead_code_injection: true,  // 死代码注入
-    dead_code_density: 0.3,     // 死代码密度
-    opaque_predicate_count: 2,  // 不透明谓词数量
-    remove_docstrings: false,   // 删除文档字符串
-    remove_comments: true,      // 删除注释（ast.unparse 自动处理）
-    strip_blank_lines: false,   // 删除空行
-    max_line_length: 0,         // 最大行长（0=不限）
+
+    // --- 加密字符串 ---
+    // 可用: true | false
+    // 注意: 设为 true 时字符串会被编码为 base64 + 运行时解码
+    encrypt_strings: true,
+
+    // --- 加密数字 ---
+    // 可用: true | false
+    // 注意: 开启后所有数字常量被替换为运行时计算表达式，性能影响大
+    encrypt_numbers: false,
+
+    // --- 字符串最小加密长度 ---
+    // 可用: 1 ~ 100 的整数
+    // 注意: 小于此长度的字符串不加密（避免 "a"、"b" 等单字符也加密）
+    string_min_length: 3,
+
+    // --- 字符串加密比例 0-1 ---
+    // 可用: 0.0（不加密） ~ 1.0（全部加密）
+    // 注意: 0.5 表示 50% 的字符串被随机选中加密，其余保持原样
+    string_encrypt_ratio: 1.0,
+
+    // --- 控制流平坦化 ---
+    // 可用: true | false
+    // 注意: 将代码改为 switch-case + while 循环的等价形式，使控制流难以分析
+    control_flow_flattening: true,
+
+    // --- 死代码注入 ---
+    // 可用: true | false
+    // 注意: 注入永远不会执行的代码块（含不透明谓词），迷惑逆向者
+    dead_code_injection: true,
+
+    // --- 死代码密度 0-1 ---
+    // 可用: 0.1 ~ 0.8（大于 0.8 会导致代码体积膨胀 2-3 倍）
+    // 不可用: 0（死代码注入关闭时无效）
+    // 注意: 0.3 = 每 10 行注入 3 行死代码
+    dead_code_density: 0.3,
+
+    // --- 不透明谓词数量 ---
+    // 可用: 1 ~ 10 的整数
+    // 注意: 每个函数中插入的不透明谓词数，越多越慢
+    opaque_predicate_count: 2,
+
+    // --- 删除文档字符串 ---
+    // 可用: true | false
+    // 注意: 设为 true 会删除所有 """docstring"""，包括可能被 Sphinx 等工具使用的
+    remove_docstrings: false,
+
+    // --- 删除注释 ---
+    // 可用: true | false
+    // 注意: ast.unparse 自动丢弃原注释，设 true/false 都得删除
+    remove_comments: true,
+
+    // --- 删除空行 ---
+    // 可用: true | false
+    // 注意: 设为 true 会大幅压缩代码但可读性极差
+    strip_blank_lines: false,
+
+    // --- 最大行长 ---
+    // 可用: 0（不限） / 80（PEP8 标准） / 120 / 200
+    // 注意: 仅在 strip_blank_lines=false 时有效，0 表示不限制
+    max_line_length: 0,
   },
 
-  // ========== 加密设置 ==========
+  // ====================================================================
+  // 加密设置
+  // ====================================================================
   encrypt: {
-    algorithm: "aes-256-gcm",   // 加密算法: aes-256-gcm | x25519-aes | chacha20 | hybrid
-    key_source: "auto",         // 密钥来源: auto | file | env
-    key_file: null,             // 密钥文件路径（key_source=file 时）
-    key_env_var: null,          // 密钥环境变量（key_source=env 时）
-    interdependency: "chain",   // 文件依赖: chain | full-mesh | hybrid
-    backup: true,               // 构建前自动备份
-    backup_max_count: 5,        // 最大备份数
-    replace_originals: false,   // 是否替换原文件
-    shard_count: 3,             // 密钥分片数
-    shard_min_files: 2,         // 最少分片文件数
-    compress_level: 9,          // zlib 压缩等级 0-9
-    polymorphic_padding: true,  // 多态填充（每次构建大小不同）
-    polymorphic_padding_max: 512, // 最大随机填充字节
-    aad_context: "S-Protect-PY", // AAD 附加认证数据
-    extra_layers: [],            // 额外加密层: serpent | twofish | camellia | salsa20
-    hybrid: {                    // 混合加密（RSA/ECC 密钥包装）
-      enabled: false,            // 是否启用
-      algorithm: "RSA",          // RSA | ECC
-      key_size: 4096,            // RSA 位长 / ECC 曲线
-      key_file: "key.pem",       // 私钥保存路径
+    // --- 加密算法 ---
+    // 可用:
+    //   "aes-256-gcm"        AES-256-GCM（推荐，平衡安全与性能）
+    //   "chacha20"           ChaCha20-Poly1305（流密码，无硬件加速时比 AES 快）
+    //   "x25519-aes"         X25519 密钥交换 + AES（保留、暂未完整实现）
+    //   "hybrid"             混合模式（保留、暂未完整实现）
+    // 不可用: "aes128" / "des" / "rc4" / "blowfish"
+    // 注意: 当前推荐始终使用 aes-256-gcm
+    algorithm: "aes-256-gcm",
+
+    // --- 密钥来源 ---
+    // 可用:
+    //   "auto"   每次构建自动随机生成密钥（推荐，最安全）
+    //   "file"   从 key_file 路径读取密钥
+    //   "env"    从环境变量 key_env_var 读取密钥
+    // 不可用: "user" / "prompt" / "stdin"
+    // 注意: "auto" 模式下每次 build 生成的输出文件不同，即使源码相同
+    key_source: "auto",
+
+    // --- 密钥文件路径（仅 key_source=file 时生效） ---
+    // 可用: "./secret.key" / "C:\keys\myapp.key" / null
+    // 注意: 文件应包含 32 字节二进制密钥（可用 openssl rand -hex 32 生成）
+    key_file: null,
+
+    // --- 密钥环境变量名（仅 key_source=env 时生效） ---
+    // 可用: "SPROTECT_KEY" / "MYAPP_SECRET" / null
+    // 注意: 环境变量值应为 64 字符 hex 字符串（32 字节密钥的十六进制）
+    key_env_var: null,
+
+    // --- 文件依赖模式 ---
+    // 可用:
+    //   "chain"      链式依赖：文件 N 的哈希依赖文件 N+1（推荐）
+    //   "full-mesh"  全连接：每个文件依赖所有其他文件（最强但校验最慢）
+    //   "hybrid"     混合模式：链式 + 随机额外连接
+    // 注意: 影响运行时文件完整性校验的强度，chain 对于大多数场景已足够
+    interdependency: "chain",
+
+    // --- 构建前自动备份 ---
+    // 可用: true | false
+    // 注意: 设为 true 时每次 build 前自动备份 project_dir 到 _backup/
+    backup: true,
+
+    // --- 最大备份数 ---
+    // 可用: 1 ~ 99
+    // 注意: 超过此数量会删除最旧的备份
+    backup_max_count: 5,
+
+    // --- 是否替换原文件 ---
+    // 可用: true | false
+    // 注意: 设为 true 时构建后会用加密文件替换项目目录中的原文件
+    //       危险！建议仅在 CI/CD 场景中使用，并确保有备份
+    replace_originals: false,
+
+    // --- 密钥分片数 ---
+    // 可用: 2 ~ 10
+    // 注意: master_key 被拆分成 N 份，每份存入一个 .pye 文件
+    //       运行时需要收集至少 N-1 个分片才能重构 master_key
+    //       项目中的 .py 文件数应 >= shard_count
+    shard_count: 3,
+
+    // --- 最少分片文件数 ---
+    // 可用: 2 ~ shard_count
+    // 注意: 运行时至少需要这么多文件才能解密，防文件丢失
+    shard_min_files: 2,
+
+    // --- zlib 压缩等级 ---
+    // 可用: 0（不压缩）~ 9（最大压缩）
+    // 不可用: -1（默认值，不在本配置中支持）
+    // 注意: 9 最慢但输出最小；0 最快但输出大 3-5 倍
+    compress_level: 9,
+
+    // --- 多态填充 ---
+    // 可用: true | false
+    // 注意: 每次 build 会在加密数据末尾添加随机填充字节
+    //       即使源码相同，两次 build 的输出文件也不一样
+    polymorphic_padding: true,
+
+    // --- 最大填充字节 ---
+    // 可用: 64 ~ 1024
+    // 注意: 每次填充 0 ~ N 字节的随机数据，增大逆向难度
+    polymorphic_padding_max: 512,
+
+    // --- AAD 附加认证数据 ---
+    // 可用: 任意字符串，如 "MyApp v1.0" / "S-Protect-PY"
+    // 注意: AES-GCM 的附加认证数据，修改后不匹配会导致解密失败
+    //       可以用于绑定加密数据到特定项目
+    aad_context: "S-Protect-PY",
+
+    // --- 额外加密层 ---
+    // 可用: ["serpent"] / ["serpent", "twofish"] / ["serpent", "twofish", "camellia"]
+    //       ["serpent", "twofish", "camellia", "salsa20"]（全开）
+    //       []（不开启，默认）
+    // 不可用: ["aes"] / ["des"] / ["rc4"]（这些是内置层，无需在此配置）
+    //        ["serpent", "serpent"]（重复添加同一算法）
+    // 注意:
+    //   • 需要安装 pycryptodome 库（已添加至 requirements.txt）
+    //   • 每增加一层，构建时间 +5%~15%，解密时间 +5%~15%
+    //   • 顺序影响加密结果，改变顺序后旧文件无法解密
+    //   • 所有额外层使用 HKDF-SHA256 从 master_key 派生独立子密钥
+    //   • salsa20 是流密码（非块密码），IV 长度为 8 字节而非 16 字节
+    //   • Camellia 是日本标准（ISO/IEC 18033-3），在东亚地区有合规要求时使用
+    //   • 开启多层建议：["serpent", "twofish"] 提供足够强度
+    extra_layers: [],
+
+    // --- 混合加密（RSA/ECC 密钥包装） ---
+    hybrid: {
+      // --- 是否启用 ---
+      // 可用: true | false
+      // 注意: 启用后 build 时自动生成密钥对，用公钥加密 master_key
+      //       运行时 loader 会提示用户输入私钥路径和密码
+      //       若不需要私钥保护机制，保持 false
+      enabled: false,
+
+      // --- 算法选择 ---
+      // 可用: "RSA" | "ECC"
+      // 不可用: "DSA" / "Ed25519"（不支持加密用途）
+      // 注意:
+      //   RSA: 成熟稳定，密钥尺寸大（4096 位 = 约 2KB）
+      //   ECC: 密钥小（P-256 = 约 300 字节），但解密稍慢
+      algorithm: "RSA",
+
+      // --- 密钥尺寸 / 椭圆曲线 ---
+      // RSA 可用: 2048 | 3072 | 4096 | 8192
+      // ECC 可用: 256（= P-256） | 384（= P-384） | 521（= P-521）
+      // 注意:
+      //   RSA 推荐 4096（平衡安全与性能）
+      //   ECC 推荐 256（足够安全，NIST 标准）
+      //   RSA 2048 被认为在 2030 年后可能不安全
+      //   ECC 521 是最强但最慢的曲线
+      key_size: 4096,
+
+      // --- 私钥保存路径（相对 output_dir） ---
+      // 可用: "key.pem" / "secret/private.pem" / "app_key.pem"
+      // 注意: build 后私钥保存在此路径，需妥善保管
+      //       丢失私钥 = 加密文件永久无法解密
+      //       建议：build 后立即将私钥移到安全位置
+      key_file: "key.pem",
     },
   },
 
-  // ========== 反调试/反VM/反沙箱 ==========
+  // ====================================================================
+  // 反调试 / 反VM / 反沙箱
+  // ====================================================================
   anti_debug: {
+    // --- 总开关 ---
     enabled: true,
-    action: "exit",             // exit | warn | corrupt
-    checks: [                   // 检测项（按需增删）
+
+    // --- 检测到异常时的动作 ---
+    // 可用:
+    //   "exit"    立即退出程序（推荐）
+    //   "warn"    打印警告并继续（调试用）
+    //   "corrupt" 破坏内存数据后退出（最激进，可能导致蓝屏分析困难）
+    // 注意: "corrupt" 会通过 gc 遍历对象随机修改内存，可能引起误报
+    action: "exit",
+
+    // --- 启用的检测项 ---
+    // 可用:
+    //   "pdb"       检测 sys.gettrace() != None（Python 调试器）
+    //   "ptrace"    检测 ptrace 附加（Linux 调试器）
+    //   "debugger"  检测 pydevd / PYTHONDEBUG 环境变量（PyCharm/VS Code）
+    //   "vm"        检测 VirtualBox / VMware / QEMU / Hyper-V / Xen
+    //   "sandbox"   检测沙箱目录特征
+    //   "timing"    时序检测（执行循环耗时超过阈值则判定为调试器）
+    //   "cuckoo"    检测 Cuckoo 沙箱特定文件/进程
+    //   "ida"       检测 IDA Pro / Ghidra 远程调试端口
+    //   "procmon"   检测 Process Monitor / Process Hacker 等工具
+    // 注意: 可只保留需要的检测项以提升启动速度
+    //       建议始终保留: ["pdb", "vm", "debugger"]
+    //       不建议在正式环境中关闭: 全部开启
+    checks: [
       "pdb", "ptrace", "debugger", "vm",
       "sandbox", "timing", "cuckoo", "ida", "procmon",
     ],
-    per_check_actions: [],      // 逐检测项覆盖动作 [{check:"vm", action:"warn"}]
-    process_whitelist: [],      // 进程白名单
-    block_tracing: true,        // 阻断 sys.settrace / sys.setprofile
-    timing_threshold: 2.0,      // 时序检测阈值（秒）
-    exit_code: 1,               // 退出码
-    wipe_memory: true,          // 退出时清空敏感内存
-    corrupt_on_exit: false,     // 退出时破坏内存
+
+    // --- 逐检测项覆盖动作 ---
+    // 可用: [{check:"vm", action:"warn"}] / []（不覆盖）
+    // 注意: 优先级高于全局 action，用于对特定检测项做不同处理
+    //       例如：想在 VM 中只警告不退出，其他检测项直接退出
+    per_check_actions: [],
+
+    // --- 进程白名单 ---
+    // 可用: ["python.exe", "python3", "myapp.exe"]
+    // 注意: 白名单中的进程名不会被检测为调试器
+    process_whitelist: [],
+
+    // --- 阻断 sys.settrace / sys.setprofile ---
+    // 可用: true | false
+    // 注意: 设为 true 时在 loader 启动阶段清空 trace 和 profile
+    block_tracing: true,
+
+    // --- 时序检测阈值（秒） ---
+    // 可用: 0.5 ~ 10.0
+    // 注意: 执行一个简单循环如果耗时超过此值则判定为调试器附加
+    //       VM 中因 CPU 降频可能导致误判，建议 VM 用户设为 3-5
+    timing_threshold: 2.0,
+
+    // --- 退出码 ---
+    // 可用: 1 ~ 255
+    // 注意: 检测到异常时的进程退出码
+    exit_code: 1,
+
+    // --- 退出时清空敏感内存 ---
+    // 可用: true | false
+    // 注意: 通过 gc 模块清空内存中的敏感数据，防止 crash dump 泄露
+    wipe_memory: true,
+
+    // --- 退出时破坏内存 ---
+    // 可用: true | false
+    // 注意: 比 wipe 更激进，会随机修改内存中的对象值
+    //       和 action: "corrupt" 配合使用效果翻倍
+    corrupt_on_exit: false,
   },
 
-  // ========== 代码虚拟化 ==========
+  // ====================================================================
+  // 代码虚拟化
+  // ====================================================================
+  // 注意: 当前版本中此功能仅作预留，实际尚未完整实现
+  //       开启后可能导致严重的性能下降（10x ~ 50x）
+  //       建议在确有必要时才启用，且只对关键函数启用
+  // ====================================================================
   virtualization: {
-    enabled: false,             // 启用虚拟化（性能下降 10-50x）
-    mode: "partial",            // partial | full
-    functions: [],              // 要虚拟化的函数列表
-    glob_patterns: [],          // 文件通配符
-    exclude_functions: [],      // 排除虚拟化的函数
-    inline_threshold: 50,       // 内联阈值（行数）
-    interpreter_obfuscate: true, // 混淆解释器代码
-  },
-
-  // ========== 水印 ==========
-  watermark: {
-    enabled: true,
-    levels: ["file", "code", "runtime"],  // 水印层级
-    batch_id: "",               // 批次 ID（留空自动生成）
-    multi_batch: [],            // 多批次 ID 列表
-    visible: false,             // 是否可见
-    watermark_key: "",          // 水印校验密钥
-  },
-
-  // ========== 过期时间 ==========
-  expiration: {
+    // --- 启用虚拟化 ---
     enabled: false,
-    expires_at: null,           // 过期时间 "2027-12-31T23:59:59Z"
-    grace_period_hours: 0,      // 过期宽限期（小时）
-    ntp_check: true,            // 联网校准时间
-    ntp_servers: [              // NTP 服务器列表（可自定义，内置5个）
+
+    // --- 虚拟化模式 ---
+    // 可用: "partial"（部分，仅虚拟化指定函数）
+    //       "full"（全局，全部函数虚拟化——性能极差，不建议）
+    mode: "partial",
+
+    // --- 要虚拟化的函数列表 ---
+    // 可用: ["validate_license", "check_expiry", "decrypt_core"] / []
+    // 注意: 只对 mode=partial 有效；函数名必须完全匹配
+    functions: [],
+
+    // --- 文件通配符 ---
+    // 可用: ["**/license.py", "**/core/*.py"]
+    // 注意: 匹配到的文件中的函数全部虚拟化
+    glob_patterns: [],
+
+    // --- 排除虚拟化的函数 ---
+    // 可用: ["__init__", "main"]
+    // 注意: 优先级高于 functions 和 glob_patterns
+    exclude_functions: [],
+
+    // --- 内联阈值（行数） ---
+    // 可用: 10 ~ 200
+    // 注意: 小于此行数的函数会被内联到虚拟化处理器中
+    inline_threshold: 50,
+
+    // --- 混淆解释器代码 ---
+    // 可用: true | false
+    interpreter_obfuscate: true,
+  },
+
+  // ====================================================================
+  // 水印
+  // ====================================================================
+  watermark: {
+    // --- 总开关 ---
+    enabled: true,
+
+    // --- 水印层级 ---
+    // 可用:
+    //   ["file"]              仅文件层（在 .pye 头部嵌入元数据）
+    //   ["file", "code"]      文件 + 代码层（在源码中嵌入 lambda）
+    //   ["file", "runtime"]   文件 + 运行时（运行时生成校验函数）
+    //   ["file", "code", "runtime"]  三层全开（推荐）
+    // 注意:
+    //   file:     嵌入批号 + 时间戳 + HMAC 签名
+    //   code:     在每段源码末尾注入哈希校验 lambda
+    //   runtime:  loader 启动时生成水印校验函数
+    levels: ["file", "code", "runtime"],
+
+    // --- 批次 ID ---
+    // 可用: "BUILD-20260721-001" / ""（留空自动生成 UUID）
+    // 注意: 同一批次 build 的所有文件共享一个 batch_id
+    //       用于追踪某次构建的归属
+    batch_id: "",
+
+    // --- 多批次 ID 列表 ---
+    // 可用: ["BATCH-A", "BATCH-B"] / []
+    // 注意: 可同时嵌入多个 batch_id，用于需要跨批次追踪的场景
+    multi_batch: [],
+
+    // --- 是否可见 ---
+    // 可用: true（在源码中可见的水印字符串）
+    //       false（不可见，通过元数据和水印函数校验）
+    // 注意: 可见水印不影响运行但容易被发现删除
+    visible: false,
+
+    // --- 水印校验密钥 ---
+    // 可用: "my-secret-key-123" / ""（留空使用默认密钥）
+    // 注意: 用于水印 HMAC 校验，不同项目应使用不同密钥
+    watermark_key: "",
+  },
+
+  // ====================================================================
+  // 过期时间
+  // ====================================================================
+  expiration: {
+    // --- 总开关 ---
+    enabled: false,
+
+    // --- 过期时间 ---
+    // 可用:
+    //   "2027-12-31T23:59:59Z"     ISO8601 UTC 时间
+    //   "2027-12-31T23:59:59+08:00" 带时区偏移
+    //   "2027-12-31"                自动补全 00:00:00Z
+    //   null                         永不过期
+    // 不可用: "2027/12/31" / "12-31-2027"（格式不支持）
+    // 注意: 时间到达后程序将拒绝运行（除非设置 grace_period_hours）
+    //       该时间会明文存储在 .pye 头部（被篡改后由 NTP 校验检测）
+    expires_at: null,
+
+    // --- 过期宽限期（小时） ---
+    // 可用: 0（不宽限） / 24 / 48 / 72
+    // 注意: 过期后仍可运行的额外小时数，用于给用户缓冲时间
+    grace_period_hours: 0,
+
+    // --- 联网校准时间 ---
+    // 可用: true | false
+    // 注意: 设为 true 时会通过 NTP 服务器校验本地时间
+    //       防止用户修改系统时间绕过过期检查
+    //       若 NTP 请求失败，行为由 on_network_fail 决定
+    ntp_check: true,
+
+    // --- NTP 服务器列表 ---
+    // 可用: 任意 NTP 服务器地址
+    //       内置 5 个公共 NTP 服务器（已足够，一般无需修改）
+    // 不可用: HTTP 地址（不是 NTP 协议）
+    // 注意: 列表中的服务器会依次尝试，有一个成功则跳过其余
+    //       内网环境可替换为公司内部 NTP 服务器
+    ntp_servers: [
       "pool.ntp.org",
       "time.google.com",
       "time.cloudflare.com",
       "time.windows.com",
       "time.apple.com",
     ],
-    ntp_timeout: 3.0,           // NTP 超时（秒）
-    on_network_fail: "reject",  // 网络不通: reject | allow | grace
-    check_interval_hours: 24,   // 运行时检查间隔
-    max_drift_seconds: 3600,    // 最大时间偏差（秒）
+
+    // --- NTP 超时（秒） ---
+    // 可用: 1.0 ~ 10.0
+    // 注意: 超时后尝试下一个服务器，全部超时则按 on_network_fail 处理
+    ntp_timeout: 3.0,
+
+    // --- 网络不通时的策略 ---
+    // 可用:
+    //   "reject"  拒绝运行（最安全，但用户断网时无法使用）
+    //   "allow"   允许运行（不安全，但用户断网时可用）
+    //   "grace"   允许运行但记录日志（折中方案）
+    // 注意: 对于需要离线分发的软件，建议设为 "allow" 或 "grace"
+    on_network_fail: "reject",
+
+    // --- 运行时检查间隔（小时） ---
+    // 可用: 1 ~ 720（30 天）
+    // 注意: 程序持续运行时每隔 N 小时重新检查一次过期状态
+    check_interval_hours: 24,
+
+    // --- 最大时间偏差（秒） ---
+    // 可用: 60 ~ 86400（24 小时）
+    // 注意: 当从 NTP 获取的时间和本地时间偏差超过此值时判定为时间篡改
+    max_drift_seconds: 3600,
   },
 
-  // ========== 环境指纹 ==========
+  // ====================================================================
+  // 环境指纹
+  // ====================================================================
+  // 注意: 绑定后程序只能在满足指定条件的机器上运行
+  //       常用于试用版软件（绑定到特定机器）
+  //       误配置可能导致合法用户也无法运行
+  // ====================================================================
   environment: {
+    // --- 总开关 ---
     enabled: false,
-    bind_directory: null,       // 绑定到目录
-    bind_username: null,        // 绑定到用户名
-    bind_env_vars: [],          // 绑定到环境变量
-    bind_file_hash: null,       // 绑定到文件哈希
-    bind_mac_address: null,     // 绑定到 MAC 地址
-    bind_hardware_id: null,     // 绑定到硬件 ID
-    strict_mode: false,         // 严格模式
+
+    // --- 绑定到目录 ---
+    // 可用: "C:\Program Files\MyApp" / "/opt/myapp" / null
+    // 注意: 运行时检测当前目录是否匹配，不匹配则拒绝运行
+    bind_directory: null,
+
+    // --- 绑定到用户名 ---
+    // 可用: "john" / "root" / null
+    // 注意: 运行时检测 os.getlogin() 是否匹配
+    bind_username: null,
+
+    // --- 绑定到环境变量 ---
+    // 可用: ["MYAPP_LICENSE=pro", "CUSTOMER_ID=12345"]
+    // 注意: 所有指定的环境变量必须全部存在且值匹配
+    //       格式: "变量名=期望值" 或 "变量名"（仅检查是否存在）
+    bind_env_vars: [],
+
+    // --- 绑定到文件哈希 ---
+    // 可用: "sha256:a1b2c3..." / null
+    // 注意: 运行时检测指定文件的 SHA256 哈希是否匹配
+    //       可用于绑定到某个 DLL 或配置文件的版本
+    bind_file_hash: null,
+
+    // --- 绑定到 MAC 地址 ---
+    // 可用: "AA:BB:CC:DD:EE:FF" / null
+    // 注意: 运行时检测主网卡 MAC 地址是否匹配
+    bind_mac_address: null,
+
+    // --- 绑定到硬件 ID ---
+    // 可用: "CPU-ID-12345678" / null
+    // 注意: 当前使用 platform.processor() + uuid.getnode() 组合
+    bind_hardware_id: null,
+
+    // --- 严格模式 ---
+    // 可用: true | false
+    // 注意: 严格模式下所有启用的绑定项必须全部匹配
+    //       非严格模式下只要有一个匹配即可通过
+    strict_mode: false,
+
+    // --- 指纹算法 ---
+    // 可用: "sha256" | "md5" | "blake3"
+    // 注意: 影响环境指纹的哈希算法，建议保持 sha256
     fingerprint_algorithm: "sha256",
   },
 
-  // ========== 沙箱检测 ==========
+  // ====================================================================
+  // 沙箱检测
+  // ====================================================================
+  // 注意: 与 anti_debug 不同，这里的检测是轻量级的
+  //       适合在运行时定期检查，而非启动时一次性检测
+  // ====================================================================
   sandbox: {
     enabled: true,
-    detect_cuckoo: true,        // 检测 Cuckoo
-    detect_sandboxie: true,     // 检测 Sandboxie
-    detect_docker: false,       // 检测 Docker 容器
-    detect_ci: false,           // 检测 CI 环境（GitHub Actions 等）
+
+    // --- 检测 Cuckoo 沙箱 ---
+    detect_cuckoo: true,
+
+    // --- 检测 Sandboxie ---
+    detect_sandboxie: true,
+
+    // --- 检测 Docker 容器 ---
+    // 注意: 如果程序本身就运行在 Docker 中，请设为 false
+    detect_docker: false,
+
+    // --- 检测 CI 环境 ---
+    // 可用: true | false
+    // 注意: 检测 CI/CD 环境（GitHub Actions, GitLab CI, Jenkins 等）
+    //       开源项目在 CI 中运行时应关闭此项
+    detect_ci: false,
   },
 
-  // ========== 启动器配置 ==========
+  // ====================================================================
+  // 启动器配置
+  // ====================================================================
   bootloader: {
-    name: "main.py",            // 启动器文件名
-    include_runtime_loader: true, // 包含 runtime 加载器
-    minimal_boot: false,        // 极简启动
-    hide_python_windows: false, // 隐藏控制台窗口（Windows）
-    anti_dump: true,            // 反内存 Dump
-    periodic_check_interval: 5.0, // 周期自检间隔（秒）
+    // --- 启动器文件名 ---
+    // 可用: "main.py" / "launcher.py" / "startup.py" / "app.py"
+    // 注意: 最终用户运行的是这个文件，它会自动解密并加载其他模块
+    name: "main.py",
+
+    // --- 是否包含 runtime 加载器 ---
+    // 可用: true | false
+    // 注意: runtime 加载器负责解密和执行加密模块
+    //       设为 false 时需用户自行提供加载逻辑（高级用法）
+    include_runtime_loader: true,
+
+    // --- 极简启动 ---
+    // 可用: true | false
+    // 注意: 极简模式启动器更小，但错误提示也更少，不利于排查
+    minimal_boot: false,
+
+    // --- 隐藏控制台窗口（Windows） ---
+    // 可用: true | false
+    // 注意: 使用 pythonw.exe 时隐藏控制台，GUI 应用建议开启
+    hide_python_windows: false,
+
+    // --- 反内存 Dump ---
+    // 可用: true | false
+    // 注意: 启动后立即清除内存中的敏感数据，防止被进程 dump
+    anti_dump: true,
+
+    // --- 周期自检间隔（秒） ---
+    // 可用: 0（不检查） / 1.0 ~ 60.0
+    // 注意: 每隔 N 秒检测一次文件完整性，发现篡改立即退出
+    //       0 表示关闭周期检查（启动时一次性检查仍会执行）
+    periodic_check_interval: 5.0,
   },
 
-  // ========== 输出设置 ==========
+  // ====================================================================
+  // 输出设置
+  // ====================================================================
   output: {
-    dir: "./output",            // 输出目录
-    keep_source_map: false,     // 保留源码映射
-    runtime_dir_name: "_runtime", // runtime 目录名
-    preserve_non_py: true,      // 保留非 py 文件
-    verbose: false,             // 详细输出
+    // --- 输出目录 ---
+    // 可用: "./output" / "../dist" / "C:\builds\myapp" / 任意路径
+    // 注意: 相对于项目目录（project_dir），目录不存在会自动创建
+    dir: "./output",
+
+    // --- 保留源码映射 ---
+    // 可用: true | false
+    // 注意: 开启后会生成源码映射文件，用于调试（会泄露源码结构）
+    //       发布版请务必关闭
+    keep_source_map: false,
+
+    // --- runtime 目录名 ---
+    // 可用: "_runtime" / ".runtime" / "modules" / "lib"
+    // 注意: 存放加密 .pye 文件的子目录名
+    runtime_dir_name: "_runtime",
+
+    // --- 保留非 py 文件 ---
+    // 可用: true | false
+    // 注意: 设为 true 会将非 .py 文件（如 .txt、.json、.yaml）复制到输出目录
+    //       如果项目中包含配置文件、静态资源等，建议开启
+    preserve_non_py: true,
+
+    // --- 详细输出 ---
+    // 可用: true | false
+    // 注意: 开启后 build 过程中会打印更详细的日志（用于调试）
+    verbose: false,
   },
 }

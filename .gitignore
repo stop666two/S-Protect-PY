@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.env
+.env.local
+_runtime/
+_backup/
+.idea/
+.vscode/
+*.swp
+*.swo
+Thumbs.db
+.DS_Store
+
+# AI 规则文件 - 禁止提交版本控制
+AGENTS.md
+AGENTS.txt
+AGENT.md
+AGENT.txt
+agent-readme.md
+RULES.md

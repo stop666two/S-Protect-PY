@@ -1,0 +1,75 @@
+{
+  "obfuscate": {
+    "level": 3,
+    "rename_variables": true,
+    "rename_functions": true,
+    "rename_classes": true,
+    "rename_rules": {
+      "style": "hex",
+      "reserved": [
+        "__init__",
+        "main"
+      ]
+    },
+    "encrypt_strings": true,
+    "encrypt_numbers": false,
+    "control_flow_flattening": true,
+    "dead_code_injection": false
+  },
+  "encrypt": {
+    "algorithm": "aes-256-gcm",
+    "key_source": "auto",
+    "interdependency": "chain",
+    "backup": true,
+    "replace_originals": false,
+    "shard_count": 3
+  },
+  "anti_debug": {
+    "enabled": true,
+    "action": "exit",
+    "checks": [
+      "ptrace",
+      "debugger",
+      "breakpoint",
+      "timing"
+    ]
+  },
+  "virtualization": {
+    "enabled": false,
+    "mode": "partial",
+    "functions": [],
+    "glob_patterns": []
+  },
+  "watermark": {
+    "enabled": true,
+    "levels": [
+      "file",
+      "code"
+    ],
+    "batch_id": ""
+  },
+  "expiration": {
+    "enabled": false,
+    "expires_at": null,
+    "ntp_check": true,
+    "on_network_fail": "reject"
+  },
+  "environment": {
+    "enabled": false,
+    "bind_directory": null,
+    "bind_username": null,
+    "bind_env_vars": []
+  },
+  "sandbox": {
+    "enabled": true
+  },
+  "project": {
+    "name": "unnamed",
+    "version": "1.0.0",
+    "entry": "main.py"
+  },
+  "output": {
+    "dir": "./dist",
+    "keep_source_map": false
+  }
+}

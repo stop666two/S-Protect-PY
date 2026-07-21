@@ -94,6 +94,7 @@ class EncryptConfig:
     aad_context: str = "S-Protect-PY"               # AAD 附加认证数据
     extra_layers: list[str] = field(default_factory=list)  # 额外加密层
     hybrid: HybridEncryptConfig = field(default_factory=HybridEncryptConfig)
+    workers: int = 0                                  # 并行工作线程（0=自动=CPU核数）
 
 @dataclass
 class AntiDebugCheckConfig:

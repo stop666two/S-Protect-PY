@@ -2,6 +2,7 @@
 from __future__ import annotations
 import os, json, secrets, hashlib, hmac, zlib
 from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from sprotect.types import Config
 from sprotect.config import merge_file_config
@@ -68,40 +69,38 @@ def build(project_dir, output_dir, config):
             hybrid_key = ecc_encrypt_master_key(master_key, pub)
     shards = split_key(master_key, len(py_files))
 
-    module_map = {}
-    raw_payloads = []
+    module_map: dict[str, str] = {}
+    raw_payloads: list[bytes] = []
+    results: list[tuple[str, str, bytes] | None] = [None] * len(py_files)
 
-    for idx, fp in enumerate(py_files):
+    def _process_one(idx: int, fp: str) -> tuple[str, str, bytes] | None:
+        """Process a single file: obfuscate, encrypt, write .pye."""
         fc = merge_file_config(config, fp)
         rel = os.path.relpath(fp, project_dir).replace("\\", "/")
         mod_name = rel.replace(".py", "").replace("/", ".")
         if mod_name.endswith(".__init__"): mod_name = mod_name[:-9]
         hex_name = secrets.token_hex(6)
-
         try:
             src = open(fp, encoding="utf-8-sig").read()
             if fc.obfuscate.level.value >= 1:
                 src = Obfuscator(fc.obfuscate, shared_map, shared_params).obfuscate(src)
             if wm: src = wm.code(src)
-
-            extra = fc.encrypt.extra_layers if fc.encrypt.extra_layers else []
+            extra = fc.encrypt.extra_layers or []
             if extra:
                 ct, hdr = encrypt_payload_v2(src.encode(), master_key, extra,
                                              config.encrypt.compress_level)
                 hdr_json = json.dumps(hdr, separators=(",", ":"))
-                payload = {"v": 2, "h": hdr_json, "d": ct.hex()}
-                payload_bytes = json.dumps(payload, separators=(",", ":")).encode()
+                payload_bytes = json.dumps({"v":2,"h":hdr_json,"d":ct.hex()},
+                                           separators=(",", ":")).encode()
             else:
                 payload_bytes = encrypt_payload(src.encode(), master_key,
                                            config.encrypt.compress_level,
                                            config.encrypt.polymorphic_padding_max)
             p = json.loads(payload_bytes.decode())
-
             kpos = secrets.randbelow(5)
             keys = [os.urandom(32) for _ in range(5)]
             keys[kpos] = shards[idx]
             for i, kv in enumerate(keys): p[f"k{i+1}"] = kv.hex()
-
             xored = bytearray(32)
             for kb in keys:
                 for i in range(min(32, len(kb))): xored[i] ^= kb[i]
@@ -110,17 +109,35 @@ def build(project_dir, output_dir, config):
                 import blake3; p["f2"] = blake3.blake3(shards[idx]).hexdigest()[3:11]
             except:
                 p["f2"] = hashlib.sha256(shards[idx]).hexdigest()[3:11]
-            try: p["f3"] = hmac.new(shards[idx], b"S-Protect-v6-key-verify", "sha256").hexdigest()[:8]
-            except: p["f3"] = ""
+            try:
+                p["f3"] = hmac.new(shards[idx], b"S-Protect-v6-key-verify", "sha256").hexdigest()[:8]
+            except:
+                p["f3"] = ""
             if wm: p["wm"] = wm.file_payload()
-
             payload = json.dumps(p, separators=(",", ":")).encode()
             pye_path = os.path.join(rd, hex_name + ".pye")
             with open(pye_path, "wb") as f: f.write(payload)
+            return mod_name, hex_name, payload
+        except Exception as e:
+            print(f"  WARN: {rel} - {e}")
+            return None
+
+    workers = config.encrypt.workers or os.cpu_count() or 1
+    if workers > 1 and len(py_files) > 1:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            fut_map = {pool.submit(_process_one, i, fp): i for i, fp in enumerate(py_files)}
+            for fut in as_completed(fut_map):
+                i = fut_map[fut]
+                results[i] = fut.result()
+    else:
+        for i, fp in enumerate(py_files):
+            results[i] = _process_one(i, fp)
+
+    for r in results:
+        if r:
+            mod_name, hex_name, payload = r
             module_map[mod_name] = hex_name
             raw_payloads.append(payload)
-        except Exception as e:
-            print(f"  WARN: {rel} - {e}"); continue
 
     sigs = chain_hash(raw_payloads, master_key)
     for idx, (rel, _) in enumerate([(fp, "") for fp in py_files]):

@@ -57,7 +57,8 @@ def _enc(d): return EncryptConfig(
     polymorphic_padding_max=d.get("polymorphic_padding_max",512),
     aad_context=d.get("aad_context","S-Protect-PY"),
     extra_layers=d.get("extra_layers",[]),
-    hybrid=_extral_hybrid(d.get("hybrid",{})))
+    hybrid=_extral_hybrid(d.get("hybrid",{})),
+    workers=d.get("workers",0))
 
 def _adbc(d): return AntiDebugCheckConfig(check=d.get("check",""), enabled=d.get("enabled",True), action=d.get("action"))
 
@@ -203,7 +204,7 @@ def gen_default(path: str) -> Path:
             "backup":True,"backup_max_count":5,"replace_originals":False,
             "shard_count":3,"shard_min_files":2,"compress_level":9,
             "polymorphic_padding":True,"polymorphic_padding_max":512,"aad_context":"S-Protect-PY",
-            "extra_layers":[],"hybrid":{}},
+            "extra_layers":[],"hybrid":{},"workers":0},
         "anti_debug":{"enabled":True,"action":"exit",
             "checks":["pdb","ptrace","debugger","vm","sandbox","timing","cuckoo","ida","procmon"],
             "per_check_actions":[],"process_whitelist":[],"block_tracing":True,

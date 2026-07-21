@@ -1,91 +1,165 @@
 {
   // ==========================================
-  // S-Protect-PY 全局配置文件
+  // S-Protect-PY 全局配置文件（完整版）
   // ==========================================
 
   // ========== 项目信息 ==========
   project: {
-    name: "myapp",          // 项目名称
-    version: "1.0.0",       // 版本号
-    entry: "main.py",       // 入口文件（放在 project/ 下）
+    name: "myapp",              // 项目名称
+    version: "1.0.0",           // 版本号
+    entry: "main.py",           // 入口文件（相对 project/）
+    description: "",             // 项目描述
+    author: "",                  // 作者
   },
 
   // ========== 文件过滤 ==========
   files: {
-    include: ["**/*.py"],   // 要加密的文件模式（默认所有 .py）
-    exclude: [],             // 要排除的文件模式（如 ["tests/**"]）
+    include: ["**/*.py"],       // 包含的文件模式
+    exclude: [],                 // 排除的文件模式
+    exclude_dirs: ["_runtime", "_backup", "__pycache__", ".git"],
   },
 
   // ========== 混淆设置 ==========
   obfuscate: {
-    level: 5,               // 混淆等级 1-5（5=最高）
-    rename_variables: true,  // 重命名局部变量
-    rename_functions: true,  // 重命名函数名
-    rename_classes: true,    // 重命名类名
+    level: 5,                   // 混淆等级 1-5
+    rename_variables: true,     // 重命名变量
+    rename_functions: true,     // 重命名函数
+    rename_classes: true,       // 重命名类
     rename_rules: {
-      style: "hex",          // 命名风格: hex | chinese | invisible | math-symbols
-      reserved: ["__init__", "main"],  // 保留不改的名字
+      style: "hex",             // 命名风格: hex | chinese | invisible | math-symbols | custom
+      reserved: ["__init__", "main"],  // 保留名称（不改名）
+      prefix: "_0x",            // 混淆名前缀
+      suffix: "",               // 混淆名后缀
+      min_length: 6,            // 混淆名最小长度
+      blacklist: [],            // 黑名单（强制不改名的标识符）
     },
-    encrypt_strings: true,   // 加密字符串字面量
-    encrypt_numbers: false,  // 加密数字字面量
+    encrypt_strings: true,      // 加密字符串
+    encrypt_numbers: false,     // 加密数字
+    string_min_length: 3,       // 字符串最小加密长度
+    string_encrypt_ratio: 1.0,  // 字符串加密比例 0-1
     control_flow_flattening: true,  // 控制流平坦化
-    dead_code_injection: true,      // 死代码注入 + 不透明谓词
+    dead_code_injection: true,  // 死代码注入
+    dead_code_density: 0.3,     // 死代码密度
+    opaque_predicate_count: 2,  // 不透明谓词数量
+    remove_docstrings: false,   // 删除文档字符串
+    remove_comments: true,      // 删除注释（ast.unparse 自动处理）
+    strip_blank_lines: false,   // 删除空行
+    max_line_length: 0,         // 最大行长（0=不限）
   },
 
   // ========== 加密设置 ==========
   encrypt: {
-    algorithm: "aes-256-gcm",   // 加密算法: aes-256-gcm | xor
+    algorithm: "aes-256-gcm",   // 加密算法: aes-256-gcm | x25519-aes | chacha20 | hybrid
+    key_source: "auto",         // 密钥来源: auto | file | env
+    key_file: null,             // 密钥文件路径（key_source=file 时）
+    key_env_var: null,          // 密钥环境变量（key_source=env 时）
     interdependency: "chain",   // 文件依赖: chain | full-mesh | hybrid
     backup: true,               // 构建前自动备份
-    shard_count: 3,             // 密钥分片数量
+    backup_max_count: 5,        // 最大备份数
+    replace_originals: false,   // 是否替换原文件
+    shard_count: 3,             // 密钥分片数
+    shard_min_files: 2,         // 最少分片文件数
+    compress_level: 9,          // zlib 压缩等级 0-9
+    polymorphic_padding: true,  // 多态填充（每次构建大小不同）
+    polymorphic_padding_max: 512, // 最大随机填充字节
+    aad_context: "S-Protect-PY", // AAD 附加认证数据
   },
 
   // ========== 反调试/反VM/反沙箱 ==========
   anti_debug: {
     enabled: true,
-    action: "exit",            // exit | warn | corrupt
-    checks: ["pdb", "ptrace", "debugger", "vm", "sandbox", "timing", "cuckoo", "ida", "procmon"],
+    action: "exit",             // exit | warn | corrupt
+    checks: [                   // 检测项（按需增删）
+      "pdb", "ptrace", "debugger", "vm",
+      "sandbox", "timing", "cuckoo", "ida", "procmon",
+    ],
+    per_check_actions: [],      // 逐检测项覆盖动作 [{check:"vm", action:"warn"}]
+    process_whitelist: [],      // 进程白名单
+    block_tracing: true,        // 阻断 sys.settrace / sys.setprofile
+    timing_threshold: 2.0,      // 时序检测阈值（秒）
+    exit_code: 1,               // 退出码
+    wipe_memory: true,          // 退出时清空敏感内存
+    corrupt_on_exit: false,     // 退出时破坏内存
   },
 
   // ========== 代码虚拟化 ==========
   virtualization: {
-    enabled: false,            // 是否启用（会大幅降低性能）
-    mode: "partial",           // partial | full
-    functions: [],             // 要虚拟化的函数列表
-    glob_patterns: [],         // 文件通配符
+    enabled: false,             // 启用虚拟化（性能下降 10-50x）
+    mode: "partial",            // partial | full
+    functions: [],              // 要虚拟化的函数列表
+    glob_patterns: [],          // 文件通配符
+    exclude_functions: [],      // 排除虚拟化的函数
+    inline_threshold: 50,       // 内联阈值（行数）
+    interpreter_obfuscate: true, // 混淆解释器代码
   },
 
   // ========== 水印 ==========
   watermark: {
     enabled: true,
-    levels: ["file", "code", "runtime"],  // 文件级+代码级+运行时
-    batch_id: "",              // 批次ID（留空自动生成）
+    levels: ["file", "code", "runtime"],  // 水印层级
+    batch_id: "",               // 批次 ID（留空自动生成）
+    multi_batch: [],            // 多批次 ID 列表
+    visible: false,             // 是否可见
+    watermark_key: "",          // 水印校验密钥
   },
 
   // ========== 过期时间 ==========
   expiration: {
     enabled: false,
-    expires_at: null,          // 过期时间: "2027-12-31T23:59:59Z"
-    ntp_check: true,           // 联网校准时间
-    on_network_fail: "reject", // 网络不通时: reject | allow
+    expires_at: null,           // 过期时间 "2027-12-31T23:59:59Z"
+    grace_period_hours: 0,      // 过期宽限期（小时）
+    ntp_check: true,            // 联网校准时间
+    ntp_servers: [              // NTP 服务器列表（可自定义，内置5个）
+      "pool.ntp.org",
+      "time.google.com",
+      "time.cloudflare.com",
+      "time.windows.com",
+      "time.apple.com",
+    ],
+    ntp_timeout: 3.0,           // NTP 超时（秒）
+    on_network_fail: "reject",  // 网络不通: reject | allow | grace
+    check_interval_hours: 24,   // 运行时检查间隔
+    max_drift_seconds: 3600,    // 最大时间偏差（秒）
   },
 
   // ========== 环境指纹 ==========
   environment: {
     enabled: false,
-    bind_directory: null,      // 绑定到特定目录
-    bind_username: null,       // 绑定到特定用户名
-    bind_env_vars: [],         // 绑定到环境变量
+    bind_directory: null,       // 绑定到目录
+    bind_username: null,        // 绑定到用户名
+    bind_env_vars: [],          // 绑定到环境变量
+    bind_file_hash: null,       // 绑定到文件哈希
+    bind_mac_address: null,     // 绑定到 MAC 地址
+    bind_hardware_id: null,     // 绑定到硬件 ID
+    strict_mode: false,         // 严格模式
+    fingerprint_algorithm: "sha256",
   },
 
   // ========== 沙箱检测 ==========
   sandbox: {
     enabled: true,
+    detect_cuckoo: true,        // 检测 Cuckoo
+    detect_sandboxie: true,     // 检测 Sandboxie
+    detect_docker: false,       // 检测 Docker 容器
+    detect_ci: false,           // 检测 CI 环境（GitHub Actions 等）
+  },
+
+  // ========== 启动器配置 ==========
+  bootloader: {
+    name: "main.py",            // 启动器文件名
+    include_runtime_loader: true, // 包含 runtime 加载器
+    minimal_boot: false,        // 极简启动
+    hide_python_windows: false, // 隐藏控制台窗口（Windows）
+    anti_dump: true,            // 反内存 Dump
+    periodic_check_interval: 5.0, // 周期自检间隔（秒）
   },
 
   // ========== 输出设置 ==========
   output: {
-    dir: "./output",
-    keep_source_map: false,
+    dir: "./output",            // 输出目录
+    keep_source_map: false,     // 保留源码映射
+    runtime_dir_name: "_runtime", // runtime 目录名
+    preserve_non_py: true,      // 保留非 py 文件
+    verbose: false,             // 详细输出
   },
 }

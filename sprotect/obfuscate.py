@@ -13,23 +13,23 @@ def collect_defs(source: str, cfg: ObfuscateConfig, mapping: dict[str, str],
         tree = ast.parse(source)
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                if node.name not in reserved and not node.name.startswith("__"):
+                if node.name not in reserved and not node.name.startswith("_"):
                     mapping.setdefault(node.name, gen.gen())
                 for arg in node.args.args + node.args.kwonlyargs + node.args.posonlyargs:
                     if param_names is not None: param_names.add(arg.arg)
                 if node.args.vararg and param_names is not None: param_names.add(node.args.vararg.arg)
                 if node.args.kwarg and param_names is not None: param_names.add(node.args.kwarg.arg)
             elif isinstance(node, ast.ClassDef):
-                if node.name not in reserved and not node.name.startswith("__"):
+                if node.name not in reserved and not node.name.startswith("_"):
                     mapping.setdefault(node.name, gen.gen())
             elif isinstance(node, ast.ExceptHandler) and node.name and param_names is not None:
                 param_names.add(node.name)
             elif cfg.rename_variables and isinstance(node, ast.Assign):
                 for t in node.targets:
-                    if isinstance(t, ast.Name) and t.id not in reserved and not t.id.startswith("__") and t.id not in (param_names or set()):
+                    if isinstance(t, ast.Name) and t.id not in reserved and not t.id.startswith("_") and t.id not in (param_names or set()):
                         mapping.setdefault(t.id, gen.gen())
             elif cfg.rename_variables and isinstance(node, ast.AnnAssign):
-                if isinstance(node.target, ast.Name) and node.target.id not in reserved and not node.target.id.startswith("__") and node.target.id not in (param_names or set()):
+                if isinstance(node.target, ast.Name) and node.target.id not in reserved and not node.target.id.startswith("_") and node.target.id not in (param_names or set()):
                     mapping.setdefault(node.target.id, gen.gen())
     except SyntaxError: pass
 
@@ -73,9 +73,14 @@ class Obfuscator(ast.NodeTransformer):
         self.gen = NameGen(cfg.rename_rules.style, cfg.rename_rules.dictionary)
         self._class_depth = 0; self._fstring_depth = 0; self._params: list[set[str]] = []
         self._dead_count = 0
+        # Feature detection flags for protected patterns
+        self._in_dataclass = False
+        self._in_enum = False
+        self._enum_bases: set[str] = set()
+        self._protected_names: set[str] = set()
 
     def _name(self, old: str) -> str:
-        if old.startswith("__") or old in self.reserved: return old
+        if old.startswith("_") or old in self.reserved: return old
         self.map.setdefault(old, self.gen.gen())
         return self.map[old]
 
@@ -114,6 +119,22 @@ class Obfuscator(ast.NodeTransformer):
                     node.body.insert(0, _opaque_predicate())
                 self._dead_count += 1
 
+    def _has_decorator(self, node: ast.ClassDef | ast.FunctionDef, name: str) -> bool:
+        for d in node.decorator_list:
+            if isinstance(d, ast.Name) and d.id == name: return True
+            if isinstance(d, ast.Attribute) and d.attr == name: return True
+            if isinstance(d, ast.Call):
+                fn = d.func
+                if isinstance(fn, ast.Name) and fn.id == name: return True
+                if isinstance(fn, ast.Attribute) and fn.attr == name: return True
+        return False
+
+    def _has_base(self, node: ast.ClassDef, name: str) -> bool:
+        for b in node.bases:
+            if isinstance(b, ast.Attribute) and b.attr == name: return True
+            if isinstance(b, ast.Name) and b.id == name: return True
+        return False
+
     def visit_alias(self, node: ast.alias):
         if self.cfg.rename_variables and node.name in self.map:
             node.name = self.map[node.name]
@@ -123,7 +144,12 @@ class Obfuscator(ast.NodeTransformer):
         self._push_params(node); node = self.generic_visit(node); self._pop_params(); return node
 
     def visit_Name(self, node: ast.Name):
-        if self.cfg.rename_variables and node.id in self.map and not self._is_param(node.id) and node.id not in self.param_names:
+        if (self._in_dataclass or self._in_enum) and isinstance(node.ctx, ast.Store):
+            self._protected_names.add(node.id)
+        if (self.cfg.rename_variables and node.id in self.map
+            and not self._is_param(node.id) and node.id not in self.param_names
+            and node.id not in self._protected_names
+            and node.id not in ("setter", "deleter")):
             node.id = self.map[node.id]
         return node
 
@@ -137,7 +163,21 @@ class Obfuscator(ast.NodeTransformer):
 
     def visit_ClassDef(self, node: ast.ClassDef):
         if self.cfg.rename_classes: node.name = self._name(node.name)
-        self._class_depth += 1; self.generic_visit(node); self._class_depth -= 1; return node
+        prev_dc, prev_enum = self._in_dataclass, self._in_enum
+        self._in_dataclass = self._has_decorator(node, "dataclass")
+        self._in_enum = any(
+            isinstance(b, (ast.Name, ast.Attribute))
+            and (b.id if isinstance(b, ast.Name) else b.attr) in ("Enum", "IntEnum", "StrEnum", "IntFlag", "Flag")
+            for b in node.bases
+        )
+        protected_before = set(self._protected_names)
+        self._class_depth += 1; self.generic_visit(node); self._class_depth -= 1
+        if self._in_dataclass or self._in_enum:
+            protected_now = self._protected_names - protected_before
+            for pn in protected_now:
+                self.map.pop(pn, None)
+        self._in_dataclass, self._in_enum = prev_dc, prev_enum
+        return node
 
     def visit_ExceptHandler(self, node: ast.ExceptHandler):
         if node.name and node.name in self.map:

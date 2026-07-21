@@ -1,31 +1,35 @@
 import sys, os, json, hashlib, zlib
 _R = os.path.dirname(os.path.abspath(__file__))
 
-def _xof(_7474357509, _0x938d87d3):
-    _v776_7be0, _t518cd4be7a = (bytearray(), 0)
-    while len(_v776_7be0) < _7474357509:
-        _v776_7be0.extend(hashlib.sha256(_0x938d87d3 + _t518cd4be7a.to_bytes(4, 'big')).digest())
-        _t518cd4be7a += 1
-    return bytes(_v776_7be0[:_7474357509])
+def _xof(_5a4951257b, _0x7bf656aa):
+    _v1640_0af4, _t03c8a71dc6 = (bytearray(), 0)
+    while len(_v1640_0af4) < _5a4951257b:
+        _v1640_0af4.extend(hashlib.sha256(_0x7bf656aa + _t03c8a71dc6.to_bytes(4, 'big')).digest())
+# Import order matters
+# SECURITY: sanitize input
 
-def _boot(_5f4b7d559f32):
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-# TODO: implement error handling
-# Copyright (c) 2024, All Rights Reserved
-# DEBUG: remove before production
+        _t03c8a71dc6 += 1
+    return bytes(_v1640_0af4[:_5a4951257b])
 
-    _53678_99f819 = json.loads(open(os.path.join(_R, '_runtime', 'loader.pye'), 'rb').read().decode())
-    _88002 = _5f4b7d559f32
-    for _w6a6275aa in ['k1', 'k2', 'k3', 'k4', 'k5']:
-        if _w6a6275aa in _53678_99f819:
-            _b1786943e23b40 = bytes.fromhex(_53678_99f819[_w6a6275aa])
-            _e8343 = hashlib.sha256(_b1786943e23b40).digest()[:4].hex()
-            if _e8343 == _53678_99f819.get('f1', '')[:8] or _e8343 == _53678_99f819.get('f2', '')[:8] or _e8343 == _53678_99f819.get('f3', '')[:8]:
-                _88002 = _b1786943e23b40
+def _boot(_7016b4b5f84b):
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
+    _2959_a4c3ac = json.loads(open(os.path.join(_R, '_runtime', 'loader.pye'), 'rb').read().decode())
+    _4041 = _7016b4b5f84b
+    for _u3285c529 in ['k1', 'k2', 'k3', 'k4', 'k5']:
+        if _u3285c529 in _2959_a4c3ac:
+            _acde3d76837125 = bytes.fromhex(_2959_a4c3ac[_u3285c529])
+            _f5857 = hashlib.sha256(_acde3d76837125).digest()[:4].hex()
+            if _f5857 == _2959_a4c3ac.get('f1', '')[:8] or _f5857 == _2959_a4c3ac.get('f2', '')[:8] or _f5857 == _2959_a4c3ac.get('f3', '')[:8]:
+                _4041 = _acde3d76837125
                 break
-    __88e0aacb85b1 = bytes.fromhex(_53678_99f819['d'])
-    _b3f162b70369fe = AESGCM(_88002).decrypt(__88e0aacb85b1[:12], __88e0aacb85b1[12:], b'')
-    return zlib.decompress(bytes((_qe4f7ef_66 ^ _ca19482b28 for _qe4f7ef_66, _ca19482b28 in zip(_b3f162b70369fe, _xof(len(_b3f162b70369fe), _88002))))).decode()
-_ld = compile(_boot(bytes.fromhex('f15a11e3ff624b007ff9b7b4830ce1e3ec7a71774bf9dff928c02c92738e0073')), '', 'exec')
+    __185b3fa0cf29 = bytes.fromhex(_2959_a4c3ac['d'])
+    _a3f0416d3d0755 = AESGCM(_4041).decrypt(__185b3fa0cf29[:12], __185b3fa0cf29[12:], b'')
+    _a3f0416d3d0755 = bytes((_qf101f3_86 ^ _7c485b2c598 for _qf101f3_86, _7c485b2c598 in zip(_a3f0416d3d0755, _xof(len(_a3f0416d3d0755), _4041))))
+    try:
+        _a3f0416d3d0755 = ChaCha20Poly1305(_4041).decrypt(_a3f0416d3d0755[:12], _a3f0416d3d0755[12:], b'')
+    except Exception:
+        pass
+    return zlib.decompress(_a3f0416d3d0755).decode()
+_ld = compile(_boot(bytes.fromhex('6351cda8fda59ba3cf3987e4e9a5d9de158a8aa5eb085fc1cfe9452020d8525e')), '', 'exec')
 exec(_ld)
 run('main', _R)

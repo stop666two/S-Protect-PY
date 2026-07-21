@@ -3,6 +3,18 @@
 from __future__ import annotations
 import os, hashlib, hmac, json, secrets, zlib
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives import hashes
+
+def derive_layer_key(master_key: bytes, info: str) -> tuple[bytes, bytes]:
+    salt = hashlib.sha256(info.encode()).digest()[:16]
+    hkdf = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        info=info.encode(),
+    )
+    return hkdf.derive(master_key), salt
 
 def aes_key() -> bytes:
     return AESGCM.generate_key(bit_length=256)

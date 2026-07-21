@@ -276,8 +276,10 @@ def xo(l, s):
         r.extend(hashlib.sha256(s + c.to_bytes(4,"big")).digest()); c += 1
     return bytes(r[:l])
 
-def bt(k):
+LIST = {lk_list}
+def bt():
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
+    k = bytes.fromhex("".join(LIST[i] for i in [{lk_idx}]))
     p = json.loads(open(os.path.join(a,"{rd}","loader.pye"),"rb").read().decode())
     rk = k
     for kn in ["k1","k2","k3","k4","k5"]:
@@ -295,7 +297,7 @@ def bt(k):
         pass
     return zlib.decompress(x).decode()
 
-ld = compile(bt(bytes.fromhex("{lk}")), "", "exec")
+ld = compile(bt(), "", "exec")
 exec(ld)
 run("{entry}", a)
 '''
@@ -441,34 +443,94 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
              hybrid_key: bytes | None = None, algorithm: str = "RSA") -> str:
     ep = os.path.join(output_dir, entry_module.replace(".", os.sep) + ".py")
     os.makedirs(os.path.dirname(ep), exist_ok=True)
-    if hybrid_key is not None:
-        boot = _HYBRID_BOOT_STUB.format(
-            rd="_runtime", entry=entry_module,
-            hk=hybrid_key.hex(), ha=algorithm, kp="sprotect_private.pem")
-    else:
-        boot = _BOOT_STUB.format(lk=loader_key.hex(), rd="_runtime", entry=entry_module)
 
-    # Generate LARGE amounts of decoy content
-    decoy_count = secrets.randbelow(20) + 30  # 30-50 fake boot functions
-    decoy_boot = _gen_decoy_boot_like(decoy_count)
-    padding = _gen_massive_padding(80)  # 80KB of padding
+    # --- Scatter the loader key into fragments ---
+    lk_hex = loader_key.hex()  # 64 hex chars
+    frag_count = secrets.randbelow(4) + 5  # 5-8 real fragments
+    real_frags = []
+    for i in range(frag_count):
+        start = (i * 64) // frag_count
+        end = ((i + 1) * 64) // frag_count
+        real_frags.append(lk_hex[start:end])
 
-    # Generate fake exec blocks for each decoy function
+    # Generate fake fragments (same lengths, random data)
+    fake_frags = [_rand_hex(len(f)) for f in real_frags]
+    # Total fragments list: real first, then fake
+    all_frags = real_frags + fake_frags  # indices 0..N-1 real, N..2N-1 fake
+    real_indices = list(range(frag_count))  # [0,1,2,3,4] - real ones
+    fake_indices = list(range(frag_count, frag_count * 2))  # [N..2N-1] - fake ones
+
+    # Shuffle real indices order for the real boot function
+    shuffled_real = list(real_indices)
+    secrets.SystemRandom().shuffle(shuffled_real)
+
+    # --- Build the fragment list constant ---
+    frag_var_names = [_rand_name() for _ in range(len(all_frags))]
+    frag_defs = "\n".join(f"{n} = '{v}'" for n, v in zip(frag_var_names, all_frags))
+    frag_list_code = f"[{', '.join(frag_var_names)}]"
+
+    # --- Generate the REAL boot function ---
+    real_idx_list = ", ".join(str(i) for i in real_indices)
+    boot = _BOOT_STUB.format(
+        lk_list=frag_list_code, lk_idx=real_idx_list,
+        rd="_runtime", entry=entry_module)
+
+    # --- Generate fake boot functions with SELF-CONTAINED fake keys ---
+    decoy_count = secrets.randbelow(15) + 15  # 15-30 fake
+    fake_funcs = []
     fake_execs = []
-    for line in decoy_boot.split("\n"):
-        if line.startswith("def ") or line.startswith("async def "):
-            fn = line.split("(")[0].split("def ")[-1].split("async ")[-1].strip()
-            fake_hex = _rand_hex(64)
-            fake_execs.append(
-                f"try:\n"
-                f"    _e = compile({fn}(bytes.fromhex('{fake_hex}')), '', 'exec')\n"
-                f"    exec(_e)\n"
-                f"except Exception:\n"
-                f"    pass\n"
-            )
+    for _ in range(decoy_count):
+        fn = _rand_name()
+        fake_key = _rand_hex(64)
+        wrong_count = secrets.randbelow(3) + 3
+        fake_frags = [_rand_hex(secrets.randbelow(12)+6) for _ in range(wrong_count)]
+        fake_ns = " ".join(f"'{s}'" for s in fake_frags)
+        fake_funcs.append(f"""def {fn}():
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
+    import hashlib, json, os, zlib
+    try:
+        k = bytes.fromhex("{fake_key}")
+        p = json.loads(open(os.path.join(a,"_runtime","loader.pye"),"rb").read().decode())
+        rk = k
+        for kn in ["k1","k2","k3","k4","k5"]:
+            if kn in p:
+                v = bytes.fromhex(p[kn])
+                if hashlib.sha256(v).digest()[:4].hex() == p.get("f1","")[:8]:
+                    rk = v; break
+        ct = bytes.fromhex(p["d"])
+        x = AESGCM(rk).decrypt(ct[:12], ct[12:], b"")
+        x = bytes(ib^j for ib,j in zip(x,xo(len(x),rk)))
+        x = ChaCha20Poly1305(rk).decrypt(x[:12], x[12:], b"")
+        r = zlib.decompress(x)
+    except Exception:
+        r = b''
+    return r
+""")
+        fake_execs.append(f"""try:
+    _e = compile({fn}(), '', 'exec')
+    exec(_e)
+except Exception:
+    pass
+""")
+    fake_func_block = "\n".join(fake_funcs)
     fake_exec_block = "\n".join(fake_execs)
 
-    boot = _gen_fake_imports_large + "\n\n" + padding + "\n\n" + decoy_boot + "\n\n" + fake_exec_block + "\n\n" + boot
+    # --- Scatter fragments in different blocks ---
+    # Put some fragments in padding, some in fake function areas
+    scattered = []
+    fi = 0
+    for frag in all_frags:
+        scattered.append(f"# {secrets.token_hex(32)}")
+        scattered.append(f"{_rand_name()} = '{frag}'")
+        scattered.append(f"# {secrets.token_hex(32)}")
+        fi += 1
+    scattered_code = "\n".join(scattered)
+
+    padding = _gen_massive_padding(50)
+
+    # Assemble final boot
+    boot = (_gen_fake_imports_large + "\n\n" + padding + "\n\n" + frag_defs + "\n\n" +
+            scattered_code + "\n\n" + fake_func_block + "\n\n" + fake_exec_block + "\n\n" + boot)
 
     from sprotect.minify import minify_source
     boot = minify_source(boot, add_garbage=True)

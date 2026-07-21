@@ -7,10 +7,18 @@ from sprotect.types import Config
 from sprotect.config import merge_file_config
 from sprotect.obfuscate import Obfuscator, collect_defs
 from sprotect.project import find_py_files
-from sprotect.crypto import aes_key, split_key, chain_hash, encrypt_payload, generate_decoy_payload
+from sprotect.crypto import aes_key, split_key, chain_hash, encrypt_payload, encrypt_payload_v2, generate_decoy_payload
 from sprotect.loader import gen_boot, gen_loader_source
 from sprotect.backup import backup
 from sprotect.minify import minify_source
+
+
+def _extract_d(pye_bytes: bytes) -> tuple[str, dict]:
+    try:
+        p = json.loads(pye_bytes.decode())
+        return p.get("d", ""), p
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return "", {}
 
 
 def build(project_dir, output_dir, config):
@@ -50,9 +58,17 @@ def build(project_dir, output_dir, config):
             src = minify_source(src, add_garbage=False)
             if wm: src = wm.code(src)
 
-            payload_bytes = encrypt_payload(src.encode(), master_key,
-                                       config.encrypt.compress_level,
-                                       config.encrypt.polymorphic_padding_max)
+            extra = fc.encrypt.extra_layers if fc.encrypt.extra_layers else []
+            if extra:
+                ct, hdr = encrypt_payload_v2(src.encode(), master_key, extra,
+                                             config.encrypt.compress_level)
+                hdr_json = json.dumps(hdr, separators=(",", ":"))
+                payload = {"v": 2, "h": hdr_json, "d": ct.hex()}
+                payload_bytes = json.dumps(payload, separators=(",", ":")).encode()
+            else:
+                payload_bytes = encrypt_payload(src.encode(), master_key,
+                                           config.encrypt.compress_level,
+                                           config.encrypt.polymorphic_padding_max)
             p = json.loads(payload_bytes.decode())
 
             kpos = secrets.randbelow(5)

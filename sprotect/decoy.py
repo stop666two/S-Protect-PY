@@ -6,8 +6,8 @@ from sprotect.minify import minify_source
 
 
 _FUNCTION_TEMPLATES = [
-    "def {name}({args}):\n    {body}\n    return {result}\n",
-    "async def {name}({args}):\n    {body}\n    return {result}\n",
+    "def {name}({args}):\n{body}\n    return {result}\n",
+    "def {name}({args}):\n{body}\n    return {result}\n",
     "class {name}:\n    def __init__(self):\n        self.{attr} = {val}\n    def {method}(self):\n        return self.{attr}\n",
 ]
 

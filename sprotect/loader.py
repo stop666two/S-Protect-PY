@@ -371,6 +371,63 @@ _boot("{kp}")
 '''
 
 
+def _gen_decoy_boot_functions(count: int = 3) -> str:
+    """Generate realistic-looking decoy functions for the boot stub."""
+    from sprotect.decoy import generate_decoy_source
+    parts = []
+    for _ in range(count):
+        parts.append(generate_decoy_source())
+    return "\n".join(parts)
+
+
+def _gen_fake_constants() -> str:
+    """Generate fake constant definitions to bloat the boot stub."""
+    lines = []
+    for _ in range(secrets.randbelow(4) + 3):
+        name = _rand_name()
+        val = secrets.choice([
+            f"'{secrets.token_hex(8)}'",
+            str(secrets.randbelow(999999)),
+            f"b'{secrets.token_hex(secrets.randbelow(16)+4)}'",
+            f"0x{secrets.token_hex(secrets.randbelow(4)+2)}",
+        ])
+        lines.append(f"{name} = {val}")
+    return "\n".join(lines)
+
+
+def _gen_fake_imports() -> str:
+    """Generate fake import statements (all must be valid at runtime)."""
+    valid_imports = [
+        "import sys, os, json, re, math, hashlib, base64, struct, zlib",
+        "import itertools, collections, functools, random, string",
+        "from math import sqrt, floor, ceil, sin, cos",
+        "from os import path, name, getpid",
+        "from sys import platform, version, argv",
+        "from hashlib import sha256, md5, sha1",
+        "from base64 import b64encode, b64decode",
+        "from struct import pack, unpack",
+        "import binascii, tempfile, uuid, copy",
+        "from random import randint, choice, seed",
+        "import logging, datetime, decimal, statistics",
+    ]
+    lines = []
+    for _ in range(secrets.randbelow(3) + 1):
+        lines.append(secrets.choice(valid_imports))
+    return "\n".join(lines)
+
+
+def _gen_opaque_predicate() -> str:
+    """Generate a single opaque predicate (always true)."""
+    x = secrets.randbelow(100000)
+    preds = [
+        f"if ({x} ^ {x}) + 1 == 1:\n    pass",
+        f"if {x} ** 0 == 1:\n    pass",
+        f"if len(str({x})) >= 1:\n    pass",
+        f"if isinstance({x}, int):\n    pass",
+    ]
+    return secrets.choice(preds)
+
+
 def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
              per_file_configs: dict[str, str], loader_key: bytes,
              hybrid_key: bytes | None = None, algorithm: str = "RSA") -> str:
@@ -382,6 +439,20 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
             hk=hybrid_key.hex(), ha=algorithm, kp="sprotect_private.pem")
     else:
         boot = _BOOT_STUB.format(lk=loader_key.hex(), rd="_runtime", entry=entry_module)
+
+    # Inject decoy content before minification
+    decoy_funcs = _gen_decoy_boot_functions(secrets.randbelow(3) + 2)
+    fake_consts = _gen_fake_constants()
+    fake_imports = _gen_fake_imports()
+    opaque = "\n".join(_gen_opaque_predicate() for _ in range(secrets.randbelow(3) + 1))
+
+    # Prepend: fake imports + decoy constants
+    header = fake_imports + "\n\n" + fake_consts + "\n\n" + opaque + "\n"
+    # Append: more decoy functions + opaque predicates
+    footer = "\n\n" + decoy_funcs + "\n" + opaque
+
+    boot = header + boot + footer
+
     from sprotect.minify import minify_source
     boot = minify_source(boot, add_garbage=True)
     with open(ep, "w", encoding="utf-8") as f: f.write(boot)

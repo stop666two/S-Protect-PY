@@ -63,6 +63,9 @@ class ObfuscateConfig:
     remove_comments: bool = True                     # 是否删除注释
     strip_blank_lines: bool = False                  # 是否删除空行
     max_line_length: int = 0                         # 最大行长（0=不限制）
+    string_split: bool = False                        # 字符串分割为碎片拼接
+    obfuscate_imports: bool = False                   # import 转为 __import__()
+    obfuscate_calls: bool = False                     # 函数调用混淆
 
 @dataclass
 class HybridEncryptConfig:

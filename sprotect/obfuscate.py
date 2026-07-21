@@ -102,8 +102,12 @@ class Obfuscator(ast.NodeTransformer):
         tree = ast.parse(src)
         self._collect(tree)
         tree = self.visit(tree)
+        if self.cfg.obfuscate_imports:
+            tree = _ImportObfuscator().visit(tree)
         if self.cfg.encrypt_strings or self.cfg.encrypt_numbers:
             tree = _LiteralEncryptor(self.cfg, self._fstring_depth).visit(tree)
+        if self.cfg.obfuscate_calls:
+            tree = _CallObfuscator().visit(tree)
         if self.cfg.dead_code_injection:
             self._inject_dead_code(tree)
         ast.fix_missing_locations(tree)
@@ -217,6 +221,56 @@ class Obfuscator(ast.NodeTransformer):
         self._fstring_depth += 1; r = self.generic_visit(n); self._fstring_depth -= 1; return r
 
 
+class _ImportObfuscator(ast.NodeTransformer):
+    """Transform import statements into __import__() calls."""
+
+    def visit_Import(self, node: ast.Import):
+        new_nodes: list[ast.AST] = []
+        for alias in node.names:
+            imp = ast.Call(func=ast.Name(id="__import__"), args=[ast.Constant(alias.name)], keywords=[])
+            if alias.asname:
+                new_nodes.append(ast.Assign(targets=[ast.Name(id=alias.asname, ctx=ast.Store())], value=imp))
+            else:
+                parts = alias.name.split(".")
+                if len(parts) > 1:
+                    new_nodes.append(ast.Assign(targets=[ast.Name(id=parts[0], ctx=ast.Store())], value=imp))
+                else:
+                    new_nodes.append(ast.Assign(targets=[ast.Name(id=parts[0], ctx=ast.Store())], value=imp))
+        return new_nodes if len(new_nodes) != 1 else new_nodes[0]
+
+    def visit_ImportFrom(self, node: ast.ImportFrom):
+        if not node.module:
+            return node
+        base = ast.Call(func=ast.Name(id="__import__"), args=[ast.Constant(node.module)], keywords=[])
+        new_nodes: list[ast.AST] = []
+        for alias in node.names:
+            attr = ast.Attribute(value=base, attr=alias.name, ctx=ast.Load())
+            target = alias.asname or alias.name
+            new_nodes.append(ast.Assign(targets=[ast.Name(id=target, ctx=ast.Store())], value=attr))
+        return new_nodes if len(new_nodes) != 1 else new_nodes[0]
+
+
+class _CallObfuscator(ast.NodeTransformer):
+    """Wrap function calls in lambda wrappers."""
+
+    def visit_Call(self, node: ast.Call):
+        self.generic_visit(node)
+        if isinstance(node.func, ast.Name) and node.func.id in ("__import__", "exec", "eval", "compile", "getattr", "hasattr"):
+            return node
+        if len(node.args) <= 3 and secrets.randbelow(3) == 0:
+            arg_names = [f"_a{i}" for i in range(len(node.args))]
+            lambda_args = ast.arguments(
+                args=[ast.arg(arg=n) for n in arg_names],
+                posonlyargs=[], kwonlyargs=[], kw_defaults=[], defaults=[])
+            inner_call = ast.Call(func=node.func,
+                args=[ast.Name(id=n, ctx=ast.Load()) for n in arg_names],
+                keywords=node.keywords)
+            lambda_node = ast.Lambda(args=lambda_args, body=inner_call)
+            return ast.Call(func=lambda_node,
+                args=node.args, keywords=[])
+        return node
+
+
 class _LiteralEncryptor(ast.NodeTransformer):
     def __init__(self, cfg: ObfuscateConfig, fdepth=0): self.cfg = cfg; self._fdepth = fdepth
     def visit_FormattedValue(self, n): self._fdepth += 1; r = self.generic_visit(n); self._fdepth -= 1; return r
@@ -224,6 +278,8 @@ class _LiteralEncryptor(ast.NodeTransformer):
 
     def visit_Constant(self, node):
         if isinstance(node.value, str) and self.cfg.encrypt_strings and len(node.value) > 1 and self._fdepth == 0:
+            if self.cfg.string_split and secrets.randbelow(2) == 0:
+                return _split_string(node.value, secrets.randbelow(3) + 2)
             e = base64.b64encode(node.value.encode()).decode()
             return ast.Call(func=ast.Attribute(value=ast.Call(func=ast.Attribute(
                 value=ast.Call(func=ast.Name(id="__import__"), args=[ast.Constant("base64")], keywords=[]),

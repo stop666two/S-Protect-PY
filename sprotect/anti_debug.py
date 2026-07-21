@@ -72,13 +72,13 @@ class AntiDebug:
     def _chk_sandbox(self):
         """Detect common malware analysis sandboxes."""
         if platform.system() == "Windows":
-            sandbox_indicators = [
-                "C:\\analysis", "C:\\sandbox", "C:\\malware",
-                "C:\\Users\\Administrator\\Desktop\\analysis",
-                "C:\\Users\\Sandbox", "C:\\Users\\Malware",
-            ]
-            for ind in sandbox_indicators:
-                if os.path.isdir(ind): return True
+            for ind in ["analysis", "sandbox", "malware"]:
+                p = os.path.join(os.environ.get("SYSTEMDRIVE", "C:") + "\\", ind)
+                if os.path.isdir(p): return True
+            ud = os.environ.get("USERPROFILE", "")
+            if ud:
+                for ind in ["Desktop\\analysis", "Sandbox", "Malware"]:
+                    if os.path.isdir(os.path.join(ud, ind)): return True
         if os.path.isfile("/proc/sys/kernel/ostype"):
             try:
                 with open("/proc/sys/kernel/ostype") as f:
@@ -95,12 +95,11 @@ class AntiDebug:
 
     def _chk_cuckoo(self):
         """Detect Cuckoo sandbox specific artifacts."""
-        cuckoo_indicators = [
-            "C:\\cuckoo", "C:\\analysis", "C:\\sandbox",
-            "/tmp/cuckoo", "/tmp/analysis",
-        ]
-        for ind in cuckoo_indicators:
+        for ind in ["/tmp/cuckoo", "/tmp/analysis"]:
             if os.path.isdir(ind): return True
+        sd = os.environ.get("SYSTEMDRIVE", "C:")
+        for ind in ["cuckoo", "analysis", "sandbox"]:
+            if os.path.isdir(os.path.join(sd + "\\", ind)): return True
         cuckoo_procs = ["cuckoo", "sandboxie", "joe"]
         if platform.system() == "Windows":
             try:

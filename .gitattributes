@@ -1,0 +1,11 @@
+# Force LF line endings for all source files
+*.py text eol=lf
+*.json5 text eol=lf
+*.json text eol=lf
+*.bat text eol=crlf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.txt text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf

@@ -1,10 +1,8 @@
-"""Cryptographic engine: multi-layer AES-256-GCM, RSA key wrapping, polymorphic padding."""
+"""Cryptographic engine: cross-file sharded key, multi-layer encryption, chain integrity."""
 
 from __future__ import annotations
-import os, hashlib, hmac, json, secrets, struct, zlib
+import os, hashlib, hmac, json, secrets, zlib
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.hazmat.primitives import hashes, serialization
 
 
 def aes_key() -> bytes:
@@ -17,87 +15,89 @@ def aes_encrypt(data: bytes, key: bytes, aad: bytes = b"") -> bytes:
 def aes_decrypt(ct: bytes, key: bytes, aad: bytes = b"") -> bytes:
     return AESGCM(key).decrypt(ct[:12], ct[12:], aad)
 
+def split_key(key: bytes, n: int) -> list[bytes]:
+    """Split key into N XOR shards. Reconstruct with xor_shards()."""
+    if n < 2: raise ValueError("Need at least 2 shards")
+    shards = [os.urandom(len(key)) for _ in range(n - 1)]
+    final = bytearray(len(key))
+    for i in range(len(key)):
+        v = key[i]
+        for s in shards: v ^= s[i]
+        final[i] = v
+    shards.append(bytes(final))
+    return shards
+
+def xor_shards(shards: list[bytes]) -> bytes:
+    r = bytearray(shards[0])
+    for s in shards[1:]:
+        for i in range(len(r)): r[i] ^= s[i]
+    return bytes(r)
+
+def chain_hash(payloads: list[dict], key: bytes) -> list[str]:
+    """Build circular HMAC chain using encrypted data field (d) only.
+    This ensures chain signatures remain valid even when metadata fields change."""
+    n = len(payloads)
+    sigs = []
+    for i in range(n):
+        h = hashlib.sha256(payloads[(i + 1) % n].get("d", "").encode()).digest()
+        sigs.append(hmac.new(key, h, "sha256").hexdigest())
+    return sigs
+
 def xof_stream(length: int, seed: bytes) -> bytes:
-    """Extendable-output function: generates arbitrary-length keystream from seed."""
-    result = bytearray()
-    ctr = 0
-    while len(result) < length:
-        result.extend(hashlib.sha256(seed + ctr.to_bytes(4, "big")).digest())
-        ctr += 1
-    return bytes(result[:length])
+    r = bytearray(); c = 0
+    while len(r) < length:
+        r.extend(hashlib.sha256(seed + c.to_bytes(4, "big")).digest())
+        c += 1
+    return bytes(r[:length])
 
 def xor_stream(data: bytes, key: bytes) -> bytes:
     ks = xof_stream(len(data), key)
     return bytes(a ^ b for a, b in zip(data, ks))
 
-def hmac_sign(data: bytes, key: bytes) -> str:
-    return hmac.new(key, data, "sha256").hexdigest()
-
-def rsa_keypair() -> tuple[bytes, bytes]:
-    pk = rsa.generate_private_key(65537, 4096)
-    return (pk.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()),
-            pk.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo))
-
-def rsa_encrypt(data: bytes, pub: bytes) -> bytes:
-    return serialization.load_pem_public_key(pub).encrypt(
-        data, padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
-
-def rsa_decrypt(data: bytes, priv: bytes) -> bytes:
-    return serialization.load_pem_private_key(priv, None).decrypt(
-        data, padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
-
 def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def encrypt_payload(source_data: bytes, algorithm: str = "aes-256-gcm") -> bytes:
-    """Multi-layer encryption with polymorphic padding.
+def encrypt_payload(source_data: bytes, shard: bytes, chain_sig: str = "",
+                    compress: int = 9, pad_max: int = 512) -> bytes:
+    """Encrypt with multi-layer + embedded shard.
 
-    Encryption layers:
-    1. Compress source with zlib (obfuscates plaintext patterns)
-    2. XOR with a random stream (pre-layer obfuscation)
-    3. AES-256-GCM primary encryption
-    4. Random padding appended (polymorphic output size)
+    Payload structure:
+    - Shard (32 bytes) XOR'd across files, need ALL to reconstruct master key
+    - AES-GCM ciphertext of compressed source
+    - Chain signature for cross-file integrity
     """
-    # Layer 1: compress
-    compressed = zlib.compress(source_data, level=9)
-    # Layer 2: XOR obfuscation
-    xor_key = os.urandom(32)
-    xored = xor_stream(compressed, xor_key)
-    # Layer 3: AES-256-GCM with AAD
-    aes_k = aes_key()
-    ct = aes_encrypt(xored, aes_k, aad=b"S-Protect-v2")
-    # Polymorphic padding (random size 0-256 bytes)
-    pad = os.urandom(secrets.randbelow(256))
-    # Build payload
+    compressed = zlib.compress(source_data, level=compress)
+    xored = xor_stream(compressed, shard)
+    ct = aes_encrypt(xored, shard)
+    pad = os.urandom(secrets.randbelow(pad_max + 1))
     payload = {
-        "v": 2, "a": "aes",
-        "k": aes_k.hex(),              # AES key
-        "x": xor_key.hex(),            # XOR key (pre-layer)
-        "d": ct.hex(),                 # ciphertext
-        "h": sha256(source_data),      # source hash
-        "p": pad.hex(),                # polymorphic padding
-        "s": hmac_sign(ct, aes_k),     # HMAC of ciphertext
+        "v": 3, "s": shard.hex(), "d": ct.hex(),
+        "c": chain_sig, "p": pad.hex(), "h": sha256(source_data),
     }
     return json.dumps(payload, separators=(",", ":")).encode()
 
 
-def decrypt_payload(data: bytes) -> tuple[str, str]:
-    """Decrypt a multi-layer encrypted payload."""
+def decrypt_payload(data: bytes, shard: bytes, expected_chain: str = "") -> tuple[str, str]:
+    """Decrypt with given shard (use reconstructed master key)."""
     p = json.loads(data.decode())
-    if p.get("v") != 2:
+    if p.get("v") != 3:
         raise ValueError("Unsupported payload version")
-    aes_k = bytes.fromhex(p["k"])
+    if expected_chain and p.get("c", "") != expected_chain:
+        raise ValueError("Chain integrity check failed")
     ct = bytes.fromhex(p["d"])
-    # Verify HMAC
-    expected = p.get("s", "")
-    if expected and not hmac.compare_digest(expected, hmac_sign(ct, aes_k)):
-        raise ValueError("HMAC integrity check failed")
-    # Layer 3: AES decrypt
-    xored = aes_decrypt(ct, aes_k, aad=b"S-Protect-v2")
-    # Layer 2: XOR decrypt
-    xor_k = bytes.fromhex(p["x"])
-    compressed = xor_stream(xored, xor_k)
-    # Layer 1: decompress
+    xored = aes_decrypt(ct, shard)
+    compressed = xor_stream(xored, hashlib.sha256(shard).digest()[:32])
     src = zlib.decompress(compressed).decode()
     return src, p.get("h", "")
+
+
+def encrypt_loader(loader_source: str, key: bytes) -> bytes:
+    """Encrypt the runtime loader itself with the master key."""
+    return encrypt_payload(loader_source.encode(), key, pad_max=0)
+
+
+def decrypt_loader(data: bytes, key: bytes) -> str:
+    """Decrypt runtime loader."""
+    src, _ = decrypt_payload(data, key)
+    return src

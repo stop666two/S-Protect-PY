@@ -22,17 +22,15 @@ def collect_defs(source: str, cfg: ObfuscateConfig, mapping: dict[str, str]) -> 
 def _opaque_predicate() -> ast.If:
     """Generate an opaque predicate: a condition that always takes one branch
     but looks complex to static analysis.
-    Uses a hash collision trick that always evaluates to the same result."""
-    secret = secrets.token_hex(8)
-    target = hashlib.sha256(secret.encode()).hexdigest()[:8]
+    Uses an always-true XOR comparison."""
+    import random
+    x = random.randint(1, 1000000)
     test = ast.Compare(
-        left=ast.Call(func=ast.Attribute(
-            value=ast.Call(func=ast.Name(id="__import__"), args=[ast.Constant("hashlib")], keywords=[]),
-            attr="sha256"), args=[ast.Constant(secret.encode().hex())], keywords=[]),
-        ops=[ast.Eq()], comparators=[ast.Call(func=ast.Attribute(
-            value=ast.Attribute(
-                value=ast.Call(func=ast.Name(id="__import__"), args=[ast.Constant("hashlib")], keywords=[]),
-                attr="sha256"), attr="hexdigest"), args=[], keywords=[])])
+        left=ast.BinOp(
+            left=ast.BinOp(left=ast.Constant(x), op=ast.BitXor(), right=ast.Constant(x)),
+            op=ast.Add(), right=ast.Constant(1)),
+        ops=[ast.Eq()],
+        comparators=[ast.Constant(1)])
     return ast.If(test=test, body=[ast.Pass()], orelse=[])
 
 

@@ -268,36 +268,36 @@ def run(entry, root=""):
 
 _BOOT_STUB = '''"""S-Protect bootloader v7."""
 import sys, os, json, hashlib, zlib
-_R = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__file__))
+a = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__file__))
 
-def _xof(l, s):
+def xo(l, s):
     r, c = bytearray(), 0
     while len(r) < l:
         r.extend(hashlib.sha256(s + c.to_bytes(4,"big")).digest()); c += 1
     return bytes(r[:l])
 
-def _boot(key):
+def bt(k):
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
-    p = json.loads(open(os.path.join(_R,"{rd}","loader.pye"),"rb").read().decode())
-    real = key
+    p = json.loads(open(os.path.join(a,"{rd}","loader.pye"),"rb").read().decode())
+    rk = k
     for kn in ["k1","k2","k3","k4","k5"]:
         if kn in p:
             v = bytes.fromhex(p[kn])
             kh = hashlib.sha256(v).digest()[:4].hex()
             if kh == p.get("f1","")[:8] or kh == p.get("f2","")[:8] or kh == p.get("f3","")[:8]:
-                real = v; break
+                rk = v; break
     ct = bytes.fromhex(p["d"])
-    x = AESGCM(real).decrypt(ct[:12], ct[12:], b"")
-    x = bytes(a^b for a,b in zip(x,_xof(len(x),real)))
+    x = AESGCM(rk).decrypt(ct[:12], ct[12:], b"")
+    x = bytes(ib^j for ib,j in zip(x,xo(len(x),rk)))
     try:
-        x = ChaCha20Poly1305(real).decrypt(x[:12], x[12:], b"")
+        x = ChaCha20Poly1305(rk).decrypt(x[:12], x[12:], b"")
     except Exception:
         pass
     return zlib.decompress(x).decode()
 
-_ld = compile(_boot(bytes.fromhex("{lk}")), "", "exec")
-exec(_ld)
-run("{entry}", _R)
+ld = compile(bt(bytes.fromhex("{lk}")), "", "exec")
+exec(ld)
+run("{entry}", a)
 '''
 
 
@@ -453,7 +453,22 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
     decoy_boot = _gen_decoy_boot_like(decoy_count)
     padding = _gen_massive_padding(80)  # 80KB of padding
 
-    boot = _gen_fake_imports_large + "\n\n" + padding + "\n\n" + decoy_boot + "\n\n" + boot
+    # Generate fake exec blocks for each decoy function
+    fake_execs = []
+    for line in decoy_boot.split("\n"):
+        if line.startswith("def ") or line.startswith("async def "):
+            fn = line.split("(")[0].split("def ")[-1].split("async ")[-1].strip()
+            fake_hex = _rand_hex(64)
+            fake_execs.append(
+                f"try:\n"
+                f"    _e = compile({fn}(bytes.fromhex('{fake_hex}')), '', 'exec')\n"
+                f"    exec(_e)\n"
+                f"except Exception:\n"
+                f"    pass\n"
+            )
+    fake_exec_block = "\n".join(fake_execs)
+
+    boot = _gen_fake_imports_large + "\n\n" + padding + "\n\n" + decoy_boot + "\n\n" + fake_exec_block + "\n\n" + boot
 
     from sprotect.minify import minify_source
     boot = minify_source(boot, add_garbage=True)

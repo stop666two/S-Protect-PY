@@ -22,6 +22,8 @@ def collect_defs(source: str, cfg: ObfuscateConfig, mapping: dict[str, str],
             elif isinstance(node, ast.ClassDef):
                 if node.name not in reserved and not node.name.startswith("__"):
                     mapping.setdefault(node.name, gen.gen())
+            elif isinstance(node, ast.ExceptHandler) and node.name and param_names is not None:
+                param_names.add(node.name)
             elif cfg.rename_variables and isinstance(node, ast.Assign):
                 for t in node.targets:
                     if isinstance(t, ast.Name) and t.id not in reserved and not t.id.startswith("__") and t.id not in (param_names or set()):
@@ -136,6 +138,11 @@ class Obfuscator(ast.NodeTransformer):
     def visit_ClassDef(self, node: ast.ClassDef):
         if self.cfg.rename_classes: node.name = self._name(node.name)
         self._class_depth += 1; self.generic_visit(node); self._class_depth -= 1; return node
+
+    def visit_ExceptHandler(self, node: ast.ExceptHandler):
+        if node.name and node.name in self.map:
+            node.name = self.map[node.name]
+        return self.generic_visit(node)
 
     def visit_Nonlocal(self, node: ast.Nonlocal):
         node.names = [self.map.get(n, n) for n in node.names]

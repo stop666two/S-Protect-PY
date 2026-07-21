@@ -65,6 +65,14 @@ class ObfuscateConfig:
     max_line_length: int = 0                         # 最大行长（0=不限制）
 
 @dataclass
+class HybridEncryptConfig:
+    """混合加密配置"""
+    enabled: bool = False
+    algorithm: str = "RSA"
+    key_size: int = 4096
+    key_file: str = "key.pem"
+
+@dataclass
 class EncryptConfig:
     """加密配置"""
     algorithm: str = "aes-256-gcm"                   # 加密算法
@@ -81,6 +89,8 @@ class EncryptConfig:
     polymorphic_padding: bool = True                 # 多态填充
     polymorphic_padding_max: int = 512               # 最大填充字节
     aad_context: str = "S-Protect-PY"               # AAD 附加认证数据
+    extra_layers: list[str] = field(default_factory=list)  # 额外加密层
+    hybrid: HybridEncryptConfig = field(default_factory=HybridEncryptConfig)
 
 @dataclass
 class AntiDebugCheckConfig:

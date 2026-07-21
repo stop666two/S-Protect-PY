@@ -134,8 +134,7 @@ def verify_fingerprint(p: dict, potential_key: bytes) -> bool:
 
 
 def encrypt_payload(source_data: bytes, real_key: bytes,
-                    compress: int = 9, pad_max: int = 512,
-                    decoy_count: int = 4) -> bytes:
+                    compress: int = 9, pad_max: int = 512) -> bytes:
     """Encrypt with ChaCha20 + AES-GMC dual layer + complex fingerprints."""
     compressed = zlib.compress(source_data, level=compress)
     # Layer 1: ChaCha20-Poly1305

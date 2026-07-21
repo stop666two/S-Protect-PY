@@ -1,7 +1,7 @@
 """Encryption: external libs (PyArmor/PyCryptodome/blake3), random build artifacts."""
 
 from __future__ import annotations
-import os, json, secrets, hashlib, zlib, subprocess, sys
+import os, json, secrets, hashlib, hmac, zlib, subprocess, sys
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from sprotect.types import Config
 from sprotect.config import merge_file_config
@@ -54,21 +54,22 @@ def build(project_dir: str, output_dir: str, config: Config) -> None:
                                        config.encrypt.compress_level,
                                        config.encrypt.polymorphic_padding_max)
             p = json.loads(payload_bytes.decode())
-            p["k1"] = shards[idx].hex()
-            # Recompute fingerprints using the payload's k1/k2/k3
-            import hashlib as _hl
-            k1_b = shards[idx]
-            k2_b = bytes.fromhex(p.get("k2","0"*64))
-            k3_b = bytes.fromhex(p.get("k3","0"*64))
+            # k1-k5: overwrite keys + fingerprints after encryption
+            kpos = secrets.randbelow(5)
+            keys = [os.urandom(32) for _ in range(5)]
+            keys[kpos] = shards[idx]
+            for i, kv in enumerate(keys):
+                p[f"k{i+1}"] = kv.hex()
             xored = bytearray(32)
-            for kb in [k1_b, k2_b, k3_b]:
+            for kb in keys:
                 for i in range(min(32, len(kb))): xored[i] ^= kb[i]
-            from sprotect.crypto import blake3_hash, sha256 as _sh
-            p["f1"] = _hl.sha256(bytes(xored)).hexdigest()[5:13]
-            try: p["f2"] = blake3_hash(k1_b)[3:11]
-            except: p["f2"] = _hl.sha256(k1_b).hexdigest()[3:11]
-            import hmac as _hm
-            p["f3"] = _hm.new(k1_b, b"S-Protect-v6-key-verify", "sha256").hexdigest()[:8]
+            p["f1"] = hashlib.sha256(bytes(xored)).hexdigest()[5:13]
+            try:
+                import blake3; p["f2"] = blake3.blake3(shards[idx]).hexdigest()[3:11]
+            except:
+                p["f2"] = hashlib.sha256(shards[idx]).hexdigest()[3:11]
+            try: p["f3"] = hmac.new(shards[idx], b"S-Protect-v6-key-verify", "sha256").hexdigest()[:8]
+            except: p["f3"] = ""
             payload = json.dumps(p, separators=(",", ":")).encode()
 
             pye_path = os.path.join(rd, hex_name + ".pye")

@@ -7,10 +7,10 @@ def _rand_name() -> str:
     """Generate a random meaningless identifier."""
     styles = [
         lambda: f"_0x{secrets.token_hex(5)}",
-        lambda: f"_{secrets.token_hex(6)}",
-        lambda: f"___{secrets.token_hex(4)}",
         lambda: f"_a{secrets.token_hex(4)}",
         lambda: f"_b{secrets.token_hex(4)}",
+        lambda: f"_c{secrets.token_hex(4)}",
+        lambda: f"_d{secrets.token_hex(4)}",
     ]
     return secrets.choice(styles)()
 

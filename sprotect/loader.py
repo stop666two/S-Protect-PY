@@ -6,10 +6,11 @@ import os, shutil, secrets, hashlib
 def _rand_name() -> str:
     """Generate a random meaningless identifier."""
     styles = [
-        lambda: f"_0x{secrets.token_hex(4)}",
-        lambda: f"_{secrets.token_hex(5)}",
-        lambda: chr(0x1D400 + secrets.randbelow(50)) + f"_{secrets.token_hex(3)}",
-        lambda: f"__{secrets.token_hex(6)}",
+        lambda: f"_0x{secrets.token_hex(5)}",
+        lambda: f"_{secrets.token_hex(6)}",
+        lambda: f"___{secrets.token_hex(4)}",
+        lambda: f"_a{secrets.token_hex(4)}",
+        lambda: f"_b{secrets.token_hex(4)}",
     ]
     return secrets.choice(styles)()
 
@@ -233,7 +234,7 @@ def _boot(key):
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     p = json.loads(open(os.path.join(_R,"{rd}","loader.pye"),"rb").read().decode())
     real = key
-    for kn in ["k1","k2","k3"]:
+    for kn in ["k1","k2","k3","k4","k5"]:
         if kn in p:
             v = bytes.fromhex(p[kn])
             kh = hashlib.sha256(v).digest()[:4].hex()
@@ -254,6 +255,8 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
     ep = os.path.join(output_dir, entry_module.replace(".", os.sep) + ".py")
     os.makedirs(os.path.dirname(ep), exist_ok=True)
     boot = _BOOT_STUB.format(lk=loader_key.hex(), rd="_runtime", entry=entry_module)
+    from sprotect.minify import minify_source
+    boot = minify_source(boot, add_garbage=True)
     with open(ep, "w", encoding="utf-8") as f: f.write(boot)
     for src, dst in per_file_configs.items():
         shutil.copy2(src, dst)

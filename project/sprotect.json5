@@ -1,5 +1,5 @@
 {
-  project: { name: "full-protection-test", version: "2.0.0", entry: "main.py" },
+  project: { name: "full-protection-demo", version: "3.0.0", entry: "main.py" },
   obfuscate: { level: 5, rename_variables: true, rename_functions: true, rename_classes: true,
     rename_rules: { style: "hex", reserved: [], prefix: "_0x", suffix: "", min_length: 6, blacklist: [] },
     encrypt_strings: true, encrypt_numbers: true, string_min_length: 2, string_encrypt_ratio: 1.0,
@@ -11,9 +11,8 @@
     checks: ["pdb", "ptrace", "debugger", "vm", "sandbox", "timing", "cuckoo", "ida", "procmon"],
     block_tracing: true, wipe_memory: true },
   virtualization: { enabled: true, mode: "full" },
-  watermark: { enabled: true, levels: ["file", "code", "runtime"], batch_id: "full-test" },
-  expiration: { enabled: true, expires_at: "2030-12-31T23:59:59Z",
-    ntp_servers: ["pool.ntp.org", "time.google.com", "time.cloudflare.com", "time.windows.com", "time.apple.com"] },
+  watermark: { enabled: true, levels: ["file", "code", "runtime"], batch_id: "full-test-v3" },
+  expiration: { enabled: true, expires_at: "2030-12-31T23:59:59Z" },
   environment: { enabled: true, strict_mode: true },
   sandbox: { enabled: true, detect_cuckoo: true, detect_sandboxie: true, detect_docker: true, detect_ci: true },
   bootloader: { anti_dump: true, periodic_check_interval: 3.0 },

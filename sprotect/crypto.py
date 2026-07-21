@@ -134,7 +134,8 @@ def verify_fingerprint(p: dict, potential_key: bytes) -> bool:
 
 
 def encrypt_payload(source_data: bytes, real_key: bytes,
-                    compress: int = 9, pad_max: int = 512) -> bytes:
+                    compress: int = 9, pad_max: int = 512,
+                    decoy_count: int = 4) -> bytes:
     """Encrypt with ChaCha20 + AES-GMC dual layer + complex fingerprints."""
     compressed = zlib.compress(source_data, level=compress)
     # Layer 1: ChaCha20-Poly1305
@@ -147,7 +148,7 @@ def encrypt_payload(source_data: bytes, real_key: bytes,
     # Layer 3: AES-GCM
     ct = aes_encrypt(xored, real_key)
 
-    keys, _ = make_keys_complex(real_key, 2)
+    keys, _ = make_keys_complex(real_key, 4)
     pad = os.urandom(secrets.randbelow(pad_max + 1))
     payload = {"v": 7, "d": ct.hex(), "c": "", "p": pad.hex(), "h": sha256(source_data)}
     payload.update(keys)

@@ -16,7 +16,7 @@ th { background: #333; color: #fff; }
 </head>
 <body>
 <h1>Python 环境测试报告</h1>
-<p class="timestamp">生成时间: 2026-07-21 17:37:49</p>
+<p class="timestamp">生成时间: 2026-07-21 17:40:08</p>
 <table>
 <thead><tr><th>测试项</th><th>状态</th><th>详细信息</th><th>预期</th></tr></thead>
 <tbody>
@@ -158,7 +158,7 @@ th { background: #333; color: #fff; }
 <tr><td>Socket (主机名)</td><td style='color:#4caf50'>通过</td><td>GHXI</td><td>预期通过</td></tr>
 <tr><td>GZip 压缩</td><td style='color:#4caf50'>通过</td><td>成功 (压缩比 2.5%)</td><td>预期通过</td></tr>
 <tr><td>UTF-8 编解码</td><td style='color:#4caf50'>通过</td><td>成功</td><td>预期通过</td></tr>
-<tr><td>HTTP 网络请求</td><td style='color:#f44336'>异常失败</td><td>HTTPSConnectionPool(host='httpbin.org', port=443): Read timed out. (read timeout=5)</td><td>预期通过</td></tr>
+<tr><td>HTTP 网络请求</td><td style='color:#f44336'>异常失败</td><td>异常状态码 503</td><td>预期通过</td></tr>
 <tr><td>pickle 序列化</td><td style='color:#4caf50'>通过</td><td>47 bytes, 还原成功</td><td>预期通过</td></tr>
 <tr><td>struct 二进制打包</td><td style='color:#4caf50'>通过</td><td>packed=14 bytes, 还原成功</td><td>预期通过</td></tr>
 <tr><td>base32 / base85 编码</td><td style='color:#4caf50'>通过</td><td>base32=成功, base85=成功</td><td>预期通过</td></tr>
@@ -190,10 +190,10 @@ th { background: #333; color: #fff; }
 <tr><td>importlib.metadata 读取包版本</td><td style='color:#4caf50'>通过</td><td>tqdm version=4.67.3</td><td>预期通过</td></tr>
 <tr><td>importlib.resources 包内资源</td><td style='color:#f44336'>异常失败</td><td>未找到资源文件</td><td>预期通过</td></tr>
 <tr><td>mmap 内存映射文件</td><td style='color:#4caf50'>通过</td><td>读取=28 bytes, 写入验证=通过</td><td>预期通过</td></tr>
-<tr><td>timeit 代码执行计时</td><td style='color:#4caf50'>通过</td><td>1000 次迭代耗时 14.29 ms</td><td>预期通过</td></tr>
+<tr><td>timeit 代码执行计时</td><td style='color:#4caf50'>通过</td><td>1000 次迭代耗时 14.98 ms</td><td>预期通过</td></tr>
 <tr><td>importlib.reload() 热重载</td><td style='color:#4caf50'>通过</td><td>重载 tests.basic 模块 (14 -> 14 symbols)</td><td>预期通过</td></tr>
 <tr><td>__import__() 内置导入</td><td style='color:#4caf50'>通过</td><td>json 模块含 dumps=True, loads=True</td><td>预期通过</td></tr>
-<tr><td>os.urandom / os.getpid</td><td style='color:#4caf50'>通过</td><td>urandom=16 bytes, PID=19752</td><td>预期通过</td></tr>
+<tr><td>os.urandom / os.getpid</td><td style='color:#4caf50'>通过</td><td>urandom=16 bytes, PID=15852</td><td>预期通过</td></tr>
 <tr><td>sys.gettrace() 调试器检测</td><td style='color:#4caf50'>通过</td><td>trace=未设置</td><td>预期通过</td></tr>
 <tr><td>signal 信号处理</td><td style='color:#4caf50'>通过</td><td>SIGINT handler restore=成功</td><td>预期通过</td></tr>
 <tr><td>typing.get_type_hints</td><td style='color:#4caf50'>通过</td><td>类型提示解析=成功</td><td>预期通过</td></tr>
@@ -205,7 +205,7 @@ th { background: #333; color: #fff; }
 <tr><td>大循环 10 万次</td><td style='color:#4caf50'>通过</td><td>循环 100000 次</td><td>预期通过</td></tr>
 <tr><td>超长路径 (200 字符)</td><td style='color:#4caf50'>通过</td><td>路径长度=208, 读写成功</td><td>预期通过</td></tr>
 <tr><td>ssl 默认 TLS 上下文</td><td style='color:#4caf50'>通过</td><td>协议版本=16</td><td>预期通过</td></tr>
-<tr><td>secrets 密码学随机数</td><td style='color:#4caf50'>通过</td><td>token_hex(16)=365763c882c30891... (32 chars)</td><td>预期通过</td></tr>
+<tr><td>secrets 密码学随机数</td><td style='color:#4caf50'>通过</td><td>token_hex(16)=097a5d9430e721c8... (32 chars)</td><td>预期通过</td></tr>
 <tr><td>atexit 注册退出处理器</td><td style='color:#4caf50'>通过</td><td>处理器已注册</td><td>预期通过</td></tr>
 <tr><td colspan='4' style='background:#f0f0f0;font-weight:bold'>特殊/边缘功能测试</td></tr>
 <tr><td>inspect.getsource 源码获取</td><td style='color:#f44336'>异常失败</td><td>lineno is out of bounds</td><td>预期通过</td></tr>
@@ -216,7 +216,7 @@ th { background: #333; color: #fff; }
 <tr><td>type() 动态创建类</td><td style='color:#4caf50'>通过</td><td>MyClass.x=42, greet=hello</td><td>预期通过</td></tr>
 <tr><td>@property / @staticmethod / @classmethod</td><td style='color:#f44336'>异常失败</td><td>'int' object has no attribute 'setter'</td><td>预期通过</td></tr>
 <tr><td>weakref 弱引用</td><td style='color:#4caf50'>通过</td><td>引用存活=成功, 回收=成功</td><td>预期通过</td></tr>
-<tr><td>gc.get_objects / gc.collect</td><td style='color:#4caf50'>通过</td><td>对象数从 41846 增至 41847, 差值=1</td><td>预期通过</td></tr>
+<tr><td>gc.get_objects / gc.collect</td><td style='color:#4caf50'>通过</td><td>对象数从 41853 增至 41854, 差值=1</td><td>预期通过</td></tr>
 <tr><td>heapq / bisect</td><td style='color:#4caf50'>通过</td><td>heappop=[1, 2, 3], bisect idx=2, insort=True</td><td>预期通过</td></tr>
 <tr><td>array.array 紧凑数组</td><td style='color:#4caf50'>通过</td><td>typecode=i, len=6, a[2]=3</td><td>预期通过</td></tr>
 <tr><td>unicodedata 字符属性</td><td style='color:#4caf50'>通过</td><td>lookup(A)=A, name('A')=LATIN CAPITAL LETTER A, width=Na</td><td>预期通过</td></tr>
@@ -232,7 +232,7 @@ th { background: #333; color: #fff; }
 <tr><td>URL 解析 (urllib.parse)</td><td style='color:#4caf50'>通过</td><td>scheme=https, host=api.example.com, port=8443</td><td>预期通过</td></tr>
 <tr><td>URL 编码 (urlencode)</td><td style='color:#4caf50'>通过</td><td>name=%E5%BC%A0%E4%B8%89&age=28</td><td>预期通过</td></tr>
 <tr><td>CSV 读写</td><td style='color:#4caf50'>通过</td><td>数据一致 (2 条)</td><td>预期通过</td></tr>
-<tr><td>日期时间格式化/解析</td><td style='color:#4caf50'>通过</td><td>2026-07-21 17:37:49</td><td>预期通过</td></tr>
+<tr><td>日期时间格式化/解析</td><td style='color:#4caf50'>通过</td><td>2026-07-21 17:40:08</td><td>预期通过</td></tr>
 <tr><td>环境变量读写</td><td style='color:#4caf50'>通过</td><td>写入=test_value_123, 删除后=NOT_FOUND</td><td>预期通过</td></tr>
 <tr><td>正则表达式 (邮件验证)</td><td style='color:#4caf50'>通过</td><td>正例通过=True, 反例拦截=True</td><td>预期通过</td></tr>
 <tr><td>字符串模板 (string.Template)</td><td style='color:#4caf50'>通过</td><td>Hello, 测试! You are 25.</td><td>预期通过</td></tr>
@@ -245,13 +245,13 @@ th { background: #333; color: #fff; }
 <tr><td>shutil copy / rmtree</td><td style='color:#4caf50'>通过</td><td>copy=成功, rmtree=成功</td><td>预期通过</td></tr>
 <tr><td>glob 文件模式匹配</td><td style='color:#4caf50'>通过</td><td>*.txt=2, *.py=2</td><td>预期通过</td></tr>
 <tr><td>pathlib 路径操作</td><td style='color:#4caf50'>通过</td><td>读写=成功, suffix=.txt, stem=_pathlib_test</td><td>预期通过</td></tr>
-<tr><td>dataclasses 数据类</td><td style='color:#4caf50'>通过</td><td>User=_0xb1735f83.<locals>._0xbaec4dd7(name='测试', age=25), asdict={'name': '测试', 'age': 25}</td><td>预期通过</td></tr>
+<tr><td>dataclasses 数据类</td><td style='color:#4caf50'>通过</td><td>User=_0xb2c53914.<locals>._0x8fc8a885(name='测试', age=25), asdict={'name': '测试', 'age': 25}</td><td>预期通过</td></tr>
 <tr><td>enum 枚举</td><td style='color:#4caf50'>通过</td><td>RED.value=1, names=['RED', 'GREEN', 'BLUE']</td><td>预期通过</td></tr>
 <tr><td>functools.lru_cache</td><td style='color:#4caf50'>通过</td><td>fib(10)=55, 调用次数=11</td><td>预期通过</td></tr>
 <tr><td>functools.partial</td><td style='color:#4caf50'>通过</td><td>add_5(3)=8</td><td>预期通过</td></tr>
 <tr><td>logging 日志配置</td><td style='color:#4caf50'>通过</td><td>Logger=_py_test, level=10, handlers=0</td><td>预期通过</td></tr>
 <tr><td>re.sub / findall / split</td><td style='color:#4caf50'>通过</td><td>sub=成功, findall=成功, split=成功</td><td>预期通过</td></tr>
-<tr><td>tempfile.NamedTemporaryFile</td><td style='color:#4caf50'>通过</td><td>读写=成功, name=C:\Users\Administrator\AppData\Local\Temp\_py_0ezhwfc9.tmp</td><td>预期通过</td></tr>
+<tr><td>tempfile.NamedTemporaryFile</td><td style='color:#4caf50'>通过</td><td>读写=成功, name=C:\Users\Administrator\AppData\Local\Temp\_py_idpexzbw.tmp</td><td>预期通过</td></tr>
 
 </tbody>
 </table>
@@ -277,7 +277,7 @@ th { background: #333; color: #fff; }
 <tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 uu: 预期失败但通过 | 导入成功</td></tr>
 <tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 xdrlib: 预期失败但通过 | 导入成功</td></tr>
 <tr style='background:#fff3e0'><td colspan='4'>第三方包检测 &gt; 第三方包 numpy: 预期通过但失败 | 导入失败 (核心依赖缺失)</td></tr>
-<tr style='background:#fff3e0'><td colspan='4'>运行时能力检测 &gt; HTTP 网络请求: 预期通过但失败 | HTTPSConnectionPool(host='httpbin.org', port=443): Read timed out. (read timeout=5)</td></tr>
+<tr style='background:#fff3e0'><td colspan='4'>运行时能力检测 &gt; HTTP 网络请求: 预期通过但失败 | 异常状态码 503</td></tr>
 <tr style='background:#fff3e0'><td colspan='4'>高级运行时能力 &gt; importlib.resources 包内资源: 预期通过但失败 | 未找到资源文件</td></tr>
 <tr style='background:#fff3e0'><td colspan='4'>系统压力/底层测试 &gt; sys._getframe() 栈帧获取: 预期通过但失败 | 获取栈帧失败</td></tr>
 <tr style='background:#fff3e0'><td colspan='4'>特殊/边缘功能测试 &gt; inspect.getsource 源码获取: 预期通过但失败 | lineno is out of bounds</td></tr>

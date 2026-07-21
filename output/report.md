@@ -1,5 +1,5 @@
 # Python 环境测试报告
-生成时间: 2026-07-21 17:37:49
+生成时间: 2026-07-21 17:40:08
 
 **判定: 异常** | 总计: 222 | 正常: 197 | 异常: 25
 
@@ -152,7 +152,7 @@
 | Socket (主机名) | 通过 | GHXI | 预期通过 |
 | GZip 压缩 | 通过 | 成功 (压缩比 2.5%) | 预期通过 |
 | UTF-8 编解码 | 通过 | 成功 | 预期通过 |
-| HTTP 网络请求 | 异常失败 | HTTPSConnectionPool(host='httpbin.org', port=443): Read timed out. (read timeout=5) | 预期通过 |
+| HTTP 网络请求 | 异常失败 | 异常状态码 503 | 预期通过 |
 | pickle 序列化 | 通过 | 47 bytes, 还原成功 | 预期通过 |
 | struct 二进制打包 | 通过 | packed=14 bytes, 还原成功 | 预期通过 |
 | base32 / base85 编码 | 通过 | base32=成功, base85=成功 | 预期通过 |
@@ -190,10 +190,10 @@
 | importlib.metadata 读取包版本 | 通过 | tqdm version=4.67.3 | 预期通过 |
 | importlib.resources 包内资源 | 异常失败 | 未找到资源文件 | 预期通过 |
 | mmap 内存映射文件 | 通过 | 读取=28 bytes, 写入验证=通过 | 预期通过 |
-| timeit 代码执行计时 | 通过 | 1000 次迭代耗时 14.29 ms | 预期通过 |
+| timeit 代码执行计时 | 通过 | 1000 次迭代耗时 14.98 ms | 预期通过 |
 | importlib.reload() 热重载 | 通过 | 重载 tests.basic 模块 (14 -> 14 symbols) | 预期通过 |
 | __import__() 内置导入 | 通过 | json 模块含 dumps=True, loads=True | 预期通过 |
-| os.urandom / os.getpid | 通过 | urandom=16 bytes, PID=19752 | 预期通过 |
+| os.urandom / os.getpid | 通过 | urandom=16 bytes, PID=15852 | 预期通过 |
 | sys.gettrace() 调试器检测 | 通过 | trace=未设置 | 预期通过 |
 | signal 信号处理 | 通过 | SIGINT handler restore=成功 | 预期通过 |
 | typing.get_type_hints | 通过 | 类型提示解析=成功 | 预期通过 |
@@ -208,7 +208,7 @@
 | 大循环 10 万次 | 通过 | 循环 100000 次 | 预期通过 |
 | 超长路径 (200 字符) | 通过 | 路径长度=208, 读写成功 | 预期通过 |
 | ssl 默认 TLS 上下文 | 通过 | 协议版本=16 | 预期通过 |
-| secrets 密码学随机数 | 通过 | token_hex(16)=365763c882c30891... (32 chars) | 预期通过 |
+| secrets 密码学随机数 | 通过 | token_hex(16)=097a5d9430e721c8... (32 chars) | 预期通过 |
 | atexit 注册退出处理器 | 通过 | 处理器已注册 | 预期通过 |
 
 ## 特殊/边缘功能测试
@@ -222,7 +222,7 @@
 | type() 动态创建类 | 通过 | MyClass.x=42, greet=hello | 预期通过 |
 | @property / @staticmethod / @classmethod | 异常失败 | 'int' object has no attribute 'setter' | 预期通过 |
 | weakref 弱引用 | 通过 | 引用存活=成功, 回收=成功 | 预期通过 |
-| gc.get_objects / gc.collect | 通过 | 对象数从 41846 增至 41847, 差值=1 | 预期通过 |
+| gc.get_objects / gc.collect | 通过 | 对象数从 41853 增至 41854, 差值=1 | 预期通过 |
 | heapq / bisect | 通过 | heappop=[1, 2, 3], bisect idx=2, insort=True | 预期通过 |
 | array.array 紧凑数组 | 通过 | typecode=i, len=6, a[2]=3 | 预期通过 |
 | unicodedata 字符属性 | 通过 | lookup(A)=A, name('A')=LATIN CAPITAL LETTER A, width=Na | 预期通过 |
@@ -244,7 +244,7 @@
 | URL 解析 (urllib.parse) | 通过 | scheme=https, host=api.example.com, port=8443 | 预期通过 |
 | URL 编码 (urlencode) | 通过 | name=%E5%BC%A0%E4%B8%89&age=28 | 预期通过 |
 | CSV 读写 | 通过 | 数据一致 (2 条) | 预期通过 |
-| 日期时间格式化/解析 | 通过 | 2026-07-21 17:37:49 | 预期通过 |
+| 日期时间格式化/解析 | 通过 | 2026-07-21 17:40:08 | 预期通过 |
 | 环境变量读写 | 通过 | 写入=test_value_123, 删除后=NOT_FOUND | 预期通过 |
 | 正则表达式 (邮件验证) | 通过 | 正例通过=True, 反例拦截=True | 预期通过 |
 | 字符串模板 (string.Template) | 通过 | Hello, 测试! You are 25. | 预期通过 |
@@ -257,13 +257,13 @@
 | shutil copy / rmtree | 通过 | copy=成功, rmtree=成功 | 预期通过 |
 | glob 文件模式匹配 | 通过 | *.txt=2, *.py=2 | 预期通过 |
 | pathlib 路径操作 | 通过 | 读写=成功, suffix=.txt, stem=_pathlib_test | 预期通过 |
-| dataclasses 数据类 | 通过 | User=_0xb1735f83.<locals>._0xbaec4dd7(name='测试', age=25), asdict={'name': '测试', 'age': 25} | 预期通过 |
+| dataclasses 数据类 | 通过 | User=_0xb2c53914.<locals>._0x8fc8a885(name='测试', age=25), asdict={'name': '测试', 'age': 25} | 预期通过 |
 | enum 枚举 | 通过 | RED.value=1, names=['RED', 'GREEN', 'BLUE'] | 预期通过 |
 | functools.lru_cache | 通过 | fib(10)=55, 调用次数=11 | 预期通过 |
 | functools.partial | 通过 | add_5(3)=8 | 预期通过 |
 | logging 日志配置 | 通过 | Logger=_py_test, level=10, handlers=0 | 预期通过 |
 | re.sub / findall / split | 通过 | sub=成功, findall=成功, split=成功 | 预期通过 |
-| tempfile.NamedTemporaryFile | 通过 | 读写=成功, name=C:\Users\Administrator\AppData\Local\Temp\_py_0ezhwfc9.tmp | 预期通过 |
+| tempfile.NamedTemporaryFile | 通过 | 读写=成功, name=C:\Users\Administrator\AppData\Local\Temp\_py_idpexzbw.tmp | 预期通过 |
 
 ---
 ## 异常项目明细
@@ -287,7 +287,7 @@
 - **[预期失败但通过]** 标准库模块检测 > 已弃用模块 uu: 导入成功
 - **[预期失败但通过]** 标准库模块检测 > 已弃用模块 xdrlib: 导入成功
 - **[预期通过但失败]** 第三方包检测 > 第三方包 numpy: 导入失败 (核心依赖缺失)
-- **[预期通过但失败]** 运行时能力检测 > HTTP 网络请求: HTTPSConnectionPool(host='httpbin.org', port=443): Read timed out. (read timeout=5)
+- **[预期通过但失败]** 运行时能力检测 > HTTP 网络请求: 异常状态码 503
 - **[预期通过但失败]** 高级运行时能力 > importlib.resources 包内资源: 未找到资源文件
 - **[预期通过但失败]** 系统压力/底层测试 > sys._getframe() 栈帧获取: 获取栈帧失败
 - **[预期通过但失败]** 特殊/边缘功能测试 > inspect.getsource 源码获取: lineno is out of bounds

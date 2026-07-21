@@ -11,6 +11,21 @@ def _rand_name() -> str:
         lambda: f"_b{secrets.token_hex(4)}",
         lambda: f"_c{secrets.token_hex(4)}",
         lambda: f"_d{secrets.token_hex(4)}",
+        lambda: f"_e{secrets.token_hex(4)}",
+        lambda: f"_f{secrets.token_hex(4)}",
+        lambda: f"_x{secrets.token_hex(4)}",
+        lambda: f"_y{secrets.token_hex(4)}",
+        lambda: f"_z{secrets.token_hex(4)}",
+        lambda: f"_p{secrets.token_hex(4)}",
+        lambda: f"_q{secrets.token_hex(4)}",
+        lambda: f"_r{secrets.token_hex(4)}",
+        lambda: f"_s{secrets.token_hex(4)}",
+        lambda: f"_t{secrets.token_hex(4)}",
+        lambda: f"_w{secrets.token_hex(4)}",
+        lambda: f"_v{secrets.token_hex(4)}",
+        lambda: f"_k{secrets.token_hex(4)}",
+        lambda: f"_m{secrets.token_hex(4)}",
+        lambda: f"_n{secrets.token_hex(4)}",
     ]
     return secrets.choice(styles)()
 

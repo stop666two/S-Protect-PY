@@ -1,11 +1,24 @@
 {
   // ==========================================
-  // 解密模块 - 精细化配置
-  // 仅用于测试验证，不需要强保护
+  // 解密验证模块 - 仅用于测试验证，代码简单
   // ==========================================
 
-  obfuscate: { level: 2, rename_variables: true, rename_functions: false,
-    rename_classes: false, encrypt_strings: false, encrypt_numbers: false,
-    control_flow_flattening: false, dead_code_injection: false },
-  anti_debug: { enabled: false },
+  obfuscate: {
+    level: 2,
+    rename_variables: true,
+    rename_functions: false,
+    rename_classes: false,
+    rename_rules: { style: "hex", reserved: [""] },
+    encrypt_strings: false,
+    encrypt_numbers: false,
+    control_flow_flattening: false,
+    dead_code_injection: false,
+    remove_docstrings: true,
+    remove_comments: true,
+    strip_blank_lines: true,
+  },
+  anti_debug: {
+    enabled: false,
+    action: "exit",
+  },
 }

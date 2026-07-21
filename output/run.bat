@@ -1,4 +1,4 @@
 @echo off
 chcp 65001 >nul
-python main.py
+py -3 main.py
 pause

@@ -1,11 +1,24 @@
 {
   // ==========================================
-  // 随机名生成器 - 精细化配置
-  // 负责生成混淆后的标识符名称（hex/chinese/invisible 等风格）
+  // 随机名生成器 - 20种变量名风格（hex/数字+下划线/字母组合/Unicode等）
   // ==========================================
 
-  obfuscate: { level: 2, rename_variables: true, rename_functions: false,
-    rename_classes: false, encrypt_strings: true, encrypt_numbers: false,
-    control_flow_flattening: false, dead_code_injection: false },
-  anti_debug: { enabled: false },
+  obfuscate: {
+    level: 2,
+    rename_variables: true,
+    rename_functions: false,
+    rename_classes: false,
+    rename_rules: { style: "hex", reserved: [""] },
+    encrypt_strings: true,
+    encrypt_numbers: false,
+    control_flow_flattening: false,
+    dead_code_injection: false,
+    remove_docstrings: true,
+    remove_comments: true,
+    strip_blank_lines: true,
+  },
+  anti_debug: {
+    enabled: false,
+    action: "exit",
+  },
 }

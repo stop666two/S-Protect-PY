@@ -1,28 +1,25 @@
 {
   // ==========================================
-  // 配置加载模块 - 精细化配置
-  // 负责 JSON5 解析、per-file 合并、默认值生成
+  // 配置加载模块 - JSON5解析、per-file合并、默认值生成
   // ==========================================
 
   obfuscate: {
     level: 4,
     rename_variables: true,
-    rename_functions: false,   // 配置函数被外部引用，不改名
+    rename_functions: false,
     rename_classes: false,
-    rename_rules: {
-      style: "hex",
-      reserved: ["load_config", "merge_file_config", "gen_default", "find_config",
-                 "load_per_file", "deep_merge"],
-    },
+    rename_rules: { style: "hex", reserved: ["load_config", "merge_file_config", "gen_default", "find_config"] },
     encrypt_strings: true,
     encrypt_numbers: false,
-    control_flow_flattening: false,  // 配置加载逻辑复杂，平坦化影响稳定性
+    control_flow_flattening: true,
     dead_code_injection: false,
+    remove_docstrings: true,
+    remove_comments: true,
+    strip_blank_lines: true,
   },
-
   anti_debug: {
-    enabled: false,            // 配置加载阶段不需要反调试
-    action: "warn",
-    checks: ["pdb"],
+    enabled: true,
+    action: "exit",
+    checks: ["pdb", "debugger"],
   },
 }

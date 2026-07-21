@@ -1,12 +1,25 @@
 {
   // ==========================================
-  // 启动器生成模块 - 精细化配置
-  // 生成 output/main.py + _runtime/loader.py
-  // 模板字符串不能加密（包含生成的代码）
+  // 启动器/运行时加载器生成模块 - 生成bootloader + runtime loader。模板字符串不能加密
   // ==========================================
-  obfuscate: { level: 4, rename_variables: true, rename_functions: true,
-    rename_classes: true, encrypt_strings: false, encrypt_numbers: false,
-    control_flow_flattening: false, dead_code_injection: false },
-  anti_debug: { enabled: true, action: "exit",
-    checks: ["pdb", "debugger", "vm", "sandbox", "cuckoo", "ida"] },
+
+  obfuscate: {
+    level: 4,
+    rename_variables: true,
+    rename_functions: true,
+    rename_classes: true,
+    rename_rules: { style: "hex", reserved: [""] },
+    encrypt_strings: false,
+    encrypt_numbers: false,
+    control_flow_flattening: false,
+    dead_code_injection: false,
+    remove_docstrings: true,
+    remove_comments: true,
+    strip_blank_lines: true,
+  },
+  anti_debug: {
+    enabled: true,
+    action: "exit",
+    checks: ["pdb", "debugger", "vm", "sandbox", "cuckoo"],
+  },
 }

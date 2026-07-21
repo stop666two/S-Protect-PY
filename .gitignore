@@ -7,6 +7,9 @@ build/
 .env.local
 _runtime/
 _backup/
+project/
+output/
+license_*
 _test_temp/
 *.pye
 .idea/

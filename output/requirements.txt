@@ -1,6 +1,0 @@
-tqdm>=4.60.0
-colorama>=0.4.4
-cryptography>=3.4.0
-numpy>=1.19.0
-requests>=2.25.0
-rich>=10.0.0

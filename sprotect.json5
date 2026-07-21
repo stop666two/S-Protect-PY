@@ -1,75 +1,91 @@
 {
-  "obfuscate": {
-    "level": 3,
-    "rename_variables": false,
-    "rename_functions": false,
-    "rename_classes": false,
-    "rename_rules": {
-      "style": "hex",
-      "reserved": [
-        "__init__",
-        "main"
-      ]
+  // ==========================================
+  // S-Protect-PY 全局配置文件
+  // ==========================================
+
+  // ========== 项目信息 ==========
+  project: {
+    name: "myapp",          // 项目名称
+    version: "1.0.0",       // 版本号
+    entry: "main.py",       // 入口文件（放在 project/ 下）
+  },
+
+  // ========== 文件过滤 ==========
+  files: {
+    include: ["**/*.py"],   // 要加密的文件模式（默认所有 .py）
+    exclude: [],             // 要排除的文件模式（如 ["tests/**"]）
+  },
+
+  // ========== 混淆设置 ==========
+  obfuscate: {
+    level: 5,               // 混淆等级 1-5（5=最高）
+    rename_variables: true,  // 重命名局部变量
+    rename_functions: true,  // 重命名函数名
+    rename_classes: true,    // 重命名类名
+    rename_rules: {
+      style: "hex",          // 命名风格: hex | chinese | invisible | math-symbols
+      reserved: ["__init__", "main"],  // 保留不改的名字
     },
-    "encrypt_strings": true,
-    "encrypt_numbers": false,
-    "control_flow_flattening": true,
-    "dead_code_injection": false
+    encrypt_strings: true,   // 加密字符串字面量
+    encrypt_numbers: false,  // 加密数字字面量
+    control_flow_flattening: true,  // 控制流平坦化
+    dead_code_injection: true,      // 死代码注入 + 不透明谓词
   },
-  "encrypt": {
-    "algorithm": "aes-256-gcm",
-    "key_source": "auto",
-    "interdependency": "chain",
-    "backup": true,
-    "replace_originals": false,
-    "shard_count": 3
+
+  // ========== 加密设置 ==========
+  encrypt: {
+    algorithm: "aes-256-gcm",   // 加密算法: aes-256-gcm | xor
+    interdependency: "chain",   // 文件依赖: chain | full-mesh | hybrid
+    backup: true,               // 构建前自动备份
+    shard_count: 3,             // 密钥分片数量
   },
-  "anti_debug": {
-    "enabled": true,
-    "action": "exit",
-    "checks": [
-      "ptrace",
-      "debugger",
-      "breakpoint",
-      "timing"
-    ]
+
+  // ========== 反调试/反VM/反沙箱 ==========
+  anti_debug: {
+    enabled: true,
+    action: "exit",            // exit | warn | corrupt
+    checks: ["pdb", "ptrace", "debugger", "vm", "sandbox", "timing", "cuckoo", "ida", "procmon"],
   },
-  "virtualization": {
-    "enabled": false,
-    "mode": "partial",
-    "functions": [],
-    "glob_patterns": []
+
+  // ========== 代码虚拟化 ==========
+  virtualization: {
+    enabled: false,            // 是否启用（会大幅降低性能）
+    mode: "partial",           // partial | full
+    functions: [],             // 要虚拟化的函数列表
+    glob_patterns: [],         // 文件通配符
   },
-  "watermark": {
-    "enabled": true,
-    "levels": [
-      "file",
-      "code"
-    ],
-    "batch_id": ""
+
+  // ========== 水印 ==========
+  watermark: {
+    enabled: true,
+    levels: ["file", "code", "runtime"],  // 文件级+代码级+运行时
+    batch_id: "",              // 批次ID（留空自动生成）
   },
-  "expiration": {
-    "enabled": false,
-    "expires_at": null,
-    "ntp_check": true,
-    "on_network_fail": "reject"
+
+  // ========== 过期时间 ==========
+  expiration: {
+    enabled: false,
+    expires_at: null,          // 过期时间: "2027-12-31T23:59:59Z"
+    ntp_check: true,           // 联网校准时间
+    on_network_fail: "reject", // 网络不通时: reject | allow
   },
-  "environment": {
-    "enabled": false,
-    "bind_directory": null,
-    "bind_username": null,
-    "bind_env_vars": []
+
+  // ========== 环境指纹 ==========
+  environment: {
+    enabled: false,
+    bind_directory: null,      // 绑定到特定目录
+    bind_username: null,       // 绑定到特定用户名
+    bind_env_vars: [],         // 绑定到环境变量
   },
-  "sandbox": {
-    "enabled": true
+
+  // ========== 沙箱检测 ==========
+  sandbox: {
+    enabled: true,
   },
-  "project": {
-    "name": "unnamed",
-    "version": "1.0.0",
-    "entry": "main.py"
+
+  // ========== 输出设置 ==========
+  output: {
+    dir: "./output",
+    keep_source_map: false,
   },
-  "output": {
-    "dir": "./dist",
-    "keep_source_map": false
-  }
 }

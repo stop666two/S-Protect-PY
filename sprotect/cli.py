@@ -27,6 +27,10 @@ def _parser() -> argparse.ArgumentParser:
     cs.add_parser("init", help="Generate default sprotect.json5")
     cs.add_parser("show", help="Show current config")
 
+    i = s.add_parser("init", help="Initialize project/ and output/ directories")
+    i.add_argument("--project", default="./project", help="Source directory")
+    i.add_argument("--output", default="./output", help="Output directory")
+
     s.add_parser("version", help="Show version")
     return p
 
@@ -37,6 +41,21 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.cmd == "version":
         print(f"S-Protect-PY v{__version__}"); return 0
+
+    if a.cmd == "init":
+        import os
+        for d in [a.project, a.output]:
+            p = Path(d)
+            p.mkdir(parents=True, exist_ok=True)
+            (p / ".gitkeep").touch()
+        print(f"Initialized:")
+        print(f"  Source: {Path(a.project).resolve()}")
+        print(f"  Output: {Path(a.output).resolve()}")
+        if not Path("sprotect.json5").exists():
+            from sprotect.config import gen_default
+            gen_default("sprotect.json5")
+            print(f"  Config: {Path('sprotect.json5').resolve()}")
+        return 0
 
     if a.cmd == "config":
         if a.ca == "init":

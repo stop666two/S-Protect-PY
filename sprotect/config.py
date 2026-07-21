@@ -104,18 +104,19 @@ def merge_file_config(main: Config, py_path: str) -> Config:
 
 def gen_default(path: str) -> Path:
     d = {"files":{"include":["**/*.py"],"exclude":[]},
-         "obfuscate":{"level":3,"rename_variables":True,"rename_functions":True,"rename_classes":True,
+         "obfuscate":{"level":5,"rename_variables":True,"rename_functions":True,"rename_classes":True,
                        "rename_rules":{"style":"hex","reserved":["__init__","main"]},
                        "encrypt_strings":True,"encrypt_numbers":False,
-                       "control_flow_flattening":True,"dead_code_injection":False},
+                       "control_flow_flattening":True,"dead_code_injection":True},
          "encrypt":{"algorithm":"aes-256-gcm","interdependency":"chain","backup":True,"shard_count":3},
-         "anti_debug":{"enabled":True,"action":"exit","checks":["pdb","ptrace","debugger","vm"]},
+         "anti_debug":{"enabled":True,"action":"exit",
+                       "checks":["pdb","ptrace","debugger","vm","sandbox","timing","cuckoo","ida","procmon"]},
          "virtualization":{"enabled":False,"mode":"partial","functions":[],"glob_patterns":[]},
-         "watermark":{"enabled":True,"levels":["file","code"],"batch_id":""},
+         "watermark":{"enabled":True,"levels":["file","code","runtime"],"batch_id":""},
          "expiration":{"enabled":False,"expires_at":None,"ntp_check":True,"on_network_fail":"reject"},
          "environment":{"enabled":False},"sandbox":{"enabled":True},
          "project":{"name":"unnamed","version":"1.0.0","entry":"main.py"},
-         "output":{"dir":"./dist","keep_source_map":False}}
+         "output":{"dir":"./output","keep_source_map":False}}
     p = Path(path); p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(d, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return p

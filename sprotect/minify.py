@@ -107,7 +107,7 @@ def minify_source(source: str, add_garbage: bool = True, make_trap: bool = False
 
     # Python stdlib modules that must never be renamed
     _RESERVED_NAMES = frozenset({"run", "_boot", "_xof"})
-    _RESERVED = frozenset({"run","_boot","_xof","main","exec", "compile", "open", "print", "len", "range", "type", "str", "int", "float", "bool", "list", "dict", "set", "tuple", "bytes", "bytearray", "object", "property", "staticmethod", "classmethod", "super", "isinstance", "hasattr", "getattr", "setattr", "delattr", "vars", "dir", "id", "hex", "bin", "oct", "ord", "chr", "repr", "abs", "all", "any", "callable", "enumerate", "filter", "iter", "map", "max", "min", "next", "reversed", "sorted", "sum", "zip", "hash", "pow", "round", "format", "frozenset", "memoryview", "slice", "staticmethod", "classmethod", "property", "super", "EOFError", "StopIteration", "KeyboardInterrupt", "ImportError", "IndexError", "KeyError", "NameError", "SyntaxError", "TypeError", "ValueError", "ZeroDivisionError", "RuntimeError", "AttributeError", "Exception", "BaseException", "ArithmeticError", "LookupError", "DeprecationWarning", "FutureWarning", "UserWarning", "Warning"})
+    _RESERVED = frozenset({"run","_boot","_xof","_R","_D","_MAP","_SD","main","exec", "compile", "open", "print", "len", "range", "type", "str", "int", "float", "bool", "list", "dict", "set", "tuple", "bytes", "bytearray", "object", "property", "staticmethod", "classmethod", "super", "isinstance", "hasattr", "getattr", "setattr", "delattr", "vars", "dir", "id", "hex", "bin", "oct", "ord", "chr", "repr", "abs", "all", "any", "callable", "enumerate", "filter", "iter", "map", "max", "min", "next", "reversed", "sorted", "sum", "zip", "hash", "pow", "round", "format", "frozenset", "memoryview", "slice", "staticmethod", "classmethod", "property", "super", "EOFError", "StopIteration", "KeyboardInterrupt", "ImportError", "IndexError", "KeyError", "NameError", "SyntaxError", "TypeError", "ValueError", "ZeroDivisionError", "RuntimeError", "AttributeError", "Exception", "BaseException", "ArithmeticError", "LookupError", "DeprecationWarning", "FutureWarning", "UserWarning", "Warning"})
     _STDLIB = frozenset({
         "sys","os","json","re","math","hashlib","base64","itertools","collections",
         "datetime","pathlib","shutil","tempfile","uuid","threading","queue","io",
@@ -135,11 +135,11 @@ def minify_source(source: str, add_garbage: bool = True, make_trap: bool = False
         if isinstance(node, (ast.Import, ast.ImportFrom)): continue
         for field, value in ast.iter_fields(node):
             if field == 'name' and isinstance(value, str):
-                if value.startswith("__") or value in import_names or value in _RESERVED: continue
+                if value.startswith("_") or value in import_names or value in _RESERVED: continue
                 if value not in mapping:
                     mapping[value] = _gen_name(idx); idx += 1
             if field == 'id' and isinstance(value, str):
-                if value.startswith("__") or value in import_names or value in _RESERVED: continue
+                if value.startswith("_") or value in import_names or value in _RESERVED: continue
                 if value not in mapping:
                     mapping[value] = _gen_name(idx); idx += 1
             if field == 'arg' and isinstance(value, str):

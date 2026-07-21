@@ -254,6 +254,8 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
     ep = os.path.join(output_dir, entry_module.replace(".", os.sep) + ".py")
     os.makedirs(os.path.dirname(ep), exist_ok=True)
     boot = _BOOT_STUB.format(lk=loader_key.hex(), rd="_runtime", entry=entry_module)
+    from sprotect.minify import minify_source
+    boot = minify_source(boot, add_garbage=True)
     with open(ep, "w", encoding="utf-8") as f: f.write(boot)
     for src, dst in per_file_configs.items():
         shutil.copy2(src, dst)

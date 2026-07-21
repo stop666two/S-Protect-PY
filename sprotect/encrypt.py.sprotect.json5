@@ -1,6 +1,7 @@
 {
   // ==========================================
-  // 加密构建引擎 - build完整流程：文件扫描→混淆→加密→分片→启动器生成→假文件注入
+  // 加密构建引擎 - 精细化配置
+  // 负责 build 完整流程：扫描→混淆→加密→生成启动器
   // ==========================================
 
   obfuscate: {
@@ -8,22 +9,12 @@
     rename_variables: true,
     rename_functions: true,
     rename_classes: true,
-    rename_rules: { style: "hex", reserved: [""] },
+    rename_rules: { style: "hex", reserved: [] },
     encrypt_strings: true,
     encrypt_numbers: true,
     control_flow_flattening: true,
     dead_code_injection: true,
-    remove_docstrings: true,
-    remove_comments: true,
-    strip_blank_lines: true,
   },
-  anti_debug: {
-    enabled: true,
-    action: "exit",
-    checks: ["pdb", "debugger", "vm"],
-  },
-  virtualization: {
-    enabled: true,
-    mode: "full",
-  },
+  anti_debug: { enabled: true, action: "exit", checks: ["pdb", "debugger", "vm"] },
+  virtualization: { enabled: true, mode: "full" },
 }

@@ -326,14 +326,49 @@ class _LiteralEncryptor(ast.NodeTransformer):
     def visit_FormattedValue(self, n): self._fdepth += 1; r = self.generic_visit(n); self._fdepth -= 1; return r
     def visit_JoinedStr(self, n): self._fdepth += 1; r = self.generic_visit(n); self._fdepth -= 1; return r
 
+    def _xor_encrypt(self, s: str) -> ast.AST:
+        """Encrypt string with random XOR key: (lambda k,d: ''.join(chr(b^k)for b in d))(KEY, b'...')"""
+        data = s.encode()
+        key = secrets.randbelow(256)
+        enc = bytes(b ^ key for b in data)
+        k_arg = ast.arg(arg="_k", annotation=None)
+        d_arg = ast.arg(arg="_d", annotation=None)
+        body = ast.Call(
+            func=ast.Attribute(value=ast.Constant(""), attr="join"),
+            args=[ast.GeneratorExp(
+                elt=ast.Call(
+                    func=ast.Name(id="chr"),
+                    args=[ast.BinOp(
+                        left=ast.BinOp(left=ast.Name(id="b"), op=ast.BitXor(), right=ast.Name(id="_k")),
+                        op=ast.Add(), right=ast.Constant(0))],
+                    keywords=[]),
+                generators=[ast.comprehension(
+                    target=ast.Name(id="b"),
+                    iter=ast.Name(id="_d"),
+                    ifs=[], is_async=0)])],
+            keywords=[])
+        return ast.Call(
+            func=ast.Lambda(
+                args=ast.arguments(
+                    args=[k_arg, d_arg], posonlyargs=[], kwonlyargs=[], kw_defaults=[], defaults=[]),
+                body=body),
+            args=[ast.Constant(key), ast.Constant(enc)],
+            keywords=[])
+
+    def _base64_encrypt(self, s: str) -> ast.Call:
+        e = base64.b64encode(s.encode()).decode()
+        return ast.Call(func=ast.Attribute(value=ast.Call(func=ast.Attribute(
+            value=ast.Call(func=ast.Name(id="__import__"), args=[ast.Constant("base64")], keywords=[]),
+            attr="b64decode"), args=[ast.Constant(e)], keywords=[]), attr="decode"), args=[], keywords=[])
+
     def visit_Constant(self, node):
         if isinstance(node.value, str) and self.cfg.encrypt_strings and len(node.value) > 1 and self._fdepth == 0:
             if self.cfg.string_split and secrets.randbelow(2) == 0:
                 return _split_string(node.value, secrets.randbelow(3) + 2)
-            e = base64.b64encode(node.value.encode()).decode()
-            return ast.Call(func=ast.Attribute(value=ast.Call(func=ast.Attribute(
-                value=ast.Call(func=ast.Name(id="__import__"), args=[ast.Constant("base64")], keywords=[]),
-                attr="b64decode"), args=[ast.Constant(e)], keywords=[]), attr="decode"), args=[], keywords=[])
+            cipher = self.cfg.string_cipher
+            if cipher == "xor" or (cipher == "mixed" and secrets.randbelow(2) == 0):
+                return self._xor_encrypt(node.value)
+            return self._base64_encrypt(node.value)
         if isinstance(node.value, (int,float)) and not isinstance(node.value, bool) and self.cfg.encrypt_numbers:
             fmt = "i" if isinstance(node.value, int) and -2**31 <= node.value < 2**31 else "q" if isinstance(node.value, int) else "d"
             e = base64.b64encode(struct.pack(fmt, node.value)).decode()

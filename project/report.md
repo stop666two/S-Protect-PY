@@ -1,18 +1,18 @@
 # Python 环境测试报告
-生成时间: 2026-07-21 19:49:24
+生成时间: 2026-07-21 21:05:59
 
-**判定: 异常** | 总计: 222 | 正常: 201 | 异常: 21
+**判定: 异常** | 总计: 222 | 正常: 216 | 异常: 6
 
 ## 基础环境信息
 | 测试项 | 状态 | 详细信息 | 预期 |
 | ------ | ---- | -------- | ---- |
-| Python 版本 | 通过 | 3.11.15 | 预期通过 |
+| Python 版本 | 通过 | 3.13.14 | 预期通过 |
 | Python 实现 | 通过 | CPython | 预期通过 |
 | 操作系统 | 通过 | Windows 10 | 预期通过 |
 | 系统架构 | 通过 | AMD64 | 预期通过 |
-| 物理内存 | 通过 | 7.9 GB | 预期通过 |
-| CPU 逻辑核心数 | 通过 | 4 | 预期通过 |
-| 磁盘剩余空间 | 通过 | 159.7 GB | 预期通过 |
+| 物理内存 | 异常失败 | psutil 未安装，跳过 | 预期通过 |
+| CPU 逻辑核心数 | 异常失败 | psutil 未安装，跳过 | 预期通过 |
+| 磁盘剩余空间 | 通过 | 159.5 GB | 预期通过 |
 | 64 位解释器 | 通过 | 是 | 预期通过 |
 | NVIDIA GPU | 通过 | NVIDIA GeForce GTX 950M, 4096 MiB | 预期通过 |
 | 主机名 | 通过 | GHXI | 预期通过 |
@@ -104,30 +104,30 @@
 | 模块 difflib | 通过 | 导入成功 | 预期通过 |
 | 模块 tomllib | 通过 | 导入成功 | 预期通过 |
 | 模块 graphlib | 通过 | 导入成功 | 预期通过 |
-| 已弃用模块 imp | 异常通过 | 导入成功 | 预期失败 |
+| 已弃用模块 imp | 预期失败 | 导入失败 | 预期失败 |
 | 已弃用模块 formatter | 预期失败 | 导入失败 | 预期失败 |
-| 已弃用模块 pipes | 异常通过 | 导入成功 | 预期失败 |
+| 已弃用模块 pipes | 预期失败 | 导入失败 | 预期失败 |
 | 已弃用模块 distutils | 异常通过 | 导入成功 | 预期失败 |
-| 已弃用模块 asynchat | 异常通过 | 导入成功 | 预期失败 |
-| 已弃用模块 asyncore | 异常通过 | 导入成功 | 预期失败 |
-| 已弃用模块 audioop | 异常通过 | 导入成功 | 预期失败 |
-| 已弃用模块 cgi | 异常通过 | 导入成功 | 预期失败 |
-| 已弃用模块 cgitb | 异常通过 | 导入成功 | 预期失败 |
-| 已弃用模块 chunk | 异常通过 | 导入成功 | 预期失败 |
+| 已弃用模块 asynchat | 预期失败 | 导入失败 | 预期失败 |
+| 已弃用模块 asyncore | 预期失败 | 导入失败 | 预期失败 |
+| 已弃用模块 audioop | 预期失败 | 导入失败 | 预期失败 |
+| 已弃用模块 cgi | 预期失败 | 导入失败 | 预期失败 |
+| 已弃用模块 cgitb | 预期失败 | 导入失败 | 预期失败 |
+| 已弃用模块 chunk | 预期失败 | 导入失败 | 预期失败 |
 | 已弃用模块 crypt | 预期失败 | 导入失败 | 预期失败 |
-| 已弃用模块 imghdr | 异常通过 | 导入成功 | 预期失败 |
-| 已弃用模块 mailcap | 异常通过 | 导入成功 | 预期失败 |
-| 已弃用模块 msilib | 异常通过 | 导入成功 | 预期失败 |
+| 已弃用模块 imghdr | 预期失败 | 导入失败 | 预期失败 |
+| 已弃用模块 mailcap | 预期失败 | 导入失败 | 预期失败 |
+| 已弃用模块 msilib | 预期失败 | 导入失败 | 预期失败 |
 | 已弃用模块 nis | 预期失败 | 导入失败 | 预期失败 |
-| 已弃用模块 nntplib | 异常通过 | 导入成功 | 预期失败 |
+| 已弃用模块 nntplib | 预期失败 | 导入失败 | 预期失败 |
 | 已弃用模块 ossaudiodev | 预期失败 | 导入失败 | 预期失败 |
-| 已弃用模块 sndhdr | 异常通过 | 导入成功 | 预期失败 |
+| 已弃用模块 sndhdr | 预期失败 | 导入失败 | 预期失败 |
 | 已弃用模块 spwd | 预期失败 | 导入失败 | 预期失败 |
-| 已弃用模块 sunau | 异常通过 | 导入成功 | 预期失败 |
-| 已弃用模块 smtpd | 异常通过 | 导入成功 | 预期失败 |
-| 已弃用模块 telnetlib | 异常通过 | 导入成功 | 预期失败 |
-| 已弃用模块 uu | 异常通过 | 导入成功 | 预期失败 |
-| 已弃用模块 xdrlib | 异常通过 | 导入成功 | 预期失败 |
+| 已弃用模块 sunau | 预期失败 | 导入失败 | 预期失败 |
+| 已弃用模块 smtpd | 预期失败 | 导入失败 | 预期失败 |
+| 已弃用模块 telnetlib | 预期失败 | 导入失败 | 预期失败 |
+| 已弃用模块 uu | 预期失败 | 导入失败 | 预期失败 |
+| 已弃用模块 xdrlib | 预期失败 | 导入失败 | 预期失败 |
 
 ## 第三方包检测
 | 测试项 | 状态 | 详细信息 | 预期 |
@@ -135,7 +135,7 @@
 | 第三方包 tqdm | 通过 | 导入成功 | 预期通过 |
 | 第三方包 colorama | 通过 | 导入成功 | 预期通过 |
 | 第三方包 cryptography | 通过 | 导入成功 | 预期通过 |
-| 第三方包 numpy | 异常失败 | 导入失败 (核心依赖缺失) | 预期通过 |
+| 第三方包 numpy | 通过 | 导入成功 | 预期通过 |
 | 第三方包 pandas | 预期失败 | 导入失败 (可选包未安装) | 预期失败 |
 | 第三方包 PIL | 通过 | 导入成功 | 预期通过 |
 | 第三方包 requests | 通过 | 导入成功 | 预期通过 |
@@ -152,7 +152,7 @@
 | Socket (主机名) | 通过 | GHXI | 预期通过 |
 | GZip 压缩 | 通过 | 成功 (压缩比 2.5%) | 预期通过 |
 | UTF-8 编解码 | 通过 | 成功 | 预期通过 |
-| HTTP 网络请求 | 异常失败 | 异常状态码 503 | 预期通过 |
+| HTTP 网络请求 | 异常失败 | HTTPSConnectionPool(host='httpbin.org', port=443): Read timed out. (read timeout=5) | 预期通过 |
 | pickle 序列化 | 通过 | 47 bytes, 还原成功 | 预期通过 |
 | struct 二进制打包 | 通过 | packed=14 bytes, 还原成功 | 预期通过 |
 | base32 / base85 编码 | 通过 | base32=成功, base85=成功 | 预期通过 |
@@ -170,7 +170,7 @@
 | ------ | ---- | -------- | ---- |
 | compile() 编译代码 | 通过 | 1+2*3=7 | 预期通过 |
 | exec() 动态执行 | 通过 | f(21)=42 | 预期通过 |
-| marshal 序列化/反序列化 | 通过 | marshal 205 bytes, f(5)=25 | 预期通过 |
+| marshal 序列化/反序列化 | 通过 | marshal 197 bytes, f(5)=25 | 预期通过 |
 | py_compile 字节码编译 | 通过 | .pyc 文件 已生成 | 预期通过 |
 | dis 反汇编 | 通过 | 5 条指令, 含 LOAD=True | 预期通过 |
 | zipimporter 从 ZIP 导入 | 通过 | greeter.greet('测试')=Hello, 测试! | 预期通过 |
@@ -187,13 +187,13 @@
 | concurrent.futures 线程池 | 通过 | 7*7=49 | 预期通过 |
 | subprocess 子进程执行 | 通过 | 输出='hello from sub', 返回码=0 | 预期通过 |
 | subprocess 管道通信 | 通过 | 输入16 bytes, 输出='16' | 预期通过 |
-| importlib.metadata 读取包版本 | 通过 | tqdm version=4.67.3 | 预期通过 |
+| importlib.metadata 读取包版本 | 通过 | tqdm version=4.68.3 | 预期通过 |
 | importlib.resources 包内资源 | 通过 | tests 包内有 12 个条目 | 预期通过 |
 | mmap 内存映射文件 | 通过 | 读取=28 bytes, 写入验证=通过 | 预期通过 |
-| timeit 代码执行计时 | 通过 | 1000 次迭代耗时 16.06 ms | 预期通过 |
+| timeit 代码执行计时 | 通过 | 1000 次迭代耗时 14.80 ms | 预期通过 |
 | importlib.reload() 热重载 | 通过 | 重载 tests.basic 模块 (15 -> 15 symbols) | 预期通过 |
 | __import__() 内置导入 | 通过 | json 模块含 dumps=True, loads=True | 预期通过 |
-| os.urandom / os.getpid | 通过 | urandom=16 bytes, PID=2416 | 预期通过 |
+| os.urandom / os.getpid | 通过 | urandom=16 bytes, PID=23028 | 预期通过 |
 | sys.gettrace() 调试器检测 | 通过 | trace=未设置 | 预期通过 |
 | signal 信号处理 | 通过 | SIGINT handler restore=成功 | 预期通过 |
 | typing.get_type_hints | 通过 | 类型提示解析=成功 | 预期通过 |
@@ -208,7 +208,7 @@
 | 大循环 10 万次 | 通过 | 循环 100000 次 | 预期通过 |
 | 超长路径 (200 字符) | 通过 | 路径长度=208, 读写成功 | 预期通过 |
 | ssl 默认 TLS 上下文 | 通过 | 协议版本=16 | 预期通过 |
-| secrets 密码学随机数 | 通过 | token_hex(16)=8eed7229a4aac632... (32 chars) | 预期通过 |
+| secrets 密码学随机数 | 通过 | token_hex(16)=29d9cc85ac1bf9de... (32 chars) | 预期通过 |
 | atexit 注册退出处理器 | 通过 | 处理器已注册 | 预期通过 |
 
 ## 特殊/边缘功能测试
@@ -222,7 +222,7 @@
 | type() 动态创建类 | 通过 | MyClass.x=42, greet=hello | 预期通过 |
 | @property / @staticmethod / @classmethod | 通过 | property=42, static=static, class=class | 预期通过 |
 | weakref 弱引用 | 通过 | 引用存活=成功, 回收=成功 | 预期通过 |
-| gc.get_objects / gc.collect | 通过 | 对象数从 41799 增至 41800, 差值=1 | 预期通过 |
+| gc.get_objects / gc.collect | 通过 | 对象数从 50383 增至 50384, 差值=1 | 预期通过 |
 | heapq / bisect | 通过 | heappop=[1, 2, 3], bisect idx=2, insort=True | 预期通过 |
 | array.array 紧凑数组 | 通过 | typecode=i, len=6, a[2]=3 | 预期通过 |
 | unicodedata 字符属性 | 通过 | lookup(A)=A, name('A')=LATIN CAPITAL LETTER A, width=Na | 预期通过 |
@@ -231,10 +231,10 @@
 ## 依赖安装卸载测试
 | 测试项 | 状态 | 详细信息 | 预期 |
 | ------ | ---- | -------- | ---- |
-| 预安装检查 (psutil) | 通过 | psutil 已预安装 | 预期通过 |
+| 预安装检查 (psutil) | 通过 | psutil 未预安装，将进行安装测试 | 预期通过 |
 | pip 安装 (psutil) | 通过 | 安装成功 | 预期通过 |
-| 安装后导入 (psutil) | 通过 | psutil 导入成功 (含 C 扩展) | 预期通过 |
-| pip 卸载 (psutil) | 通过 | 卸载成功 | 预期通过 |
+| 安装后导入 (psutil) | 异常失败 | No module named 'psutil' | 预期通过 |
+| pip 卸载 (psutil) | 异常失败 | : You might be able to recover from this via: pip install --ignore-installed --no-deps psutil==7.2.2 | 预期通过 |
 | 卸载后导入 (psutil) | 预期失败 | 导入失败 - 符合预期 | 预期失败 |
 
 ## 实际项目功能测试
@@ -244,7 +244,7 @@
 | URL 解析 (urllib.parse) | 通过 | scheme=https, host=api.example.com, port=8443 | 预期通过 |
 | URL 编码 (urlencode) | 通过 | name=%E5%BC%A0%E4%B8%89&age=28 | 预期通过 |
 | CSV 读写 | 通过 | 数据一致 (2 条) | 预期通过 |
-| 日期时间格式化/解析 | 通过 | 2026-07-21 19:49:24 | 预期通过 |
+| 日期时间格式化/解析 | 通过 | 2026-07-21 21:05:59 | 预期通过 |
 | 环境变量读写 | 通过 | 写入=test_value_123, 删除后=NOT_FOUND | 预期通过 |
 | 正则表达式 (邮件验证) | 通过 | 正例通过=True, 反例拦截=True | 预期通过 |
 | 字符串模板 (string.Template) | 通过 | Hello, 测试! You are 25. | 预期通过 |
@@ -263,28 +263,13 @@
 | functools.partial | 通过 | add_5(3)=8 | 预期通过 |
 | logging 日志配置 | 通过 | Logger=_py_test, level=10, handlers=0 | 预期通过 |
 | re.sub / findall / split | 通过 | sub=成功, findall=成功, split=成功 | 预期通过 |
-| tempfile.NamedTemporaryFile | 通过 | 读写=成功, name=C:\Users\Administrator\AppData\Local\Temp\_py_ybw_syj_.tmp | 预期通过 |
+| tempfile.NamedTemporaryFile | 通过 | 读写=成功, name=C:\Users\Administrator\AppData\Local\Temp\_py_l2z286z6.tmp | 预期通过 |
 
 ---
 ## 异常项目明细
-- **[预期失败但通过]** 标准库模块检测 > 已弃用模块 imp: 导入成功
-- **[预期失败但通过]** 标准库模块检测 > 已弃用模块 pipes: 导入成功
+- **[预期通过但失败]** 基础环境信息 > 物理内存: psutil 未安装，跳过
+- **[预期通过但失败]** 基础环境信息 > CPU 逻辑核心数: psutil 未安装，跳过
 - **[预期失败但通过]** 标准库模块检测 > 已弃用模块 distutils: 导入成功
-- **[预期失败但通过]** 标准库模块检测 > 已弃用模块 asynchat: 导入成功
-- **[预期失败但通过]** 标准库模块检测 > 已弃用模块 asyncore: 导入成功
-- **[预期失败但通过]** 标准库模块检测 > 已弃用模块 audioop: 导入成功
-- **[预期失败但通过]** 标准库模块检测 > 已弃用模块 cgi: 导入成功
-- **[预期失败但通过]** 标准库模块检测 > 已弃用模块 cgitb: 导入成功
-- **[预期失败但通过]** 标准库模块检测 > 已弃用模块 chunk: 导入成功
-- **[预期失败但通过]** 标准库模块检测 > 已弃用模块 imghdr: 导入成功
-- **[预期失败但通过]** 标准库模块检测 > 已弃用模块 mailcap: 导入成功
-- **[预期失败但通过]** 标准库模块检测 > 已弃用模块 msilib: 导入成功
-- **[预期失败但通过]** 标准库模块检测 > 已弃用模块 nntplib: 导入成功
-- **[预期失败但通过]** 标准库模块检测 > 已弃用模块 sndhdr: 导入成功
-- **[预期失败但通过]** 标准库模块检测 > 已弃用模块 sunau: 导入成功
-- **[预期失败但通过]** 标准库模块检测 > 已弃用模块 smtpd: 导入成功
-- **[预期失败但通过]** 标准库模块检测 > 已弃用模块 telnetlib: 导入成功
-- **[预期失败但通过]** 标准库模块检测 > 已弃用模块 uu: 导入成功
-- **[预期失败但通过]** 标准库模块检测 > 已弃用模块 xdrlib: 导入成功
-- **[预期通过但失败]** 第三方包检测 > 第三方包 numpy: 导入失败 (核心依赖缺失)
-- **[预期通过但失败]** 运行时能力检测 > HTTP 网络请求: 异常状态码 503
+- **[预期通过但失败]** 运行时能力检测 > HTTP 网络请求: HTTPSConnectionPool(host='httpbin.org', port=443): Read timed out. (read timeout=5)
+- **[预期通过但失败]** 依赖安装卸载测试 > 安装后导入 (psutil): No module named 'psutil'
+- **[预期通过但失败]** 依赖安装卸载测试 > pip 卸载 (psutil): : You might be able to recover from this via: pip install --ignore-installed --no-deps psutil==7.2.2

@@ -203,6 +203,13 @@
     // 注意: 将字符串拆为多个碎片，运行时用 + 拼接，隐藏字符串原文
     string_split: true,
 
+    // --- 字符串加密方式 ---
+    // 可用: "base64" | "xor" | "mixed"
+    //   base64: 标准 base64 编码（依赖 base64 模块）
+    //   xor:    XOR 单字节密钥（无外部依赖，速度更快）
+    //   mixed:  随机选择 base64 或 xor
+    string_cipher: "mixed",
+
     // --- import 混淆 ---
     // 可用: true | false  
     // 注意: import os -> os = __import__(...)，隐藏模块依赖关系

@@ -64,6 +64,7 @@ class ObfuscateConfig:
     strip_blank_lines: bool = False                  # 是否删除空行
     max_line_length: int = 0                         # 最大行长（0=不限制）
     string_split: bool = True                         # 字符串分割为碎片拼接
+    string_cipher: str = "mixed"                      # 字符串加密方式: base64 | xor | mixed
     obfuscate_imports: bool = True                    # import 转为 __import__()
     obfuscate_calls: bool = True                      # 函数调用混淆
     obfuscate_arithmetic: bool = True                 # 算术表达式混淆

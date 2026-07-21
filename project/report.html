@@ -16,18 +16,18 @@ th { background: #333; color: #fff; }
 </head>
 <body>
 <h1>Python 环境测试报告</h1>
-<p class="timestamp">生成时间: 2026-07-21 19:49:24</p>
+<p class="timestamp">生成时间: 2026-07-21 21:05:59</p>
 <table>
 <thead><tr><th>测试项</th><th>状态</th><th>详细信息</th><th>预期</th></tr></thead>
 <tbody>
 <tr><td colspan='4' style='background:#f0f0f0;font-weight:bold'>基础环境信息</td></tr>
-<tr><td>Python 版本</td><td style='color:#4caf50'>通过</td><td>3.11.15</td><td>预期通过</td></tr>
+<tr><td>Python 版本</td><td style='color:#4caf50'>通过</td><td>3.13.14</td><td>预期通过</td></tr>
 <tr><td>Python 实现</td><td style='color:#4caf50'>通过</td><td>CPython</td><td>预期通过</td></tr>
 <tr><td>操作系统</td><td style='color:#4caf50'>通过</td><td>Windows 10</td><td>预期通过</td></tr>
 <tr><td>系统架构</td><td style='color:#4caf50'>通过</td><td>AMD64</td><td>预期通过</td></tr>
-<tr><td>物理内存</td><td style='color:#4caf50'>通过</td><td>7.9 GB</td><td>预期通过</td></tr>
-<tr><td>CPU 逻辑核心数</td><td style='color:#4caf50'>通过</td><td>4</td><td>预期通过</td></tr>
-<tr><td>磁盘剩余空间</td><td style='color:#4caf50'>通过</td><td>159.7 GB</td><td>预期通过</td></tr>
+<tr><td>物理内存</td><td style='color:#f44336'>异常失败</td><td>psutil 未安装，跳过</td><td>预期通过</td></tr>
+<tr><td>CPU 逻辑核心数</td><td style='color:#f44336'>异常失败</td><td>psutil 未安装，跳过</td><td>预期通过</td></tr>
+<tr><td>磁盘剩余空间</td><td style='color:#4caf50'>通过</td><td>159.5 GB</td><td>预期通过</td></tr>
 <tr><td>64 位解释器</td><td style='color:#4caf50'>通过</td><td>是</td><td>预期通过</td></tr>
 <tr><td>NVIDIA GPU</td><td style='color:#4caf50'>通过</td><td>NVIDIA GeForce GTX 950M, 4096 MiB</td><td>预期通过</td></tr>
 <tr><td>主机名</td><td style='color:#4caf50'>通过</td><td>GHXI</td><td>预期通过</td></tr>
@@ -116,35 +116,35 @@ th { background: #333; color: #fff; }
 <tr><td>模块 difflib</td><td style='color:#4caf50'>通过</td><td>导入成功</td><td>预期通过</td></tr>
 <tr><td>模块 tomllib</td><td style='color:#4caf50'>通过</td><td>导入成功</td><td>预期通过</td></tr>
 <tr><td>模块 graphlib</td><td style='color:#4caf50'>通过</td><td>导入成功</td><td>预期通过</td></tr>
-<tr><td>已弃用模块 imp</td><td style='color:#ff9800'>异常通过</td><td>导入成功</td><td>预期失败</td></tr>
+<tr><td>已弃用模块 imp</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
 <tr><td>已弃用模块 formatter</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
-<tr><td>已弃用模块 pipes</td><td style='color:#ff9800'>异常通过</td><td>导入成功</td><td>预期失败</td></tr>
+<tr><td>已弃用模块 pipes</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
 <tr><td>已弃用模块 distutils</td><td style='color:#ff9800'>异常通过</td><td>导入成功</td><td>预期失败</td></tr>
-<tr><td>已弃用模块 asynchat</td><td style='color:#ff9800'>异常通过</td><td>导入成功</td><td>预期失败</td></tr>
-<tr><td>已弃用模块 asyncore</td><td style='color:#ff9800'>异常通过</td><td>导入成功</td><td>预期失败</td></tr>
-<tr><td>已弃用模块 audioop</td><td style='color:#ff9800'>异常通过</td><td>导入成功</td><td>预期失败</td></tr>
-<tr><td>已弃用模块 cgi</td><td style='color:#ff9800'>异常通过</td><td>导入成功</td><td>预期失败</td></tr>
-<tr><td>已弃用模块 cgitb</td><td style='color:#ff9800'>异常通过</td><td>导入成功</td><td>预期失败</td></tr>
-<tr><td>已弃用模块 chunk</td><td style='color:#ff9800'>异常通过</td><td>导入成功</td><td>预期失败</td></tr>
+<tr><td>已弃用模块 asynchat</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
+<tr><td>已弃用模块 asyncore</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
+<tr><td>已弃用模块 audioop</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
+<tr><td>已弃用模块 cgi</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
+<tr><td>已弃用模块 cgitb</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
+<tr><td>已弃用模块 chunk</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
 <tr><td>已弃用模块 crypt</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
-<tr><td>已弃用模块 imghdr</td><td style='color:#ff9800'>异常通过</td><td>导入成功</td><td>预期失败</td></tr>
-<tr><td>已弃用模块 mailcap</td><td style='color:#ff9800'>异常通过</td><td>导入成功</td><td>预期失败</td></tr>
-<tr><td>已弃用模块 msilib</td><td style='color:#ff9800'>异常通过</td><td>导入成功</td><td>预期失败</td></tr>
+<tr><td>已弃用模块 imghdr</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
+<tr><td>已弃用模块 mailcap</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
+<tr><td>已弃用模块 msilib</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
 <tr><td>已弃用模块 nis</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
-<tr><td>已弃用模块 nntplib</td><td style='color:#ff9800'>异常通过</td><td>导入成功</td><td>预期失败</td></tr>
+<tr><td>已弃用模块 nntplib</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
 <tr><td>已弃用模块 ossaudiodev</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
-<tr><td>已弃用模块 sndhdr</td><td style='color:#ff9800'>异常通过</td><td>导入成功</td><td>预期失败</td></tr>
+<tr><td>已弃用模块 sndhdr</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
 <tr><td>已弃用模块 spwd</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
-<tr><td>已弃用模块 sunau</td><td style='color:#ff9800'>异常通过</td><td>导入成功</td><td>预期失败</td></tr>
-<tr><td>已弃用模块 smtpd</td><td style='color:#ff9800'>异常通过</td><td>导入成功</td><td>预期失败</td></tr>
-<tr><td>已弃用模块 telnetlib</td><td style='color:#ff9800'>异常通过</td><td>导入成功</td><td>预期失败</td></tr>
-<tr><td>已弃用模块 uu</td><td style='color:#ff9800'>异常通过</td><td>导入成功</td><td>预期失败</td></tr>
-<tr><td>已弃用模块 xdrlib</td><td style='color:#ff9800'>异常通过</td><td>导入成功</td><td>预期失败</td></tr>
+<tr><td>已弃用模块 sunau</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
+<tr><td>已弃用模块 smtpd</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
+<tr><td>已弃用模块 telnetlib</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
+<tr><td>已弃用模块 uu</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
+<tr><td>已弃用模块 xdrlib</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败</td><td>预期失败</td></tr>
 <tr><td colspan='4' style='background:#f0f0f0;font-weight:bold'>第三方包检测</td></tr>
 <tr><td>第三方包 tqdm</td><td style='color:#4caf50'>通过</td><td>导入成功</td><td>预期通过</td></tr>
 <tr><td>第三方包 colorama</td><td style='color:#4caf50'>通过</td><td>导入成功</td><td>预期通过</td></tr>
 <tr><td>第三方包 cryptography</td><td style='color:#4caf50'>通过</td><td>导入成功</td><td>预期通过</td></tr>
-<tr><td>第三方包 numpy</td><td style='color:#f44336'>异常失败</td><td>导入失败 (核心依赖缺失)</td><td>预期通过</td></tr>
+<tr><td>第三方包 numpy</td><td style='color:#4caf50'>通过</td><td>导入成功</td><td>预期通过</td></tr>
 <tr><td>第三方包 pandas</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败 (可选包未安装)</td><td>预期失败</td></tr>
 <tr><td>第三方包 PIL</td><td style='color:#4caf50'>通过</td><td>导入成功</td><td>预期通过</td></tr>
 <tr><td>第三方包 requests</td><td style='color:#4caf50'>通过</td><td>导入成功</td><td>预期通过</td></tr>
@@ -158,7 +158,7 @@ th { background: #333; color: #fff; }
 <tr><td>Socket (主机名)</td><td style='color:#4caf50'>通过</td><td>GHXI</td><td>预期通过</td></tr>
 <tr><td>GZip 压缩</td><td style='color:#4caf50'>通过</td><td>成功 (压缩比 2.5%)</td><td>预期通过</td></tr>
 <tr><td>UTF-8 编解码</td><td style='color:#4caf50'>通过</td><td>成功</td><td>预期通过</td></tr>
-<tr><td>HTTP 网络请求</td><td style='color:#f44336'>异常失败</td><td>异常状态码 503</td><td>预期通过</td></tr>
+<tr><td>HTTP 网络请求</td><td style='color:#f44336'>异常失败</td><td>HTTPSConnectionPool(host='httpbin.org', port=443): Read timed out. (read timeout=5)</td><td>预期通过</td></tr>
 <tr><td>pickle 序列化</td><td style='color:#4caf50'>通过</td><td>47 bytes, 还原成功</td><td>预期通过</td></tr>
 <tr><td>struct 二进制打包</td><td style='color:#4caf50'>通过</td><td>packed=14 bytes, 还原成功</td><td>预期通过</td></tr>
 <tr><td>base32 / base85 编码</td><td style='color:#4caf50'>通过</td><td>base32=成功, base85=成功</td><td>预期通过</td></tr>
@@ -173,7 +173,7 @@ th { background: #333; color: #fff; }
 <tr><td colspan='4' style='background:#f0f0f0;font-weight:bold'>编译/加密核心</td></tr>
 <tr><td>compile() 编译代码</td><td style='color:#4caf50'>通过</td><td>1+2*3=7</td><td>预期通过</td></tr>
 <tr><td>exec() 动态执行</td><td style='color:#4caf50'>通过</td><td>f(21)=42</td><td>预期通过</td></tr>
-<tr><td>marshal 序列化/反序列化</td><td style='color:#4caf50'>通过</td><td>marshal 205 bytes, f(5)=25</td><td>预期通过</td></tr>
+<tr><td>marshal 序列化/反序列化</td><td style='color:#4caf50'>通过</td><td>marshal 197 bytes, f(5)=25</td><td>预期通过</td></tr>
 <tr><td>py_compile 字节码编译</td><td style='color:#4caf50'>通过</td><td>.pyc 文件 已生成</td><td>预期通过</td></tr>
 <tr><td>dis 反汇编</td><td style='color:#4caf50'>通过</td><td>5 条指令, 含 LOAD=True</td><td>预期通过</td></tr>
 <tr><td>zipimporter 从 ZIP 导入</td><td style='color:#4caf50'>通过</td><td>greeter.greet('测试')=Hello, 测试!</td><td>预期通过</td></tr>
@@ -187,13 +187,13 @@ th { background: #333; color: #fff; }
 <tr><td>concurrent.futures 线程池</td><td style='color:#4caf50'>通过</td><td>7*7=49</td><td>预期通过</td></tr>
 <tr><td>subprocess 子进程执行</td><td style='color:#4caf50'>通过</td><td>输出='hello from sub', 返回码=0</td><td>预期通过</td></tr>
 <tr><td>subprocess 管道通信</td><td style='color:#4caf50'>通过</td><td>输入16 bytes, 输出='16'</td><td>预期通过</td></tr>
-<tr><td>importlib.metadata 读取包版本</td><td style='color:#4caf50'>通过</td><td>tqdm version=4.67.3</td><td>预期通过</td></tr>
+<tr><td>importlib.metadata 读取包版本</td><td style='color:#4caf50'>通过</td><td>tqdm version=4.68.3</td><td>预期通过</td></tr>
 <tr><td>importlib.resources 包内资源</td><td style='color:#4caf50'>通过</td><td>tests 包内有 12 个条目</td><td>预期通过</td></tr>
 <tr><td>mmap 内存映射文件</td><td style='color:#4caf50'>通过</td><td>读取=28 bytes, 写入验证=通过</td><td>预期通过</td></tr>
-<tr><td>timeit 代码执行计时</td><td style='color:#4caf50'>通过</td><td>1000 次迭代耗时 16.06 ms</td><td>预期通过</td></tr>
+<tr><td>timeit 代码执行计时</td><td style='color:#4caf50'>通过</td><td>1000 次迭代耗时 14.80 ms</td><td>预期通过</td></tr>
 <tr><td>importlib.reload() 热重载</td><td style='color:#4caf50'>通过</td><td>重载 tests.basic 模块 (15 -> 15 symbols)</td><td>预期通过</td></tr>
 <tr><td>__import__() 内置导入</td><td style='color:#4caf50'>通过</td><td>json 模块含 dumps=True, loads=True</td><td>预期通过</td></tr>
-<tr><td>os.urandom / os.getpid</td><td style='color:#4caf50'>通过</td><td>urandom=16 bytes, PID=2416</td><td>预期通过</td></tr>
+<tr><td>os.urandom / os.getpid</td><td style='color:#4caf50'>通过</td><td>urandom=16 bytes, PID=23028</td><td>预期通过</td></tr>
 <tr><td>sys.gettrace() 调试器检测</td><td style='color:#4caf50'>通过</td><td>trace=未设置</td><td>预期通过</td></tr>
 <tr><td>signal 信号处理</td><td style='color:#4caf50'>通过</td><td>SIGINT handler restore=成功</td><td>预期通过</td></tr>
 <tr><td>typing.get_type_hints</td><td style='color:#4caf50'>通过</td><td>类型提示解析=成功</td><td>预期通过</td></tr>
@@ -205,7 +205,7 @@ th { background: #333; color: #fff; }
 <tr><td>大循环 10 万次</td><td style='color:#4caf50'>通过</td><td>循环 100000 次</td><td>预期通过</td></tr>
 <tr><td>超长路径 (200 字符)</td><td style='color:#4caf50'>通过</td><td>路径长度=208, 读写成功</td><td>预期通过</td></tr>
 <tr><td>ssl 默认 TLS 上下文</td><td style='color:#4caf50'>通过</td><td>协议版本=16</td><td>预期通过</td></tr>
-<tr><td>secrets 密码学随机数</td><td style='color:#4caf50'>通过</td><td>token_hex(16)=8eed7229a4aac632... (32 chars)</td><td>预期通过</td></tr>
+<tr><td>secrets 密码学随机数</td><td style='color:#4caf50'>通过</td><td>token_hex(16)=29d9cc85ac1bf9de... (32 chars)</td><td>预期通过</td></tr>
 <tr><td>atexit 注册退出处理器</td><td style='color:#4caf50'>通过</td><td>处理器已注册</td><td>预期通过</td></tr>
 <tr><td colspan='4' style='background:#f0f0f0;font-weight:bold'>特殊/边缘功能测试</td></tr>
 <tr><td>inspect.getsource 源码获取</td><td style='color:#4caf50'>通过</td><td>获取到 8042 chars, 含函数定义=成功</td><td>预期通过</td></tr>
@@ -216,23 +216,23 @@ th { background: #333; color: #fff; }
 <tr><td>type() 动态创建类</td><td style='color:#4caf50'>通过</td><td>MyClass.x=42, greet=hello</td><td>预期通过</td></tr>
 <tr><td>@property / @staticmethod / @classmethod</td><td style='color:#4caf50'>通过</td><td>property=42, static=static, class=class</td><td>预期通过</td></tr>
 <tr><td>weakref 弱引用</td><td style='color:#4caf50'>通过</td><td>引用存活=成功, 回收=成功</td><td>预期通过</td></tr>
-<tr><td>gc.get_objects / gc.collect</td><td style='color:#4caf50'>通过</td><td>对象数从 41799 增至 41800, 差值=1</td><td>预期通过</td></tr>
+<tr><td>gc.get_objects / gc.collect</td><td style='color:#4caf50'>通过</td><td>对象数从 50383 增至 50384, 差值=1</td><td>预期通过</td></tr>
 <tr><td>heapq / bisect</td><td style='color:#4caf50'>通过</td><td>heappop=[1, 2, 3], bisect idx=2, insort=True</td><td>预期通过</td></tr>
 <tr><td>array.array 紧凑数组</td><td style='color:#4caf50'>通过</td><td>typecode=i, len=6, a[2]=3</td><td>预期通过</td></tr>
 <tr><td>unicodedata 字符属性</td><td style='color:#4caf50'>通过</td><td>lookup(A)=A, name('A')=LATIN CAPITAL LETTER A, width=Na</td><td>预期通过</td></tr>
 <tr><td>sys.getsizeof 对象大小</td><td style='color:#4caf50'>通过</td><td>dict(3 items)=184 bytes</td><td>预期通过</td></tr>
 <tr><td colspan='4' style='background:#f0f0f0;font-weight:bold'>依赖安装卸载测试</td></tr>
-<tr><td>预安装检查 (psutil)</td><td style='color:#4caf50'>通过</td><td>psutil 已预安装</td><td>预期通过</td></tr>
+<tr><td>预安装检查 (psutil)</td><td style='color:#4caf50'>通过</td><td>psutil 未预安装，将进行安装测试</td><td>预期通过</td></tr>
 <tr><td>pip 安装 (psutil)</td><td style='color:#4caf50'>通过</td><td>安装成功</td><td>预期通过</td></tr>
-<tr><td>安装后导入 (psutil)</td><td style='color:#4caf50'>通过</td><td>psutil 导入成功 (含 C 扩展)</td><td>预期通过</td></tr>
-<tr><td>pip 卸载 (psutil)</td><td style='color:#4caf50'>通过</td><td>卸载成功</td><td>预期通过</td></tr>
+<tr><td>安装后导入 (psutil)</td><td style='color:#f44336'>异常失败</td><td>No module named 'psutil'</td><td>预期通过</td></tr>
+<tr><td>pip 卸载 (psutil)</td><td style='color:#f44336'>异常失败</td><td>: You might be able to recover from this via: pip install --ignore-installed --no-deps psutil==7.2.2</td><td>预期通过</td></tr>
 <tr><td>卸载后导入 (psutil)</td><td style='color:#9e9e9e'>预期失败</td><td>导入失败 - 符合预期</td><td>预期失败</td></tr>
 <tr><td colspan='4' style='background:#f0f0f0;font-weight:bold'>实际项目功能测试</td></tr>
 <tr><td>配置文件解析 (ConfigParser)</td><td style='color:#4caf50'>通过</td><td>host=localhost, port=8080</td><td>预期通过</td></tr>
 <tr><td>URL 解析 (urllib.parse)</td><td style='color:#4caf50'>通过</td><td>scheme=https, host=api.example.com, port=8443</td><td>预期通过</td></tr>
 <tr><td>URL 编码 (urlencode)</td><td style='color:#4caf50'>通过</td><td>name=%E5%BC%A0%E4%B8%89&age=28</td><td>预期通过</td></tr>
 <tr><td>CSV 读写</td><td style='color:#4caf50'>通过</td><td>数据一致 (2 条)</td><td>预期通过</td></tr>
-<tr><td>日期时间格式化/解析</td><td style='color:#4caf50'>通过</td><td>2026-07-21 19:49:24</td><td>预期通过</td></tr>
+<tr><td>日期时间格式化/解析</td><td style='color:#4caf50'>通过</td><td>2026-07-21 21:05:59</td><td>预期通过</td></tr>
 <tr><td>环境变量读写</td><td style='color:#4caf50'>通过</td><td>写入=test_value_123, 删除后=NOT_FOUND</td><td>预期通过</td></tr>
 <tr><td>正则表达式 (邮件验证)</td><td style='color:#4caf50'>通过</td><td>正例通过=True, 反例拦截=True</td><td>预期通过</td></tr>
 <tr><td>字符串模板 (string.Template)</td><td style='color:#4caf50'>通过</td><td>Hello, 测试! You are 25.</td><td>预期通过</td></tr>
@@ -251,37 +251,22 @@ th { background: #333; color: #fff; }
 <tr><td>functools.partial</td><td style='color:#4caf50'>通过</td><td>add_5(3)=8</td><td>预期通过</td></tr>
 <tr><td>logging 日志配置</td><td style='color:#4caf50'>通过</td><td>Logger=_py_test, level=10, handlers=0</td><td>预期通过</td></tr>
 <tr><td>re.sub / findall / split</td><td style='color:#4caf50'>通过</td><td>sub=成功, findall=成功, split=成功</td><td>预期通过</td></tr>
-<tr><td>tempfile.NamedTemporaryFile</td><td style='color:#4caf50'>通过</td><td>读写=成功, name=C:\Users\Administrator\AppData\Local\Temp\_py_ybw_syj_.tmp</td><td>预期通过</td></tr>
+<tr><td>tempfile.NamedTemporaryFile</td><td style='color:#4caf50'>通过</td><td>读写=成功, name=C:\Users\Administrator\AppData\Local\Temp\_py_l2z286z6.tmp</td><td>预期通过</td></tr>
 
 </tbody>
 </table>
 <table>
 <tr><th colspan="4" style="background:#ffebee;color:#c62828">异常项目明细</th></tr>
-<tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 imp: 预期失败但通过 | 导入成功</td></tr>
-<tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 pipes: 预期失败但通过 | 导入成功</td></tr>
+<tr style='background:#fff3e0'><td colspan='4'>基础环境信息 &gt; 物理内存: 预期通过但失败 | psutil 未安装，跳过</td></tr>
+<tr style='background:#fff3e0'><td colspan='4'>基础环境信息 &gt; CPU 逻辑核心数: 预期通过但失败 | psutil 未安装，跳过</td></tr>
 <tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 distutils: 预期失败但通过 | 导入成功</td></tr>
-<tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 asynchat: 预期失败但通过 | 导入成功</td></tr>
-<tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 asyncore: 预期失败但通过 | 导入成功</td></tr>
-<tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 audioop: 预期失败但通过 | 导入成功</td></tr>
-<tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 cgi: 预期失败但通过 | 导入成功</td></tr>
-<tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 cgitb: 预期失败但通过 | 导入成功</td></tr>
-<tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 chunk: 预期失败但通过 | 导入成功</td></tr>
-<tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 imghdr: 预期失败但通过 | 导入成功</td></tr>
-<tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 mailcap: 预期失败但通过 | 导入成功</td></tr>
-<tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 msilib: 预期失败但通过 | 导入成功</td></tr>
-<tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 nntplib: 预期失败但通过 | 导入成功</td></tr>
-<tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 sndhdr: 预期失败但通过 | 导入成功</td></tr>
-<tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 sunau: 预期失败但通过 | 导入成功</td></tr>
-<tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 smtpd: 预期失败但通过 | 导入成功</td></tr>
-<tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 telnetlib: 预期失败但通过 | 导入成功</td></tr>
-<tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 uu: 预期失败但通过 | 导入成功</td></tr>
-<tr style='background:#fff3e0'><td colspan='4'>标准库模块检测 &gt; 已弃用模块 xdrlib: 预期失败但通过 | 导入成功</td></tr>
-<tr style='background:#fff3e0'><td colspan='4'>第三方包检测 &gt; 第三方包 numpy: 预期通过但失败 | 导入失败 (核心依赖缺失)</td></tr>
-<tr style='background:#fff3e0'><td colspan='4'>运行时能力检测 &gt; HTTP 网络请求: 预期通过但失败 | 异常状态码 503</td></tr>
+<tr style='background:#fff3e0'><td colspan='4'>运行时能力检测 &gt; HTTP 网络请求: 预期通过但失败 | HTTPSConnectionPool(host='httpbin.org', port=443): Read timed out. (read timeout=5)</td></tr>
+<tr style='background:#fff3e0'><td colspan='4'>依赖安装卸载测试 &gt; 安装后导入 (psutil): 预期通过但失败 | No module named 'psutil'</td></tr>
+<tr style='background:#fff3e0'><td colspan='4'>依赖安装卸载测试 &gt; pip 卸载 (psutil): 预期通过但失败 | : You might be able to recover from this via: pip install --ignore-installed --no-deps psutil==7.2.2</td></tr>
 
 </table>
 <div class="summary">
-<p>正常: 201 | 异常: 21</p>
+<p>正常: 216 | 异常: 6</p>
 <p class="verdict">判定: 异常</p>
 </div>
 </body>

@@ -31,6 +31,7 @@ def _make_config(batch_id: str = "test-batch") -> WatermarkConfig:
 
 def test_inject_file_watermark_appends_comment() -> None:
     """File-level watermark appends a // WM: comment line."""
+    os.makedirs(_TEST_TEMP, exist_ok=True)
     tmp = _tmp_path("_test_wm_file.py")
     original = "x = 1\nprint(x)\n"
     with open(tmp, "w", encoding="utf-8") as f:

@@ -65,3 +65,32 @@ def test_salsa20_roundtrip():
     assert ct != data
     pt = decrypt_salsa20(ct, key, nonce)
     assert pt == data
+
+
+from sprotect.crypto import encrypt_payload_v2, decrypt_payload_v2
+
+def test_encrypt_payload_v2_no_extra():
+    data = b"test source code here"
+    key = b"m" * 32
+    ct, hdr = encrypt_payload_v2(data, key, [])
+    assert "version" in hdr
+    assert hdr["extra_layers"] == []
+    pt = decrypt_payload_v2(ct, key, hdr)
+    assert pt == data
+
+def test_encrypt_payload_v2_with_serpent():
+    data = b"test source with serpent" * 100
+    key = b"m" * 32
+    ct, hdr = encrypt_payload_v2(data, key, ["serpent"])
+    assert "serpent" in hdr["layer_ivs"]
+    pt = decrypt_payload_v2(ct, key, hdr)
+    assert pt == data
+
+def test_encrypt_payload_v2_all_layers():
+    data = b"test source ALL layers" * 200
+    key = b"m" * 32
+    ct, hdr = encrypt_payload_v2(data, key, ["serpent", "twofish", "camellia", "salsa20"])
+    for algo in ["serpent", "twofish", "camellia", "salsa20"]:
+        assert algo in hdr["layer_ivs"]
+    pt = decrypt_payload_v2(ct, key, hdr)
+    assert pt == data

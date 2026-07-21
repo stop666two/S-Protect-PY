@@ -188,3 +188,62 @@ def generate_decoy_payload() -> bytes:
     payload = {"v": 7, "d": ct.hex(), "c": "", "p": pad.hex(), "h": sha256(garbage)}
     payload.update(keys)
     return json.dumps(payload, separators=(",", ":")).encode()
+
+
+def encrypt_payload_v2(source_data: bytes, real_key: bytes,
+                       extra_layers: list[str] = None,
+                       compress: int = 9) -> tuple[bytes, dict]:
+    from sprotect.crypto_extra import (
+        encrypt_serpent, encrypt_twofish, encrypt_camellia, encrypt_salsa20,
+    )
+    extra_layers = extra_layers or []
+    data = zlib.compress(source_data, level=compress)
+    try:
+        c20 = chacha20_encrypt(data, real_key)
+    except Exception:
+        c20 = data
+    xored = xor_stream(c20, hashlib.sha256(real_key).digest())
+    ct = aes_encrypt(xored, real_key)
+    layer_ivs = {}
+    for algo in extra_layers:
+        lk, salt = derive_layer_key(real_key, f"sprotect:{algo}")
+        iv = os.urandom(16) if algo != "salsa20" else os.urandom(8)
+        layer_ivs[algo] = {"iv": iv.hex(), "salt": salt.hex()}
+        fn = {
+            "serpent": encrypt_serpent, "twofish": encrypt_twofish,
+            "camellia": encrypt_camellia, "salsa20": encrypt_salsa20,
+        }.get(algo)
+        if fn:
+            ct = fn(ct, lk, iv)
+    header = {
+        "version": 2,
+        "extra_layers": extra_layers,
+        "layer_ivs": layer_ivs,
+        "hybrid": False,
+    }
+    return ct, header
+
+
+def decrypt_payload_v2(data: bytes, real_key: bytes, header: dict) -> bytes:
+    from sprotect.crypto_extra import (
+        decrypt_serpent, decrypt_twofish, decrypt_camellia, decrypt_salsa20,
+    )
+    ct = data
+    for algo in reversed(header.get("extra_layers", [])):
+        info = header["layer_ivs"].get(algo, {})
+        iv = bytes.fromhex(info.get("iv", ""))
+        salt = bytes.fromhex(info.get("salt", ""))
+        lk, _ = derive_layer_key(real_key, f"sprotect:{algo}")
+        fn = {
+            "serpent": decrypt_serpent, "twofish": decrypt_twofish,
+            "camellia": decrypt_camellia, "salsa20": decrypt_salsa20,
+        }.get(algo)
+        if fn:
+            ct = fn(ct, lk, iv)
+    ct = aes_decrypt(ct, real_key)
+    ct = xor_stream(ct, hashlib.sha256(real_key).digest())
+    try:
+        ct = chacha20_decrypt(ct, real_key)
+    except Exception:
+        pass
+    return zlib.decompress(ct)

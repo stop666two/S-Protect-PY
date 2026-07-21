@@ -145,7 +145,7 @@
     // --- 加密数字 ---
     // 可用: true | false
     // 注意: 开启后所有数字常量被替换为运行时计算表达式，性能影响大
-    encrypt_numbers: false,
+    encrypt_numbers: true,
 
     // --- 字符串最小加密长度 ---
     // 可用: 1 ~ 100 的整数
@@ -160,12 +160,12 @@
     // --- 控制流平坦化 ---
     // 可用: true | false
     // 注意: 将代码改为 switch-case + while 循环的等价形式，使控制流难以分析
-    control_flow_flattening: false,
+    control_flow_flattening: true,
 
     // --- 死代码注入 ---
     // 可用: true | false
     // 注意: 注入永远不会执行的代码块（含不透明谓词），迷惑逆向者
-    dead_code_injection: false,
+    dead_code_injection: true,
 
     // --- 死代码密度 0-1 ---
     // 可用: 0.1 ~ 0.8（大于 0.8 会导致代码体积膨胀 2-3 倍）
@@ -181,7 +181,7 @@
     // --- 删除文档字符串 ---
     // 可用: true | false
     // 注意: 设为 true 会删除所有 """docstring"""，包括可能被 Sphinx 等工具使用的
-    remove_docstrings: false,
+    remove_docstrings: true,
 
     // --- 删除注释 ---
     // 可用: true | false
@@ -191,7 +191,7 @@
     // --- 删除空行 ---
     // 可用: true | false
     // 注意: 设为 true 会大幅压缩代码但可读性极差
-    strip_blank_lines: false,
+    strip_blank_lines: true,
 
     // --- 最大行长 ---
     // 可用: 0（不限） / 80（PEP8 标准） / 120 / 200

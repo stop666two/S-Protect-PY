@@ -157,6 +157,9 @@ def _cmd_check(args: argparse.Namespace) -> int:
     return 0 if all_found else 1
 
 
+build_parser = _build_parser
+
+
 def _cmd_version() -> int:
     """Handle the version subcommand."""
     print(f"S-Protect-PY v{__version__}")

@@ -94,3 +94,20 @@ def test_encrypt_payload_v2_all_layers():
         assert algo in hdr["layer_ivs"]
     pt = decrypt_payload_v2(ct, key, hdr)
     assert pt == data
+
+
+from sprotect.decrypt import encrypt_to_pye, decrypt_from_pye
+
+def test_pye_v2_header_roundtrip():
+    data = b"def foo(): pass"
+    key = b"m" * 32
+    pye = encrypt_to_pye(data, key, ["serpent"])
+    pt = decrypt_from_pye(pye)
+    assert pt == data
+
+def test_pye_v2_no_extra_roundtrip():
+    data = b"print('hello')" * 50
+    key = b"m" * 32
+    pye = encrypt_to_pye(data, key, [])
+    pt = decrypt_from_pye(pye)
+    assert pt == data

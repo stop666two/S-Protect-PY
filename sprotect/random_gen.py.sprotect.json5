@@ -1,0 +1,11 @@
+{
+  // ==========================================
+  // 随机名生成器 - 精细化配置
+  // 负责生成混淆后的标识符名称（hex/chinese/invisible 等风格）
+  // ==========================================
+
+  obfuscate: { level: 2, rename_variables: true, rename_functions: false,
+    rename_classes: false, encrypt_strings: true, encrypt_numbers: false,
+    control_flow_flattening: false, dead_code_injection: false },
+  anti_debug: { enabled: false },
+}

@@ -1,0 +1,36 @@
+{
+  // ==========================================
+  // 密码学模块 - 精细化配置
+  // 核心安全模块，需要最高强度保护
+  // 包含 AES-256-GCM 加解密、RSA 密钥对、HMAC 签名
+  // ==========================================
+
+  obfuscate: {
+    level: 5,                  // 最高混淆等级
+    rename_variables: true,
+    rename_functions: true,    // 函数名全改，防已知函数定位
+    rename_classes: true,      // 类名全改
+    rename_rules: {
+      style: "hex",
+      reserved: [],            // 不留任何名字
+    },
+    encrypt_strings: true,     // 算法字符串加密（防识别加密算法）
+    encrypt_numbers: true,     // 密钥长度等数字加密
+    control_flow_flattening: true,    // 加解密流程平坦化
+    dead_code_injection: true,        // 注入假加解密代码迷惑
+  },
+
+  anti_debug: {
+    enabled: true,
+    action: "exit",            // 调试器检测到直接退出
+    checks: ["pdb", "debugger", "vm"],  // 三项全开
+  },
+
+  // 虚拟化保护（将 Python 字节码转为自定义指令集）
+  virtualization: {
+    enabled: true,
+    mode: "full",              // 全函数虚拟化
+    functions: [],
+    glob_patterns: [],
+  },
+}

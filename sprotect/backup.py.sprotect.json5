@@ -1,0 +1,11 @@
+{
+  // ==========================================
+  // 备份模块 - 精细化配置
+  // 压缩备份项目文件，轻量模块
+  // ==========================================
+
+  obfuscate: { level: 2, rename_variables: true, rename_functions: false,
+    rename_classes: false, encrypt_strings: false, encrypt_numbers: false,
+    control_flow_flattening: false, dead_code_injection: false },
+  anti_debug: { enabled: false },
+}

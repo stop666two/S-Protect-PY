@@ -1,0 +1,11 @@
+{
+  // ==========================================
+  // 水印模块 - 精细化配置
+  // 三层水印注入：文件级/代码级/运行时
+  // ==========================================
+
+  obfuscate: { level: 3, rename_variables: true, rename_functions: true,
+    rename_classes: true, encrypt_strings: true, encrypt_numbers: false,
+    control_flow_flattening: false, dead_code_injection: false },
+  anti_debug: { enabled: false },
+}

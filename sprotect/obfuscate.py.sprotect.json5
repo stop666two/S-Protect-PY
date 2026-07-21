@@ -1,0 +1,33 @@
+{
+  // ==========================================
+  // AST 混淆引擎 - 精细化配置
+  // 核心模块，负责 Python AST 变换
+  // 包含变量重命名、字符串/数字加密、作用域追踪
+  // ==========================================
+
+  obfuscate: {
+    level: 5,
+    rename_variables: true,
+    rename_functions: true,
+    rename_classes: true,
+    rename_rules: {
+      style: "hex",
+      reserved: [],
+    },
+    encrypt_strings: true,
+    encrypt_numbers: true,
+    control_flow_flattening: true,
+    dead_code_injection: true,
+  },
+
+  anti_debug: {
+    enabled: true,
+    action: "exit",
+    checks: ["pdb", "debugger", "vm"],
+  },
+
+  virtualization: {
+    enabled: true,
+    mode: "full",
+  },
+}

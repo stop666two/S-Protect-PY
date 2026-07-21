@@ -1,32 +1,18 @@
 {
-  // ==========================================
-  // 源码压缩/混淆模块 - 精细化配置
-  // 负责去除注释、添加垃圾注释、变量名缩短、zlib压缩
-  // 20种变量名风格随机使用，防止模式识别
-  // ==========================================
+  desc: "压缩混淆 - 20种变量名风格、垃圾注释注入",
 
   obfuscate: {
-    level: 5,                    // 混淆等级 1-5
-    rename_variables: true,       // 重命名局部变量
-    rename_functions: true,       // 重命名函数名
-    rename_classes: true,         // 重命名类名
-    rename_rules: {
-      style: "hex",               // 命名风格（最终会被随机覆盖）
-      reserved: ["run", "_boot", "_xof", "main"],  // 保留名称
-    },
-    encrypt_strings: false,        // 字符串已在加密层处理
+    level: 5,
+    rename_variables: true,
+    rename_functions: true,
+    rename_classes: true,
+    encrypt_strings: false,
     encrypt_numbers: false,
-    remove_docstrings: true,       // 删除文档字符串
-    remove_comments: true,         // 删除原始注释
-    strip_blank_lines: true,       // 压缩空行
-    dead_code_injection: false,    // 不在此层注入死代码
     control_flow_flattening: false,
+    dead_code_injection: false,
   },
 
   anti_debug: {
-    enabled: false,               // minify 阶段不需要反调试
+    enabled: false,
   },
-
-  // 注意：此模块的变量名重命名由 minify_source() 内部管理，
-  // 使用 20 种风格（_hex、_0x、数字+下划线、字母组合等）
 }

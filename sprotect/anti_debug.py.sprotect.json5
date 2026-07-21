@@ -1,12 +1,30 @@
 {
-  // ==========================================
-  // 反调试/反VM/反沙箱模块 - 精细化配置
-  // 12 种检测手段：pdb/ptrace/调试器/VM/沙箱/Cuckoo/IDA/时序/进程监控
-  // ==========================================
-  obfuscate: { level: 5, rename_variables: true, rename_functions: true,
-    rename_classes: true, encrypt_strings: true, encrypt_numbers: true,
-    control_flow_flattening: true, dead_code_injection: true },
-  anti_debug: { enabled: true, action: "exit",
-    checks: ["pdb", "ptrace", "debugger", "vm", "sandbox", "timing", "cuckoo", "ida", "procmon"] },
-  virtualization: { enabled: true, mode: "full" },
+  desc: "反调试/反VM/反沙箱 - 慢速烧毁模式、数据篡改、蜜罐检测",
+
+  obfuscate: {
+    level: 5,
+    rename_variables: true,
+    rename_functions: true,
+    rename_classes: true,
+    encrypt_strings: true,
+    encrypt_numbers: true,
+    control_flow_flattening: true,
+    dead_code_injection: true,
+  },
+
+  anti_debug: {
+    enabled: true,
+  },
+
+  active_defense: {
+    enabled: true,
+    on_debug: "slow_burn",  // slow_burn | corrupt_data | subtle_corruption
+    on_hook: "corrupt_data",
+    on_sandbox: "subtle_corruption",
+  },  // 主动防御：检测到分析工具后不退出而是慢慢破坏数据
+
+  virtualization: {
+    enabled: true,
+    mode: "full",
+  },
 }

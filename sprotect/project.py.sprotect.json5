@@ -1,11 +1,18 @@
 {
-  // ==========================================
-  // 项目扫描模块 - 精细化配置
-  // 负责文件/目录扫描、glob 匹配、排除逻辑
-  // ==========================================
+  desc: "项目扫描",
 
-  obfuscate: { level: 3, rename_variables: true, rename_functions: false,
-    rename_classes: false, encrypt_strings: false, encrypt_numbers: false,
-    control_flow_flattening: false, dead_code_injection: false },
-  anti_debug: { enabled: false },
+  obfuscate: {
+    level: 2,
+    rename_variables: true,
+    rename_functions: false,
+    rename_classes: false,
+    encrypt_strings: false,
+    encrypt_numbers: false,
+    control_flow_flattening: false,
+    dead_code_injection: false,
+  },
+
+  anti_debug: {
+    enabled: false,
+  },
 }

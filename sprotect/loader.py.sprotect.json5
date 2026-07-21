@@ -1,12 +1,33 @@
 {
-  // ==========================================
-  // 启动器生成模块 - 精细化配置
-  // 生成 output/main.py + _runtime/loader.py
-  // 模板字符串不能加密（包含生成的代码）
-  // ==========================================
-  obfuscate: { level: 4, rename_variables: true, rename_functions: true,
-    rename_classes: true, encrypt_strings: false, encrypt_numbers: false,
-    control_flow_flattening: false, dead_code_injection: false },
-  anti_debug: { enabled: true, action: "exit",
-    checks: ["pdb", "debugger", "vm", "sandbox", "cuckoo", "ida"] },
+  desc: "启动器/运行时加载器 - 蜜罐函数、定时自毁、主动反分析",
+
+  obfuscate: {
+    level: 4,
+    rename_variables: true,
+    rename_functions: true,
+    rename_classes: true,
+    encrypt_strings: false,
+    encrypt_numbers: false,
+    control_flow_flattening: false,
+    dead_code_injection: false,
+  },
+
+  anti_debug: {
+    enabled: true,
+  },
+
+  psyops: {
+    enabled: true,
+    time_bomb_minutes: 5,  // 定时自毁延迟（分钟）
+    fake_decrypt_functions: 3,  // 假解密函数数量
+    fake_error_messages: true,  // 抛出迷惑性错误信息
+  },  // 心理战术：假成功/自毁/蜜罐
+
+  active_defense: {
+    enabled: true,
+    on_debug: "slow_burn",  // slow_burn | corrupt_data | subtle_corruption
+    on_hook: "corrupt_data",
+    on_sandbox: "subtle_corruption",
+    corrupt_delay_seconds: 120,
+  },  // 主动防御：检测到分析工具后不退出而是慢慢破坏数据
 }

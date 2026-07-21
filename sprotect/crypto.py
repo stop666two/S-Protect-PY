@@ -1,4 +1,4 @@
-"""Cryptographic engine: multi-key payloads, decoy keys, decoy files, chain integrity."""
+"""Cryptographic engine: random-key-position payloads, decoy files, chain integrity."""
 
 from __future__ import annotations
 import os, hashlib, hmac, json, secrets, zlib
@@ -52,69 +52,71 @@ def chain_hash(payloads: list[dict], key: bytes) -> list[str]:
 def sha256(d: bytes) -> str:
     return hashlib.sha256(d).hexdigest()
 
+def key_fingerprint(key: bytes) -> str:
+    """4-byte fingerprint of a key. Used to identify which key is real."""
+    return hashlib.sha256(key).digest()[:4].hex()
 
-def encrypt_payload(source_data: bytes, real_shard: bytes,
+
+def encrypt_payload(source_data: bytes, real_key: bytes,
                     compress: int = 9, pad_max: int = 512,
                     decoy_count: int = 2) -> bytes:
-    """Encrypt with multi-key payload: 1 real shard + N decoy keys.
+    """Encrypt with randomly-positioned real key.
 
-    All keys look equally valid. The loader must use the real one.
-    Decoy keys are valid 32-byte random values that participate in
-    key-mixing computations but cancel out via algebraic design.
+    Payload has k1, k2, k3 - ONE is the real key (randomly chosen),
+    the others are decoys. The 'f' field stores the fingerprint
+    of the real key so the loader can identify it.
     """
     compressed = zlib.compress(source_data, level=compress)
-    xored = xor_stream(compressed, real_shard)
-    ct = aes_encrypt(xored, real_shard)
+    xored = xor_stream(compressed, real_key)
+    ct = aes_encrypt(xored, real_key)
 
-    # Real key
-    keys = {"k1": real_shard.hex()}
-    # Decoy keys (random but structurally identical)
-    for i in range(decoy_count):
-        keys[f"k{i+2}"] = os.urandom(32).hex()
-    # Key mixing verification hash - used by loader to verify which key is real
-    # The loader computes a check value from all keys but only the real one
-    # produces the correct verification hash
-    mix = hashlib.sha256(real_shard).digest()
-    for i in range(decoy_count):
-        dk = bytes.fromhex(keys[f"k{i+2}"])
-        mix = bytes(a ^ b for a, b in zip(mix, hashlib.sha256(dk).digest()))
-    # XOR back: mix = sha256(k1) ^ sha256(k2) ^ sha256(k3)
-    # To extract k1: we need to XOR with sha256(k2) and sha256(k3)
-    # But the loader doesn't know which is k1 - it has to try or derive
+    # Generate decoy keys (32 bytes each, look identical to real)
+    decoys = [os.urandom(32) for _ in range(decoy_count)]
+
+    # Randomly decide which position gets the real key
+    real_pos = secrets.randbelow(decoy_count + 1)  # 0, 1, or 2
+    keys_list = decoys[:]  # Start with all decoys
+    keys_list.insert(real_pos, real_key)  # Insert real key at random position
+
+    keys = {f"k{i+1}": keys_list[i].hex() for i in range(decoy_count + 1)}
+    fp = key_fingerprint(real_key)
 
     pad = os.urandom(secrets.randbelow(pad_max + 1))
     payload = {
-        "v": 4, "d": ct.hex(), "c": "", "p": pad.hex(),
-        "h": sha256(source_data), "m": mix.hex(),
+        "v": 5, "d": ct.hex(), "c": "", "p": pad.hex(),
+        "h": sha256(source_data), "f": fp,
     }
     payload.update(keys)
     return json.dumps(payload, separators=(",", ":")).encode()
 
 
-def generate_decoy_payload(master_key: bytes, key_count: int = 3) -> bytes:
-    """Generate a decoy .pye file payload that looks real but decrypts to garbage.
+def generate_decoy_payload() -> bytes:
+    """Generate a decoy .pye file with the SAME structure as real files.
 
-    The decoy has the same structure as a real payload but contains
-    random encrypted data that decompresses to non-Python garbage.
-    Its shard participates in key mixing but cancels out mathematically.
+    - Same fields: v, d, c, p, h, f, k1, k2, k3
+    - Identical format and size range
+    - 'Encrypted' data that decompresses to garbage
+    - Real-looking keys and fingerprint
     """
     garbage = os.urandom(secrets.randbelow(500) + 100)
-    # "Encrypt" garbage with a random key (not master_key)
     fake_key = os.urandom(32)
     compressed = zlib.compress(garbage)
     xored = xor_stream(compressed, fake_key)
     ct = aes_encrypt(xored, fake_key)
 
-    keys = {"k1": os.urandom(32).hex()}
-    for i in range(key_count - 1):
-        keys[f"k{i+2}"] = os.urandom(32).hex()
+    # Generate decoy keys just like real payloads
+    decoy_keys = [os.urandom(32) for _ in range(3)]
+    real_pos = secrets.randbelow(3)
+    decoy_keys.insert(real_pos, fake_key)
+    del decoy_keys[3]
 
-    # Decoy mixing hash - uses a different computation that looks valid
-    fake_mix = hashlib.sha256(os.urandom(32)).digest()  # Random, not derived from keys
-    pad = os.urandom(secrets.randbelow(256) + 1)
+    keys = {f"k{i+1}": decoy_keys[i].hex() for i in range(3)}
+    fp = key_fingerprint(secrets.token_bytes(8))  # Random fingerprint
+
+    pad = os.urandom(secrets.randbelow(512) + 1)
     payload = {
-        "v": 4, "d": ct.hex(), "c": "", "p": pad.hex(),
-        "h": sha256(garbage), "m": fake_mix.hex(),
+        "v": 5, "d": ct.hex(), "c": "", "p": pad.hex(),
+        "h": sha256(garbage), "f": fp,
     }
     payload.update(keys)
     return json.dumps(payload, separators=(",", ":")).encode()

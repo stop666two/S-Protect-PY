@@ -1,4 +1,4 @@
-"""S-Protect bootloader v4 - multi-key decrypt stub."""
+"""S-Protect bootloader v5 - fingerprint key matching."""
 import sys, os, json, hashlib, zlib
 _R = os.path.dirname(os.path.abspath(__file__))
 
@@ -11,20 +11,22 @@ def _xof(l, s):
 def _boot(key):
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     p = json.loads(open(os.path.join(_R,"_runtime","loader.pye"),"rb").read().decode())
-    # Access ALL keys (decoy + real) - analysis can't tell which is used
-    k1 = bytes.fromhex(p.get("k1",""))
-    _k2 = bytes.fromhex(p.get("k2","")) if "k2" in p else b""
-    _k3 = bytes.fromhex(p.get("k3","")) if "k3" in p else b""
-    # Mix all keys - only k1 matters due to cancellation
-    m = hashlib.sha256(k1).digest()
-    if _k2: m = bytes(a^b for a,b in zip(m, hashlib.sha256(_k2).digest()))
-    if _k3: m = bytes(a^b for a,b in zip(m, hashlib.sha256(_k3).digest()))
-    # Verify mixing hash (decoy files will have wrong hash)
-    if p.get("m") and bytes.fromhex(p["m"]) != m:
-        return ""  # Decoy file - return empty
+    # Access ALL keys - can't tell which is real
+    for kn in ["k1","k2","k3","k4","k5"]:
+        if kn in p: _ = bytes.fromhex(p[kn])
+    # Find real key by fingerprint
+    fp = p.get("f", "")
+    real = key
+    if fp:
+        for kn in ["k1","k2","k3"]:
+            if kn in p:
+                v = bytes.fromhex(p[kn])
+                if hashlib.sha256(v).digest()[:4].hex() == fp:
+                    real = v
+                    break
     ct = bytes.fromhex(p["d"])
-    x = AESGCM(key).decrypt(ct[:12], ct[12:], b"")
-    return zlib.decompress(bytes(a^b for a,b in zip(x,_xof(len(x),key)))).decode()
+    x = AESGCM(real).decrypt(ct[:12], ct[12:], b"")
+    return zlib.decompress(bytes(a^b for a,b in zip(x,_xof(len(x),real)))).decode()
 
-exec(compile(_boot(bytes.fromhex("5456750f6236467876783040c5f10a642aa628d0dbdc9d3186f6770abb9dcc62")), "", "exec"))
+exec(compile(_boot(bytes.fromhex("1011419496f40cfb9bb038b08f2e0963c04d2b6c889b7291df80fe89e8cb295c")), "", "exec"))
 run("main", _R)

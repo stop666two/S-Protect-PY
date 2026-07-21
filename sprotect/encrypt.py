@@ -74,13 +74,23 @@ def build(project_dir: str, output_dir: str, config: Config) -> None:
         p["c"] = sigs[idx]
         open(pye_path, "wb").write(json.dumps(p, separators=(",", ":")).encode())
 
-    # Inject decoy files (20-50% extra files that look real)
+    # Inject decoy files (20-50% extra, IDENTICAL structure to real files)
     decoy_count_files = max(1, len(py_files) // 3)
     for i in range(decoy_count_files):
-        decoy = generate_decoy_payload(master_key, decoy_count + 1)
-        decoy_name = f"_decoy_{secrets.token_hex(4)}.pye"
+        decoy = generate_decoy_payload()
+        # Random hex filename - identical format to real module names
+        decoy_name = f"{secrets.token_hex(4)}.pye"
         with open(os.path.join(rd, decoy_name), "wb") as f:
             f.write(decoy)
+        # Also inject into subdirectories for realism
+        if i % 2 == 0:
+            subdir = secrets.token_hex(3)
+            sub_path = os.path.join(rd, subdir)
+            os.makedirs(sub_path, exist_ok=True)
+            with open(os.path.join(sub_path, "__init__.pye"), "wb") as f:
+                f.write(generate_decoy_payload())
+            with open(os.path.join(sub_path, f"{secrets.token_hex(3)}.pye"), "wb") as f:
+                f.write(generate_decoy_payload())
 
     # Encrypt loader
     loader_src = gen_loader_source()

@@ -16,6 +16,13 @@ def collect_defs(source: str, cfg: ObfuscateConfig, mapping: dict[str, str]) -> 
             elif isinstance(node, ast.ClassDef):
                 if node.name not in reserved and not node.name.startswith("__"):
                     mapping.setdefault(node.name, gen.gen())
+            elif isinstance(node, ast.Assign):
+                for t in node.targets:
+                    if isinstance(t, ast.Name) and t.id not in reserved and not t.id.startswith("__"):
+                        mapping.setdefault(t.id, gen.gen())
+            elif isinstance(node, ast.AnnAssign):
+                if isinstance(node.target, ast.Name) and node.target.id not in reserved and not node.target.id.startswith("__"):
+                    mapping.setdefault(node.target.id, gen.gen())
     except SyntaxError: pass
 
 
@@ -120,6 +127,14 @@ class Obfuscator(ast.NodeTransformer):
     def visit_ClassDef(self, node: ast.ClassDef):
         if self.cfg.rename_classes: node.name = self._name(node.name)
         self._class_depth += 1; self.generic_visit(node); self._class_depth -= 1; return node
+
+    def visit_Nonlocal(self, node: ast.Nonlocal):
+        node.names = [self.map.get(n, n) for n in node.names]
+        return node
+
+    def visit_Global(self, node: ast.Global):
+        node.names = [self.map.get(n, n) for n in node.names]
+        return node
 
     def visit_arg(self, node: ast.arg): return node
     def visit_FormattedValue(self, n):

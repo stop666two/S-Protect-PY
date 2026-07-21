@@ -36,8 +36,11 @@ def build(project_dir, output_dir, config):
     os.makedirs(rd, exist_ok=True)
 
     shared_map = {}
+    shared_params: set[str] = set()
     for fp in py_files:
-        try: collect_defs(open(fp, encoding="utf-8-sig").read(), config.obfuscate, shared_map)
+        try:
+            collect_defs(open(fp, encoding="utf-8-sig").read(), config.obfuscate,
+                         shared_map, shared_params)
         except: pass
 
     from sprotect.watermark import Watermark
@@ -78,7 +81,7 @@ def build(project_dir, output_dir, config):
         try:
             src = open(fp, encoding="utf-8-sig").read()
             if fc.obfuscate.level.value >= 1:
-                src = Obfuscator(fc.obfuscate, shared_map).obfuscate(src)
+                src = Obfuscator(fc.obfuscate, shared_map, shared_params).obfuscate(src)
             src = minify_source(src, add_garbage=False)
             if wm: src = wm.code(src)
 

@@ -160,12 +160,12 @@
     // --- 控制流平坦化 ---
     // 可用: true | false
     // 注意: 将代码改为 switch-case + while 循环的等价形式，使控制流难以分析
-    control_flow_flattening: true,
+    control_flow_flattening: false,
 
     // --- 死代码注入 ---
     // 可用: true | false
     // 注意: 注入永远不会执行的代码块（含不透明谓词），迷惑逆向者
-    dead_code_injection: true,
+    dead_code_injection: false,
 
     // --- 死代码密度 0-1 ---
     // 可用: 0.1 ~ 0.8（大于 0.8 会导致代码体积膨胀 2-3 倍）

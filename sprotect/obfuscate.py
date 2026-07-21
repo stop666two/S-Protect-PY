@@ -5,23 +5,29 @@ import ast, base64, struct, hashlib, secrets
 from sprotect.types import ObfuscateConfig
 from sprotect.random_gen import NameGen
 
-def collect_defs(source: str, cfg: ObfuscateConfig, mapping: dict[str, str]) -> None:
+def collect_defs(source: str, cfg: ObfuscateConfig, mapping: dict[str, str],
+                 param_names: set[str] | None = None) -> None:
     reserved = set(cfg.rename_rules.reserved or [])
     gen = NameGen(cfg.rename_rules.style, cfg.rename_rules.dictionary)
     try:
-        for node in ast.walk(ast.parse(source)):
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 if node.name not in reserved and not node.name.startswith("__"):
                     mapping.setdefault(node.name, gen.gen())
+                for arg in node.args.args + node.args.kwonlyargs + node.args.posonlyargs:
+                    if param_names is not None: param_names.add(arg.arg)
+                if node.args.vararg and param_names is not None: param_names.add(node.args.vararg.arg)
+                if node.args.kwarg and param_names is not None: param_names.add(node.args.kwarg.arg)
             elif isinstance(node, ast.ClassDef):
                 if node.name not in reserved and not node.name.startswith("__"):
                     mapping.setdefault(node.name, gen.gen())
-            elif isinstance(node, ast.Assign):
+            elif cfg.rename_variables and isinstance(node, ast.Assign):
                 for t in node.targets:
-                    if isinstance(t, ast.Name) and t.id not in reserved and not t.id.startswith("__"):
+                    if isinstance(t, ast.Name) and t.id not in reserved and not t.id.startswith("__") and t.id not in (param_names or set()):
                         mapping.setdefault(t.id, gen.gen())
-            elif isinstance(node, ast.AnnAssign):
-                if isinstance(node.target, ast.Name) and node.target.id not in reserved and not node.target.id.startswith("__"):
+            elif cfg.rename_variables and isinstance(node, ast.AnnAssign):
+                if isinstance(node.target, ast.Name) and node.target.id not in reserved and not node.target.id.startswith("__") and node.target.id not in (param_names or set()):
                     mapping.setdefault(node.target.id, gen.gen())
     except SyntaxError: pass
 
@@ -56,9 +62,11 @@ def _split_string(s: str, n: int = 3) -> ast.Call:
 
 
 class Obfuscator(ast.NodeTransformer):
-    def __init__(self, cfg: ObfuscateConfig, mapping: dict[str, str] | None = None):
+    def __init__(self, cfg: ObfuscateConfig, mapping: dict[str, str] | None = None,
+                 param_names: set[str] | None = None):
         self.cfg = cfg
         self.map = mapping if mapping is not None else {}
+        self.param_names = param_names or set()
         self.reserved = set(cfg.rename_rules.reserved or [])
         self.gen = NameGen(cfg.rename_rules.style, cfg.rename_rules.dictionary)
         self._class_depth = 0; self._fstring_depth = 0; self._params: list[set[str]] = []
@@ -105,14 +113,15 @@ class Obfuscator(ast.NodeTransformer):
                 self._dead_count += 1
 
     def visit_alias(self, node: ast.alias):
-        if node.name in self.map: node.name = self.map[node.name]
+        if self.cfg.rename_variables and node.name in self.map:
+            node.name = self.map[node.name]
         return node
 
     def visit_Lambda(self, node: ast.Lambda):
         self._push_params(node); node = self.generic_visit(node); self._pop_params(); return node
 
     def visit_Name(self, node: ast.Name):
-        if node.id in self.map and not self._is_param(node.id):
+        if self.cfg.rename_variables and node.id in self.map and not self._is_param(node.id) and node.id not in self.param_names:
             node.id = self.map[node.id]
         return node
 

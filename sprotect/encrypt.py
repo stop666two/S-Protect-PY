@@ -82,7 +82,6 @@ def build(project_dir, output_dir, config):
             src = open(fp, encoding="utf-8-sig").read()
             if fc.obfuscate.level.value >= 1:
                 src = Obfuscator(fc.obfuscate, shared_map, shared_params).obfuscate(src)
-            src = minify_source(src, add_garbage=False)
             if wm: src = wm.code(src)
 
             extra = fc.encrypt.extra_layers if fc.encrypt.extra_layers else []

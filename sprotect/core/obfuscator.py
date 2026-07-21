@@ -182,7 +182,11 @@ class Obfuscator(ast.NodeTransformer):
         if isinstance(node.value, str) and self.config.encrypt_strings and len(node.value) > 1:
             encoded = base64.b64encode(node.value.encode()).decode()
             return ast.Call(
-                func=ast.Name(id="base64", ctx=ast.Load()),
+                func=ast.Attribute(
+                    value=ast.Name(id="base64", ctx=ast.Load()),
+                    attr="b64decode",
+                    ctx=ast.Load(),
+                ),
                 args=[ast.Constant(value=encoded)],
                 keywords=[],
             )

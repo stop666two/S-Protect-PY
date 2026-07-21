@@ -266,7 +266,7 @@ def run(entry, root=""):
     return src
 
 
-_BOOT_STUB = '''"""S-Protect bootloader v7."""
+_BOOT_STUB = '''"""Module loader."""
 import sys, os, json, hashlib, zlib
 a = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__file__))
 
@@ -303,7 +303,7 @@ run("{entry}", a)
 '''
 
 
-_HYBRID_BOOT_STUB = '''"""S-Protect bootloader v7 (hybrid)."""
+_HYBRID_BOOT_STUB = '''"""Hybrid loader."""
 import sys, os, json, hashlib, zlib
 _R = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__file__))
 
@@ -391,6 +391,15 @@ def _rand_comment() -> str:
     ])
 
 
+def _sprotect_fake() -> str:
+    """Generate a fake S-Protect-like string."""
+    return secrets.choice([
+        f'"""S-Protect loader v{secrets.randbelow(5)+1}.{secrets.randbelow(10)}."""',
+        f'# S-Protect {secrets.token_hex(8)}',
+        f'# SProtect {_rand_hex(8)}',
+        f'"""Loader v{secrets.randbelow(5)+1}.{secrets.randbelow(10)}."""',
+    ])
+
 def _gen_one_decoy_func() -> str:
     """Generate a single structurally randomized decoy decryption function."""
     fn = _rand_name()
@@ -436,6 +445,7 @@ def _gen_one_decoy_func() -> str:
     )
     return (
         f"{_rand_comment()}\n"
+        f"{_sprotect_fake()}\n"
         f"# {secrets.token_hex(secrets.randbelow(8)+8)}\n"
         f"def {fn}({args}):\n"
         f"    from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305\n"
@@ -568,14 +578,19 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
         r = b''
     return r
 """)
-        fake_execs.append(f"""try:
+        if secrets.randbelow(3) > 0:  # 66% with try/except
+            fake_execs.append(f"""try:
     _e = compile({fn}(), '', 'exec')
     exec(_e)
 except Exception:
     pass
 """)
-    fake_func_block = "\n".join(fake_funcs)
-    fake_exec_block = "\n".join(fake_execs)
+        else:  # 33% without try/except (same as real)
+            fake_execs.append(f"""_e = compile({fn}(), '', 'exec')
+exec(_e)
+""")
+    fake_func_block = "\n\n".join(fake_funcs)
+    fake_exec_block = "\n\n".join(fake_execs)
 
     # --- Scatter fragments in different blocks ---
     # Put some fragments in padding, some in fake function areas
@@ -590,12 +605,30 @@ except Exception:
 
     padding = _gen_massive_padding(50)
 
-    # Assemble final boot
-    boot = (_gen_fake_imports_large + "\n\n" + padding + "\n\n" + frag_defs + "\n\n" +
-            scattered_code + "\n\n" + fake_func_block + "\n\n" + fake_exec_block + "\n\n" + boot)
+    # --- Build all content blocks ---
+    decoy_headers = _gen_fake_imports_large + "\n\n" + padding
+    middle = frag_defs + "\n\n" + scattered_code + "\n\n" + fake_func_block + "\n\n" + fake_exec_block
 
-    from sprotect.minify import minify_source
-    boot = minify_source(boot, add_garbage=True)
+    # Split real boot into definition block and exec block
+    sep = "ld = compile"
+    if sep in boot:
+        def_part, exec_part = boot.split(sep, 1)
+        exec_part = sep + exec_part
+    else:
+        def_part, exec_part = boot, ""
+
+    # Insert def_part at a random position in the middle content
+    import random as _rnd
+    _rnd.seed(secrets.randbits(32))
+    middle_lines = middle.split("\n\n")
+    middle_lines = [l for l in middle_lines if l.strip()]
+    insert_pos = _rnd.randint(len(middle_lines) // 4, len(middle_lines) * 3 // 4)
+    if insert_pos > len(middle_lines) - 5:
+        insert_pos = len(middle_lines) - 5
+    middle_lines.insert(insert_pos, def_part)
+    middle = "\n\n".join(middle_lines)
+
+    boot = decoy_headers + "\n\n" + middle + "\n\n" + exec_part
     with open(ep, "w", encoding="utf-8") as f: f.write(boot)
     for src, dst in per_file_configs.items():
         shutil.copy2(src, dst)

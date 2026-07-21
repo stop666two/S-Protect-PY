@@ -1,141 +1,37 @@
 {
-  // ====================================================================
-  // 棰濆鍔犲瘑灞?鈥?Serpent / Twofish / Camellia / Salsa20锛堟柊寤烘ā鍧椔峰叏閲忎腑鏂囨敞閲婏級
-  // ====================================================================
-  // 銆愭ā鍧楄亴璐ｃ€?  //   姝ゆā鍧楁彁渚涘洓濂楃嫭绔嬬殑鍔犲瘑绠楁硶瀹炵幇锛屼綔涓?AES-256-GCM 涔嬪鐨?  //   棰濆锛坋xtra锛夊姞瀵嗗眰銆傛瘡灞備娇鐢ㄧ殑瀵嗛挜鍧囬€氳繃 HKDF-SHA256 浠?  //   master_key 娲剧敓锛堝煙鍒嗙锛夛紝纭繚鍚勫眰瀵嗛挜鐩镐簰鐙珛銆?  //
-  //   鍖呭惈浠ヤ笅绠楁硶锛?  //   鈥?Serpent CBC 鍔犲瘑/瑙ｅ瘑 鈥?128 浣嶅潡锛?56 浣嶅瘑閽ワ紙绾?Python 瀹炵幇锛?  //   鈥?Twofish CBC 鍔犲瘑/瑙ｅ瘑 鈥?128 浣嶅潡锛?56 浣嶅瘑閽ワ紙搴曞眰鐢?AES-ECB 妯℃嫙锛?  //   鈥?Camellia CBC 鍔犲瘑/瑙ｅ瘑 鈥?128 浣嶅潡锛?56 浣嶅瘑閽ワ紙cryptography 搴擄級
-  //   鈥?Salsa20 娴佸姞瀵?瑙ｅ瘑 鈥?256 浣嶅瘑閽ワ紝8 瀛楄妭 nonce锛坧ycryptodome 搴擄級
-  //   鈥?PKCS7 濉厖/鍘诲～鍏呭伐鍏峰嚱鏁帮紙_pad / _unpad锛?  //
-  // 銆愪緷璧栬姹傘€?  //   pycryptodome >= 3.21.0   鈥?鐢ㄤ簬 Salsa20锛堝繀闇€锛?  //   cryptography >= 42.0.0   鈥?鐢ㄤ簬 Camellia銆乀wofish 鐨?AES fallback锛堝繀闇€锛?  //
-  // 銆愯璋冪敤鍏崇郴銆?  //   crypto.py    鈫?encrypt_payload_v2 / decrypt_payload_v2
-  //                  閫氳繃 from sprotect.crypto_extra import ... 瀵煎叆
-  //                  璋冪敤姣忎釜绠楁硶鐨?encrypt_xxx / decrypt_xxx 鍑芥暟
-  //   loader.py    鈫?鐢熸垚杩愯鏃跺姞杞藉櫒浠ｇ爜涓祵鍏ョ瓑浠风殑鍔犲瘑/瑙ｅ瘑閫昏緫
-  //                  锛堜娇鐢?pycryptodome 鐨?Salsa20 / Serpent Cipher 绛夛級
-  //   encrypt.py   鈫?encrypt_payload_v2(..., extra_layers) 闂存帴璋冪敤
+  // ==========================================
+  // 额外加密层 — Serpent / Twofish / Camellia / Salsa20
+  // ==========================================
+  // 此模块提供四种可选加密算法，在 AES-GCM 之后叠加使用。
+  // 所有密钥由 HKDF-SHA256 从 master_key 派生，域分离。
   //
-  // 銆愭敞鎰忎簨椤广€?  //   鈥?姝ゆā鍧椾粎琚?crypto.py 鐨?encrypt_payload_v2() 鍜?  //     decrypt_payload_v2() 璋冪敤
-  //   鈥?濡傛灉 encrypt.extra_layers 涓虹┖锛圼]锛夛紝姝ゆā鍧椾笉浼氳鎵ц
-  //   鈥?鎵€鏈夊姞瀵嗗嚱鏁颁娇鐢?HKDF-SHA256(salt, info=f"sprotect:{algo}") 娲剧敓瀵嗛挜
-  //   鈥?Serpent = AES 鍐宠禌钀介€夎€咃紙Twofish 涔熸槸锛夛紝璁捐鏇翠繚瀹?  //   鈥?Twofish = Bruce Schneier 璁捐锛孊lowfish 鐨勫悗缁ц€?  //   鈥?Camellia = 鏃ユ湰鏍囧噯锛圛SO/IEC 18033-3锛夛紝NTT/涓夎彵璁捐
-  //   鈥?Salsa20 = Daniel Bernstein 璁捐锛孋haCha20 鐨勫墠韬紙ChaCha 鏄?Salsa20 鐨勬敼杩涳級
-  //   鈥?Serpent 鍜?Twofish 鐨勫疄鐜版柟寮忎笉鍚岋紙Serpent 绾?Python锛孴wofish 鍊熺敤 AES锛?  //   鈥?Salsa20 鏄祦瀵嗙爜锛坰tream cipher锛夛紝涓嶄娇鐢?PKCS7 濉厖
-  //   鈥?CBC 妯″紡鐨勫潡瀵嗙爜闇€瑕?16 瀛楄妭 IV锛堜笌 AES 鐩稿悓鍧楀ぇ灏忥級
-  // ====================================================================
+  // 依赖: pycryptodome >= 3.21.0
+  // ==========================================
 
   obfuscate: {
-    // --- 娣锋穯绛夌骇 ---
-    // 鍙敤鍊? 1 | 2 | 3 | 4 | 5
-    //   1 = 浠呭彉閲忓悕閲嶅懡鍚嶏紙鏈€杞婚噺锛?    //   2 = + 瀛楃涓插姞瀵?    //   3 = + 鎺у埗娴佸钩鍧﹀寲 + 涓嶉€忔槑璋撹瘝
-    //   4 = + 鏁板瓧鍔犲瘑
-    //   5 = + 姝讳唬鐮佹敞鍏?+ 鍏ㄩ儴鐗规€?    // 涓嶅彲鐢ㄥ€? "5"锛堝瓧绗︿覆锛? 0 / -1 / 6 / 3.5 / 2.0
-    // 娉ㄦ剰浜嬮」:
-    //   鈥?level 5 瀵?Serpent 鐨勭函 Python S-box 瀹炵幇褰卞搷杈冨ぇ
-    //     _SERP_SBOX 绛夊父閲忚〃浼氳姝讳唬鐮佽啫鑳€锛屽鍔犲唴瀛樺崰鐢?    //   鈥?浣?S-box 鏁版嵁涓嶅彈娣锋穯褰卞搷锛堟暟鎹被鍨嬫暟鎹笉鍙橈級
-    // 涓轰粈涔堟妯″潡閫夋嫨 5:
-    //   姝ゆā鍧楀疄鐜颁簡瀹屾暣鐨勫姞瀵嗙畻娉曪紝鏄繚鎶ら摼鐨勭粍鎴愰儴鍒嗐€?    //   铏界劧瀹冨彧浣滀负棰濆灞傝璋冪敤锛屼絾娉勯湶绠楁硶瀹炵幇浠嶄細甯姪鏀诲嚮鑰?    //   鐞嗚В鏁翠釜淇濇姢浣撶郴銆傚繀椤讳娇鐢ㄦ渶楂樺己搴︽贩娣嗐€?    level: 5,
-
-    // --- 閲嶅懡鍚嶅彉閲?---
-    // 鍙敤鍊? true | false
-    // 娉ㄦ剰浜嬮」:
-    //   鈥?鏈ā鍧楃殑灞€閮ㄥ彉閲忓寘鎷?a, b, c, d锛圫erpent 鐨?4 涓?32 浣嶅瓧锛夈€?    //     ct锛堝瘑鏂囷級銆乸t锛堟槑鏂囷級銆乸rev锛圕BC 鍓嶄竴鍧楋級绛?    //   鈥?閲嶅懡鍚嶅悗 S-box 鐨勮涔夛紙鍝釜鏄乏绉诲摢涓槸鍙崇Щ锛夋洿闅捐鲸璇?    // 涓轰粈涔堟妯″潡閫夋嫨 true:
-    //   鍙橀噺鍚嶅 prev锛圕BC 妯″紡鐨勪笂涓€涓潡锛夈€乧t锛堝瘑鏂囷級
-    //   鐩存帴鏆撮湶浜嗗姞瀵嗘搷浣滅殑鐢ㄩ€旓紝蹇呴』闅愯棌銆?    rename_variables: true,
-
-    // --- 閲嶅懡鍚嶅嚱鏁?---
-    // 鍙敤鍊? true | false
-    // 娉ㄦ剰浜嬮」:
-    //   鈥?姝ゆā鍧楃殑鍑芥暟閫氳繃妯″潡瀵煎叆琚?crypto.py 寮曠敤锛屾敼鍚嶄笉褰卞搷
-    //   鈥?_pad / _unpad 鏄鏈夊嚱鏁帮紙鍓嶅涓嬪垝绾匡級锛屾敼鍚嶅墠缂€娑堝け
-    // 涓轰粈涔堟妯″潡閫夋嫨 true:
-    //   鍑芥暟鍚嶅 encrypt_serpent銆乪ncrypt_twofish 鐩存帴鍛婅瘔鏀诲嚮鑰?    //   姝ｅ湪浣跨敤浠€涔堢畻娉曘€傚叏閮ㄩ噸鍛藉悕鍚庢敾鍑昏€呮棤娉曚粠鍑芥暟鍚?    //   鍒ゆ柇浣跨敤浜嗗摢浜涢澶栧姞瀵嗗眰銆?    rename_functions: true,
-
-    // --- 閲嶅懡鍚嶇被 ---
-    // 鍙敤鍊? true | false
-    // 娉ㄦ剰浜嬮」:
-    //   鈥?鏈ā鍧楀寘鍚?_Serpent 鍜?_Twofish 涓や釜鍐呴儴绫?    //   鈥?_Serpent 绫诲寘鍚?3 涓柟娉曪細__init__銆乢expand銆乪ncrypt_block銆乨ecrypt_block
-    //   鈥?_Twofish 绫诲彧鍖呭惈 __init__銆乪ncrypt_block銆乨ecrypt_block
-    //   鈥?绫诲悕鍜岀被鏂规硶鍚嶉兘浼氳娣锋穯
-    // 涓轰粈涔堟妯″潡閫夋嫨 true:
-    //   绫诲悕 _Serpent 鍜?_Twofish 鎻ず浜嗗簳灞傜畻娉曞疄鐜扮粏鑺傘€?    rename_classes: true,
-
-    // --- 瀛楃涓插姞瀵?---
-    // 鍙敤鍊? true | false
-    // 娉ㄦ剰浜嬮」:
-    //   鈥?鏈ā鍧楃殑瀛楃涓蹭富瑕佹槸閿欒娑堟伅
-    //   "Serpent key must be 16, 24, or 32 bytes"
-    //   "Twofish key must be 16, 24, or 32 bytes"
-    //   鈥?杩欎簺閿欒娑堟伅鏆撮湶浜嗗瘑閽ラ暱搴︿俊鎭?    // 涓轰粈涔堟妯″潡閫夋嫨 true:
-    //   鍔犲瘑閿欒娑堟伅鍙互闅愯棌瀵嗛挜灏哄淇℃伅锛岄槻姝㈡敾鍑昏€?    //   閫氳繃閿欒娑堟伅鎺ㄦ柇浣跨敤鐨勭畻娉曞拰瀵嗛挜鍙傛暟銆?    encrypt_strings: true,
-
-    // --- 鏁板瓧鍔犲瘑 ---
-    // 鍙敤鍊? true | false
-    // 娉ㄦ剰浜嬮」:
-    //   鈥?鏈ā鍧楀瓨鍦ㄥぇ閲忓瘑鐮佸甯搁噺锛?    //     _PHI = 0x9E3779B9锛圫erpent 鐨勯粍閲戞瘮渚嬪父鏁帮級
-    //     16锛堝潡澶у皬锛夈€?28/192/256锛堝瘑閽ラ暱搴︼級
-    //     8锛圫-box 鏁伴噺锛夈€?2锛堣疆鏁帮級
-    //   鈥?鐗瑰埆鏄?_PHI 甯搁噺鏄?Serpent 绠楁硶鐨勬爣璇嗙壒寰?    // 涓轰粈涔堟妯″潡閫夋嫨 true:
-    //   _PHI = 0x9E3779B9 鏄?Serpent 绠楁硶鐨勪竴涓樉钁楃壒寰侊紝
-    //   鍦ㄥ弽缂栬瘧宸ュ叿涓悳绱㈡甯告暟鍗冲彲瀹氫綅 Serpent 瀹炵幇銆?    //   鍔犲瘑鍚庢鐗瑰緛娑堝け銆?    encrypt_numbers: true,
-
-    // --- 鎺у埗娴佸钩鍧﹀寲 ---
-    // 鍙敤鍊? true | false
-    // 娉ㄦ剰浜嬮」:
-    //   鈥?瀵?Serpent 鐨?_expand 鍑芥暟锛堝瘑閽ユ墿灞曪級褰卞搷鏈€澶?    //   鈥?瀵?CBC 妯″紡鐨勫惊鐜紙for i in range(0, len(p), 16)锛夊钩鍧﹀寲鍚?    //     鎺у埗娴佽鎵撴暎锛屽姞瀵嗛€昏緫鏇撮毦杩借釜
-    //   鈥?鎬ц兘褰卞搷锛欳BC 寰幆鏈韩宸茬粡鏄?O(n)锛屽姞涓婂钩鍧﹀寲鍚?    //     姣忓潡澧炲姞 while+switch 寮€閿€
-    // 涓轰粈涔堟妯″潡閫夋嫨 true:
-    //   CBC 妯″紡鍔犲瘑寰幆鐨勭粨鏋勬槸閫氱敤鐨?瀵嗘枃鍙嶉"妯″紡锛?    //   骞冲潶鍖栧悗杩欎釜妯″紡琚牬鍧忥紝鏀诲嚮鑰呮洿闅剧悊瑙ｈ繖鏄湪鍋氫粈涔堛€?    control_flow_flattening: true,
-
-    // --- 姝讳唬鐮佹敞鍏?---
-    // 鍙敤鍊? true | false
-    // 娉ㄦ剰浜嬮」:
-    //   鈥?瀵?S-box 鏌ヨ〃閫昏緫娉ㄥ叆姝讳唬鐮佸彲鑳藉鍔犵紦瀛?miss锛堟瀬灏戝奖鍝嶏級
-    // 涓轰粈涔堟妯″潡閫夋嫨 true:
-    //   鍔犲瘑绠楁硶鐨勫疄鐜颁唬鐮佹槸楂樺害缁撴瀯鍖栫殑锛岄€氳繃娉ㄥ叆鐪嬩技鍚堢悊鐨?    //   "鍋囨楠?鍙互璁╅€嗗悜鑰呰糠澶卞湪澶ч噺鏃犲叧浠ｇ爜涓€?    dead_code_injection: true,
-    // --- 字符串分割 ---
+    level: 5,
+    rename_variables: true,
+    rename_functions: true,
+    rename_classes: true,
+    encrypt_strings: true,
+    encrypt_numbers: true,
+    control_flow_flattening: true,
+    dead_code_injection: true,
     string_split: true,
-    // --- import 混淆 ---
     obfuscate_imports: true,
-    // --- 函数调用混淆 ---
     obfuscate_calls: true,
-  
+    obfuscate_arithmetic: true,
+    obfuscate_booleans: true,
   },
 
   anti_debug: {
-    // --- 鍙嶈皟璇曟€诲紑鍏?---
     enabled: true,
-
-    // --- 妫€娴嬪埌寮傚父鍚庣殑鍔ㄤ綔 ---
-    // 鍙敤鍊? "exit" | "warn" | "corrupt"
-    // 涓嶅彲鐢ㄥ€? "abort" / "kill" / 绌哄瓧绗︿覆
-    // 娉ㄦ剰浜嬮」: 姝ゆā鍧楀彧鍦ㄥ姞瀵?瑙ｅ瘑鐬棿璋冪敤锛屾娴嬬獥鍙ｇ煭
     action: "exit",
-
-    // --- 鍚敤鐨勬娴嬮」 ---
-    // 鍙敤鍊? "pdb" | "ptrace" | "debugger" | "vm" | "sandbox"
-    //       | "timing" | "cuckoo" | "ida" | "procmon" 鐨勫瓙闆?    // 涓嶅彲鐢ㄥ€? 浠绘剰涓嶅湪涓婅堪鍒楄〃涓殑瀛楃涓?    // 娉ㄦ剰浜嬮」:
-    //   鈥?姝ゆā鍧楄 crypto.py 璋冪敤锛岃繍琛屾椂闂寸煭锛堟绉掔骇锛?    //   鈥?杩囧鐨勬娴嬮」瀵规€ц兘褰卞搷涓嶅ぇ锛屼絾閰嶇疆绠€鍖栨洿娓呮櫚
-    // 涓轰粈涔堟妯″潡閫夋嫨杩欎笁涓?
-    //   鈥?pdb: 鍩虹璋冭瘯鍣ㄦ娴嬶紝寮€閿€鏈€灏?    //   鈥?debugger: 妫€娴?IDE 璋冭瘯鍣?    //   鈥?vm: VM 鐜鍙兘褰卞搷纭欢 RNG 鐨勭喌璐ㄩ噺
-    //   鏈€夋嫨 sandbox/ida/cuckoo:
-    //     鍥犱负杩欎簺妫€娴嬮」寮€閿€鐩稿杈冮珮锛岃€屾妯″潡鐨勮繍琛岀獥鍙ｆ瀬鐭紝
-    //     鏀诲嚮鑰呭緢闅惧湪姝ゆā鍧楁墽琛屾湡闂撮檮鍔犺皟璇曞櫒銆?    //     涓昏淇濇姢鍦ㄨ皟鐢ㄦ柟锛坈rypto.py锛夊凡缁忓仛澶熶簡銆?    checks: ["pdb", "debugger", "vm"],
+    checks: ["pdb", "debugger", "vm"],
   },
 
   virtualization: {
-    // --- 鍚敤浠ｇ爜铏氭嫙鍖?---
-    // 鍙敤鍊? true | false
-    // 娉ㄦ剰浜嬮」:
-    //   鈥?鏈ā鍧楃殑 Serpent 鏄函 Python 瀹炵幇锛岃櫄鎷熷寲鍚?    //     S-box 鏌ヨ〃鐨勬瘡涓€鏉℃寚浠ら兘鍙樹负瀛楄妭鐮佽В閲婃墽琛?    //   鈥?Salsa20 鍩轰簬 pycryptodome 鐨?C 鎵╁睍锛屼笉鑳借铏氭嫙鍖?    //     浣嗗嚱鏁拌皟鐢ㄥ眰闈㈢殑铏氭嫙鍖栦粛浼氬湪 Python 灞傚寘瑁?    //   鈥?鎬ц兘涓嬮檷 10-50x锛屽浜庡姞瀵嗗ぇ鏂囦欢鍙兘鏄庢樉
     enabled: true,
-
-    // --- 铏氭嫙鍖栨ā寮?---
-    // 鍙敤鍊? "partial" | "full"
-    // "full" = 鎵€鏈夊嚱鏁拌櫄鎷熷寲
-    // "partial" = 浠呰櫄鎷熷寲 functions 鍒楄〃涓寚瀹氱殑鍑芥暟
-    // 涓轰粈涔堟妯″潡閫夋嫨 "full":
-    //   鎵€鏈夊姞瀵嗗嚱鏁伴兘鍚岀瓑閲嶈锛屽叏閮ㄨ櫄鎷熷寲銆?    mode: "full",
+    mode: "full",
   },
 }
-
-

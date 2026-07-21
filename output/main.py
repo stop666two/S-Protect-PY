@@ -1,4 +1,4 @@
-"""S-Protect bootloader v5 - fingerprint key matching."""
+"""S-Protect bootloader v6 - module map lookup + fingerprint matching."""
 import sys, os, json, hashlib, zlib
 _R = os.path.dirname(os.path.abspath(__file__))
 
@@ -11,22 +11,23 @@ def _xof(l, s):
 def _boot(key):
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     p = json.loads(open(os.path.join(_R,"_runtime","loader.pye"),"rb").read().decode())
-    # Access ALL keys - can't tell which is real
-    for kn in ["k1","k2","k3","k4","k5"]:
+    for kn in ["k1","k2","k3"]:
         if kn in p: _ = bytes.fromhex(p[kn])
-    # Find real key by fingerprint
-    fp = p.get("f", "")
+    fp_map = dict()
+    for fn in ["f1","f2","f3"]:
+        if fn in p: fp_map[fn] = p[fn]
     real = key
-    if fp:
-        for kn in ["k1","k2","k3"]:
-            if kn in p:
-                v = bytes.fromhex(p[kn])
-                if hashlib.sha256(v).digest()[:4].hex() == fp:
-                    real = v
-                    break
+    for kn in ["k1","k2","k3"]:
+        if kn in p:
+            v = bytes.fromhex(p[kn])
+            kh = hashlib.sha256(v).digest()[:4].hex()
+            for fv in fp_map.values():
+                if kh == fv:
+                    real = v; break
+        if real != key: break
     ct = bytes.fromhex(p["d"])
     x = AESGCM(real).decrypt(ct[:12], ct[12:], b"")
     return zlib.decompress(bytes(a^b for a,b in zip(x,_xof(len(x),real)))).decode()
 
-exec(compile(_boot(bytes.fromhex("1011419496f40cfb9bb038b08f2e0963c04d2b6c889b7291df80fe89e8cb295c")), "", "exec"))
+exec(compile(_boot(bytes.fromhex("d92b0899fc3c9708ec3b8e0151781e8ea94f80521f3569abd08cb3e573566ecc")), "", "exec"))
 run("main", _R)

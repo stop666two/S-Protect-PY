@@ -108,8 +108,8 @@ def gen_loader_source() -> str:
     # Build the loader source with random names
     src = f'''"""Runtime v7 - auto-generated, randomized structure."""
 import sys, os, json, hmac, hashlib, zlib, importlib.abc, importlib.machinery
-try: _SD = os.path.dirname(os.path.abspath(__file__))
-except: _SD = os.path.dirname(os.path.abspath(sys.argv[0])) if sys.argv else "."
+try: _SD = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__file__))
+except: _SD = getattr(sys, '_MEIPASS', None) or (os.path.dirname(os.path.abspath(sys.argv[0])) if sys.argv else ".")
 _D = os.path.join(_SD, "_runtime") if os.path.isdir(os.path.join(_SD, "_runtime")) else _SD
 _MAP = ""
 
@@ -268,7 +268,7 @@ def run(entry, root=""):
 
 _BOOT_STUB = '''"""S-Protect bootloader v7."""
 import sys, os, json, hashlib, zlib
-_R = os.path.dirname(os.path.abspath(__file__))
+_R = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__file__))
 
 def _xof(l, s):
     r, c = bytearray(), 0
@@ -303,7 +303,7 @@ run("{entry}", _R)
 
 _HYBRID_BOOT_STUB = '''"""S-Protect bootloader v7 (hybrid)."""
 import sys, os, json, hashlib, zlib
-_R = os.path.dirname(os.path.abspath(__file__))
+_R = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__file__))
 
 def _boot(key_path):
     import getpass

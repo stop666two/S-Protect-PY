@@ -23,3 +23,8 @@ AGENT.md
 AGENT.txt
 agent-readme.md
 RULES.md
+
+# Test reports
+output/report.html
+output/report.md
+*.spec

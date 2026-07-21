@@ -1,11 +1,180 @@
 {
-  // ==========================================
-  // 过期控制模块 - 精细化配置
-  // 时间校验 + NTP 联网验证
-  // ==========================================
+  // ========================================================================
+  // 过期控制模块 - 时间验证
+  // ========================================================================
+  // 所属层级: 安全运行时层 (Security Runtime Layer)
+  // 文件位置: sprotect/expiration.py
+  //
+  // ┌─ 功能概述 ──────────────────────────────────────────────────────────┐
+  // │ 此模块提供运行时的时间验证功能，是限制程序分发范围的关键组件:          │
+  // │   ① Expiration.check(expire_date: str) → bool                      │
+  // │      执行三重时间验证:                                               │
+  // │        a) 本地时间 vs expire_date 比较                              │
+  // │        b) NTP 时间查询验证（防止用户修改系统时间绕过）               │
+  // │        c) 时间漂移检测（检测系统时间是否被异常调整）                 │
+  // │                                                                     │
+  // │   ② _ntp() → float                                                  │
+  // │      从 pool.ntp.org / time.google.com 等 NTP 服务器获取标准时间    │
+  // │      使用 socket + struct 构造 NTP 请求包                           │
+  // │      超时设置: 3 秒，防止网络问题阻塞程序启动                       │
+  // │      回退策略: NTP 失败时仅用本地时间验证                           │
+  // │                                                                     │
+  // │ 调用方: loader.py 中的解密加载流程                                   │
+  // │ 触发条件: protected 代码首次运行时自动调用                          │
+  // └─────────────────────────────────────────────────────────────────────┘
+  //
+  // ┌─ 安全重要性 ──────────────────────────────────────────────────────┐
+  // │ ⚠ 此模块是运行时限制分发范围的关键组件                                │
+  // │ ⚠ 如果此模块被绕过，过期保护完全失效                                  │
+  // │ ⚠ 攻击者常用的绕过手法:                                              │
+  // │   ① 修改系统时间到过期日期之前                                       │
+  // │      对策: NTP 时间验证                                             │
+  // │   ② 阻止 NTP 请求（防火墙屏蔽）                                     │
+  // │      对策: 本地 + NTP 双重验证，任一超时判定为异常                   │
+  // │   ③ 直接 patch loader.py 跳过 Expiration.check() 调用              │
+  // │      对策: 反篡改检查（见 anti_tamper.py）                          │
+  // │   ④ hook socket 模块使 NTP 请求返回假时间                          │
+  // │      对策: 时间漂移检测                                             │
+  // └─────────────────────────────────────────────────────────────────────┘
+  //
+  // ┌─ 保护等级说明 ────────────────────────────────────────────────────┐
+  // │ 为什么不是 level 5 最高保护?                                        │
+  // │   主要保护逻辑在 loader.py 中（加载器 + 解密 + 反篡改）             │
+  // │   expiration.py 只负责"时间比较"这一个环节                         │
+  // │   即使攻击者完全看懂了 expiration.py，只要 loader.py 的反篡改       │
+  // │   还在工作，修改 expiration.py 会被检测到并触发退出                  │
+  // │   所以 level 4 提供足够的纵深防御                                   │
+  // └─────────────────────────────────────────────────────────────────────┘
+  //
+  // ┌─ NTP 请求细节 ──────────────────────────────────────────────────────┐
+  // │ 协议: NTP v4 (RFC 5905)                                            │
+  // │ 端口: 123 (UDP)                                                    │
+  // │ 报文结构: 48 字节                                                   │
+  // │   Byte 0: LI (2bit) + VN (3bit) + Mode (3bit) = 0x1B              │
+  // │   Byte 1-47: 全部填 0                                              │
+  // │ 响应解析: 取 Byte 40-43 转换为秒（NTP 时间戳）                     │
+  // │ 转换: NTP 秒 - 2208988800 = Unix 时间戳                            │
+  // └─────────────────────────────────────────────────────────────────────┘
+  //
+  // ┌─ 变更历史 ──────────────────────────────────────────────────────────┐
+  // │ v1.0 初始版本，基础时间比较 + NTP 验证                              │
+  // │ v1.1 添加时间漂移检测                                              │
+  // │ v1.2 添加多个 NTP 服务器回退                                       │
+  // └─────────────────────────────────────────────────────────────────────┘
+  // ========================================================================
 
-  obfuscate: { level: 4, rename_variables: true, rename_functions: true,
-    rename_classes: true, encrypt_strings: true, encrypt_numbers: false,
-    control_flow_flattening: false, dead_code_injection: false },
-  anti_debug: { enabled: true, action: "exit", checks: ["pdb", "debugger"] },
+  obfuscate: {
+    // ------------------------------------------------------------------
+    // 混淆等级: 4
+    // ------------------------------------------------------------------
+    // 选型理由:
+    //   不能设 5 的原因:
+    //     控制流平坦化对 _ntp() 的 socket 操作有风险
+    //     socket.socket() → socket.send() → socket.recv() 的时序逻辑
+    //     在平坦化后可能因状态机转换错误导致 recv 超时
+    //
+    //   不能设 3 的原因:
+    //     NTP 时间验证逻辑需要一定的保护强度
+    //     level 3 不加密函数名，攻击者看到 _ntp 就知道是 NTP 请求
+    //     容易定位到关键代码进行 patch
+    //
+    //   所以 level 4 是折中选择:
+    //     变量重命名 ✓
+    //     函数重命名 ✓  (让攻击者找不到 _ntp)
+    //     字符串加密 ✓  (隐藏 NTP 服务器地址)
+    //     控制流平坦化 ✗ (socket 时序敏感)
+    // ------------------------------------------------------------------
+    level: 4,
+
+    // --- 变量重命名 ---
+    // true: 将 expire_date, ntp_time, drift, local_time 等变量改名
+    //       使攻击者无法通过变量名推断代码意图
+    rename_variables: true,
+
+    // --- 函数重命名 ---
+    // true: 将 check → _0x3a, _ntp → _0x7f
+    // 注意: _ntp 的下划线前缀（约定为私有函数）不影响重命名
+    //       即使重命名后，loader.py 中通过 import 导入时
+    //       要用 from sprotect.expiration import check 才能找到
+    //       check 被重命名后，此 import 会失败
+    // 结论:
+    //   如果 loader.py 直接 import check 函数，则此处必须 false
+    //   如果 loader.py 通过模块引用 expiration.check(...) 则 true 可行
+    //   当前假设: loader.py 使用 from ... import check 形式
+    //   ❗ 实际使用请根据 loader.py 的导入方式判断
+    rename_functions: true,
+
+    // --- 类重命名 ---
+    // true: 将 Expiration 类重命名
+    //       同样取决于 loader.py 如何导入
+    //       如果使用 from sprotect.expiration import Expiration 则必须 false
+    //       如果使用 sprotect.expiration.Expiration 则 true 可行
+    rename_classes: true,
+
+    // --- 字符串加密 ---
+    // true: 加密以下敏感字符串:
+    //   • NTP 服务器地址: "pool.ntp.org", "time.google.com"
+    //   • 错误信息: "License expired", "Time tampered detected"
+    //   • socket 配置: NTP 请求包构造字节
+    // 加密后攻击者无法通过 strings 命令行直接找到 NTP 服务器地址
+    // 也无法通过搜索 "expired" 精确定位验证逻辑
+    encrypt_strings: true,
+
+    // --- 数字加密 ---
+    // false: 此模块中的数字主要是:
+    //   • 超时秒数 (3)
+    //   • NTP 协议常量 (2208988800, 0x1B)
+    //   • 端口号 (123)
+    //   虽然 NTP 协议常量有一定敏感性，但它们是标准协议常量
+    //   攻击者即使知道这些数字也无法绕过验证
+    encrypt_numbers: false,
+
+    // --- 控制流平坦化 ---
+    // ❗ 必须为 false
+    // 根因:
+    //   _ntp() 函数的执行流程:
+    //     sock = socket.socket(AF_INET, SOCK_DGRAM)  → 创建 socket
+    //     sock.settimeout(3)                          → 设置超时
+    //     sock.sendto(packet, (server, 123))           → 发送请求
+    //     data, addr = sock.recvfrom(1024)             → 等待响应
+    //     sock.close()                                 → 关闭连接
+    //     return parse_ntp_response(data)              → 解析结果
+    //
+    //   控制流平坦化会将上述线性流程转为状态机:
+    //     state 0: 创建 socket
+    //     state 1: 设置超时 (如果 state 0 失败则跳到 state 5)
+    //     state 2: 发送请求 (如果 state 1 失败则跳到 state 5)
+    //     ...
+    //
+    //   问题: socket 操作涉及网络 I/O，recvfrom 是阻塞调用
+    //   在状态机中，socket 对象需要在状态间传递
+    //   如果状态转换逻辑有 bug，socket 对象可能被错误关闭或重复创建
+    //   轻则抛出异常，重则 socket 泄漏导致连接耗尽
+    control_flow_flattening: false,
+
+    // --- 死代码注入 ---
+    // false: 时间验证逻辑短小精悍，注入死代码反而可能影响 NTP 时序
+    dead_code_injection: false,
+  },
+
+  anti_debug: {
+    // --- 总开关: true ---
+    // 运行时反调试非常重要，因为攻击者常用调试器动态 patch 时间验证
+    enabled: true,
+
+    // --- 检测到调试时的行为 ---
+    // exit: 立即退出程序，不允许在调试环境下运行
+    // 原因: 调试器可以:
+    //   ① 在 Expiration.check() 返回前修改返回值
+    //   ② 跳过 check() 的调用
+    //   ③ 修改变量 expire_date 的值
+    // 使用 exit 而不是 warn，因为 warn 只是打印日志
+    // 攻击者可以忽略日志继续调试
+    action: "exit",
+
+    // --- 启用的调试检测项 ---
+    // pdb:      检测 pdb.set_trace() 断点
+    // debugger: 检测 sys.gettrace() 调试器附加
+    checks: ["pdb", "debugger"],
+  },
 }

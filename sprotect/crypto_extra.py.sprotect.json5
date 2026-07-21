@@ -1,0 +1,191 @@
+{
+  // ====================================================================
+  // 额外加密层 — Serpent / Twofish / Camellia / Salsa20（新建模块·全量中文注释）
+  // ====================================================================
+  // 【模块职责】
+  //   此模块提供四套独立的加密算法实现，作为 AES-256-GCM 之外的
+  //   额外（extra）加密层。每层使用的密钥均通过 HKDF-SHA256 从
+  //   master_key 派生（域分离），确保各层密钥相互独立。
+  //
+  //   包含以下算法：
+  //   • Serpent CBC 加密/解密 — 128 位块，256 位密钥（纯 Python 实现）
+  //   • Twofish CBC 加密/解密 — 128 位块，256 位密钥（底层用 AES-ECB 模拟）
+  //   • Camellia CBC 加密/解密 — 128 位块，256 位密钥（cryptography 库）
+  //   • Salsa20 流加密/解密 — 256 位密钥，8 字节 nonce（pycryptodome 库）
+  //   • PKCS7 填充/去填充工具函数（_pad / _unpad）
+  //
+  // 【依赖要求】
+  //   pycryptodome >= 3.21.0   — 用于 Salsa20（必需）
+  //   cryptography >= 42.0.0   — 用于 Camellia、Twofish 的 AES fallback（必需）
+  //
+  // 【被调用关系】
+  //   crypto.py    → encrypt_payload_v2 / decrypt_payload_v2
+  //                  通过 from sprotect.crypto_extra import ... 导入
+  //                  调用每个算法的 encrypt_xxx / decrypt_xxx 函数
+  //   loader.py    → 生成运行时加载器代码中嵌入等价的加密/解密逻辑
+  //                  （使用 pycryptodome 的 Salsa20 / Serpent Cipher 等）
+  //   encrypt.py   → encrypt_payload_v2(..., extra_layers) 间接调用
+  //
+  // 【注意事项】
+  //   • 此模块仅被 crypto.py 的 encrypt_payload_v2() 和
+  //     decrypt_payload_v2() 调用
+  //   • 如果 encrypt.extra_layers 为空（[]），此模块不会被执行
+  //   • 所有加密函数使用 HKDF-SHA256(salt, info=f"sprotect:{algo}") 派生密钥
+  //   • Serpent = AES 决赛落选者（Twofish 也是），设计更保守
+  //   • Twofish = Bruce Schneier 设计，Blowfish 的后继者
+  //   • Camellia = 日本标准（ISO/IEC 18033-3），NTT/三菱设计
+  //   • Salsa20 = Daniel Bernstein 设计，ChaCha20 的前身（ChaCha 是 Salsa20 的改进）
+  //   • Serpent 和 Twofish 的实现方式不同（Serpent 纯 Python，Twofish 借用 AES）
+  //   • Salsa20 是流密码（stream cipher），不使用 PKCS7 填充
+  //   • CBC 模式的块密码需要 16 字节 IV（与 AES 相同块大小）
+  // ====================================================================
+
+  obfuscate: {
+    // --- 混淆等级 ---
+    // 可用值: 1 | 2 | 3 | 4 | 5
+    //   1 = 仅变量名重命名（最轻量）
+    //   2 = + 字符串加密
+    //   3 = + 控制流平坦化 + 不透明谓词
+    //   4 = + 数字加密
+    //   5 = + 死代码注入 + 全部特性
+    // 不可用值: "5"（字符串）/ 0 / -1 / 6 / 3.5 / 2.0
+    // 注意事项:
+    //   • level 5 对 Serpent 的纯 Python S-box 实现影响较大
+    //     _SERP_SBOX 等常量表会被死代码膨胀，增加内存占用
+    //   • 但 S-box 数据不受混淆影响（数据类型数据不变）
+    // 为什么此模块选择 5:
+    //   此模块实现了完整的加密算法，是保护链的组成部分。
+    //   虽然它只作为额外层被调用，但泄露算法实现仍会帮助攻击者
+    //   理解整个保护体系。必须使用最高强度混淆。
+    level: 5,
+
+    // --- 重命名变量 ---
+    // 可用值: true | false
+    // 注意事项:
+    //   • 本模块的局部变量包括 a, b, c, d（Serpent 的 4 个 32 位字）、
+    //     ct（密文）、pt（明文）、prev（CBC 前一块）等
+    //   • 重命名后 S-box 的语义（哪个是左移哪个是右移）更难辨识
+    // 为什么此模块选择 true:
+    //   变量名如 prev（CBC 模式的上一个块）、ct（密文）
+    //   直接暴露了加密操作的用途，必须隐藏。
+    rename_variables: true,
+
+    // --- 重命名函数 ---
+    // 可用值: true | false
+    // 注意事项:
+    //   • 此模块的函数通过模块导入被 crypto.py 引用，改名不影响
+    //   • _pad / _unpad 是私有函数（前导下划线），改名前缀消失
+    // 为什么此模块选择 true:
+    //   函数名如 encrypt_serpent、encrypt_twofish 直接告诉攻击者
+    //   正在使用什么算法。全部重命名后攻击者无法从函数名
+    //   判断使用了哪些额外加密层。
+    rename_functions: true,
+
+    // --- 重命名类 ---
+    // 可用值: true | false
+    // 注意事项:
+    //   • 本模块包含 _Serpent 和 _Twofish 两个内部类
+    //   • _Serpent 类包含 3 个方法：__init__、_expand、encrypt_block、decrypt_block
+    //   • _Twofish 类只包含 __init__、encrypt_block、decrypt_block
+    //   • 类名和类方法名都会被混淆
+    // 为什么此模块选择 true:
+    //   类名 _Serpent 和 _Twofish 揭示了底层算法实现细节。
+    rename_classes: true,
+
+    // --- 字符串加密 ---
+    // 可用值: true | false
+    // 注意事项:
+    //   • 本模块的字符串主要是错误消息
+    //   "Serpent key must be 16, 24, or 32 bytes"
+    //   "Twofish key must be 16, 24, or 32 bytes"
+    //   • 这些错误消息暴露了密钥长度信息
+    // 为什么此模块选择 true:
+    //   加密错误消息可以隐藏密钥尺寸信息，防止攻击者
+    //   通过错误消息推断使用的算法和密钥参数。
+    encrypt_strings: true,
+
+    // --- 数字加密 ---
+    // 可用值: true | false
+    // 注意事项:
+    //   • 本模块存在大量密码学常量：
+    //     _PHI = 0x9E3779B9（Serpent 的黄金比例常数）
+    //     16（块大小）、128/192/256（密钥长度）
+    //     8（S-box 数量）、32（轮数）
+    //   • 特别是 _PHI 常量是 Serpent 算法的标识特征
+    // 为什么此模块选择 true:
+    //   _PHI = 0x9E3779B9 是 Serpent 算法的一个显著特征，
+    //   在反编译工具中搜索此常数即可定位 Serpent 实现。
+    //   加密后此特征消失。
+    encrypt_numbers: true,
+
+    // --- 控制流平坦化 ---
+    // 可用值: true | false
+    // 注意事项:
+    //   • 对 Serpent 的 _expand 函数（密钥扩展）影响最大
+    //   • 对 CBC 模式的循环（for i in range(0, len(p), 16)）平坦化后
+    //     控制流被打散，加密逻辑更难追踪
+    //   • 性能影响：CBC 循环本身已经是 O(n)，加上平坦化后
+    //     每块增加 while+switch 开销
+    // 为什么此模块选择 true:
+    //   CBC 模式加密循环的结构是通用的"密文反馈"模式，
+    //   平坦化后这个模式被破坏，攻击者更难理解这是在做什么。
+    control_flow_flattening: true,
+
+    // --- 死代码注入 ---
+    // 可用值: true | false
+    // 注意事项:
+    //   • 对 S-box 查表逻辑注入死代码可能增加缓存 miss（极少影响）
+    // 为什么此模块选择 true:
+    //   加密算法的实现代码是高度结构化的，通过注入看似合理的
+    //   "假步骤"可以让逆向者迷失在大量无关代码中。
+    dead_code_injection: true,
+  },
+
+  anti_debug: {
+    // --- 反调试总开关 ---
+    enabled: true,
+
+    // --- 检测到异常后的动作 ---
+    // 可用值: "exit" | "warn" | "corrupt"
+    // 不可用值: "abort" / "kill" / 空字符串
+    // 注意事项: 此模块只在加密/解密瞬间调用，检测窗口短
+    action: "exit",
+
+    // --- 启用的检测项 ---
+    // 可用值: "pdb" | "ptrace" | "debugger" | "vm" | "sandbox"
+    //       | "timing" | "cuckoo" | "ida" | "procmon" 的子集
+    // 不可用值: 任意不在上述列表中的字符串
+    // 注意事项:
+    //   • 此模块被 crypto.py 调用，运行时间短（毫秒级）
+    //   • 过多的检测项对性能影响不大，但配置简化更清晰
+    // 为什么此模块选择这三个:
+    //   • pdb: 基础调试器检测，开销最小
+    //   • debugger: 检测 IDE 调试器
+    //   • vm: VM 环境可能影响硬件 RNG 的熵质量
+    //   未选择 sandbox/ida/cuckoo:
+    //     因为这些检测项开销相对较高，而此模块的运行窗口极短，
+    //     攻击者很难在此模块执行期间附加调试器。
+    //     主要保护在调用方（crypto.py）已经做够了。
+    checks: ["pdb", "debugger", "vm"],
+  },
+
+  virtualization: {
+    // --- 启用代码虚拟化 ---
+    // 可用值: true | false
+    // 注意事项:
+    //   • 本模块的 Serpent 是纯 Python 实现，虚拟化后
+    //     S-box 查表的每一条指令都变为字节码解释执行
+    //   • Salsa20 基于 pycryptodome 的 C 扩展，不能被虚拟化
+    //     但函数调用层面的虚拟化仍会在 Python 层包装
+    //   • 性能下降 10-50x，对于加密大文件可能明显
+    enabled: true,
+
+    // --- 虚拟化模式 ---
+    // 可用值: "partial" | "full"
+    // "full" = 所有函数虚拟化
+    // "partial" = 仅虚拟化 functions 列表中指定的函数
+    // 为什么此模块选择 "full":
+    //   所有加密函数都同等重要，全部虚拟化。
+    mode: "full",
+  },
+}

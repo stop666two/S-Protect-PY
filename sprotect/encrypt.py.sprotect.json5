@@ -1,20 +1,264 @@
 {
-  // ==========================================
-  // 加密构建引擎 - 精细化配置
-  // 负责 build 完整流程：扫描→混淆→加密→生成启动器
-  // ==========================================
+  // ====================================================================
+  // 加密构建引擎 — build 完整流程编排器（全量中文注释）
+  // ====================================================================
+  // 【模块职责】
+  //   此模块是 S-Protect-PY 的核心调度引擎。build 函数实施以下流程：
+  //
+  //   ① 项目扫描：find_py_files 收集所有 .py 文件路径
+  //   ② 第一遍收集定义：collect_defs 扫描所有文件中的类/函数定义
+  //      — 为跨文件重命名做准备（避免两个文件产生同名混淆标识符）
+  //   ③ 逐文件处理：
+  //      a. 读取源码（utf-8-sig 兼容 BOM）
+  //      b. 文件级配置合并（merge_file_config：全局 + 本文件 .sprotect.json5）
+  //      c. AST 混淆：Obfuscator 处理（变量名/函数名/字符串/控制流等）
+  //      d. 源码压缩：minify_source（去除多余空白）
+  //      e. 水印注入：Watermark.code() 向每段源码注入水印 lambda
+  //      f. 多层加密：encrypt_payload（v1）或 encrypt_payload_v2（v2 with extra_layers）
+  //      g. 密钥分片嵌入：shards[idx] 随机放入 k1-k5 中的某一位置
+  //      h. 三层指纹计算：f1/XOR, f2/blake3, f3/HMAC
+  //      i. 链式哈希预留：c 字段占位
+  //   ④ 写入 .pye 文件：每个源文件对应一个 .pye 加密文件
+  //   ⑤ 链式哈希：所有 payload 互为 HMAC 签名
+  //   ⑥ 诱饵文件：生成 decoy .pye 文件（与真实文件结构相同但内容伪造）
+  //   ⑦ 模块映射：module_map 记录 模块名 → hex_name.pye 的对应关系
+  //   ⑧ Loader 生成：
+  //      — gen_loader_source() 生成运行时加载器代码（每次 build 不同）
+  //      — 注入模块映射 JSON
+  //      — 用 loader_key 加密后写入 loader.pye
+  //   ⑨ 启动 stub：gen_boot() 生成 output/main.py
+  //   ⑩ 水印报告：生成 watermark_report.json
+  //   ⑪ 复制辅助文件：run.bat, requirements.txt 等
+  //
+  // 【集成特性】
+  //   • extra_layers 支持：检查各文件的 fc.encrypt.extra_layers 配置
+  //   • 混合加密（RSA/ECC）：在 build 开始前生成密钥对
+  //   • 自动备份：backup 模块在 build 前备份项目目录
+  //
+  // 【安全等级】
+  // ⚠️ 此模块掌控整个保护流水线的调度逻辑。
+  //    泄露意味着攻击者了解完整的保护体系架构：
+  //    知道什么时候混淆、什么时候加密、怎么分片。
+  //    所以必须使用最高强度的保护。
+  //
+  // 【被调用关系】
+  //   cli.py        → 通过 sprotect.encrypt.build() 调用
+  //   __init__.py   → 导出 build 函数
+  //   test 代码     → 测试完整的 build → decrypt 管道
+  //
+  // 【函数列表】
+  //   build(project_dir, output_dir, config) → None
+  //     主入口函数。扫描、混淆、加密、loader 生成、诱饵、水印全部在此完成。
+  //     参数：
+  //       project_dir — 待保护项目的根目录
+  //       output_dir  — 加密后文件的输出目录
+  //       config      — 解析后的全局配置对象（types.Config）
+  //
+  //   _extract_d(pye_bytes: bytes) → tuple[str, dict]
+  //     从 .pye 字节串中提取 d 字段和完整 payload 字典。
+  //     用于链式哈希计算时的数据提取。
+  // ====================================================================
 
   obfuscate: {
+    // --- 混淆等级 ---
+    // 可用值: 1 | 2 | 3 | 4 | 5
+    // 各等级含义:
+    //   L1: 变量名+函数名重命名
+    //   L2: + 字符串加密
+    //   L3: + 控制流平坦化
+    //   L4: + 数字加密
+    //   L5: + 死代码注入 + 全部特性
+    // 不可用值: "5"（字符串）/ 0 / -1 / 6 / 3.5
+    // 注意事项:
+    //   • 此模块性能影响主要在于控制流平坦化对 build 循环的影响
+    //     build 函数的核心循环：for idx, fp in enumerate(py_files)
+    //     被平坦化后增加了 while+switch 的开销
+    //   • 但 build 是"一次性的操作"（每次开发/CI 只运行一次），
+    //     所以性能不是主要考量
+    // 为什么此模块选择 5:
+    //   1. 此模块包含完整的保护流程逻辑
+    //   2. 泄露 = 攻击者了解完整的保护流水线架构：
+    //      加密顺序、分片方式、诱饵生成策略、loader 生成逻辑
+    //   3. 必须使用最高强度混淆
+    //   4. build 是"一次性的操作"（每次 AI 运行只运行一次），
+    //      性能开销无所谓
     level: 5,
+
+    // --- 重命名变量 ---
+    // 可用值: true | false
+    // true  = 所有局部变量改为 _0x 随机名
+    // false = 保持原始变量名
+    // 为什么此模块选择 true:
+    //   变量名如 master_key, loader_key, shards, module_map,
+    //   hex_name, encrypted_ct 明确表达了构建流程的每一步。
+    //   必须全部隐藏。
     rename_variables: true,
+
+    // --- 重命名函数 ---
+    // 可用值: true | false
+    // 注意事项:
+    //   build 是入口函数，通过模块导入被 cli.py 调用。
+    //   Python 中模块导入通过模块对象引用函数，不受函数名影响。
+    //   但注意 rename_rules.reserved 中保留 build 名是出于防御目的。
+    // 为什么此模块选择 true:
+    //   内部函数名如 _extract_d 暴露了构建流程的内部接口。
     rename_functions: true,
+
+    // --- 重命名类 ---
+    // 可用值: true | false
+    // 注意事项: 当前 encrypt.py 没有类定义，此设置无效果
+    // 为什么此模块选择 true:
+    //   统一配置，将来添加类时自动保护。
     rename_classes: true,
-    rename_rules: { style: "hex", reserved: [] },
+
+    rename_rules: {
+      // --- 命名风格 ---
+      // 可用值:
+      //   "hex"           → _0xa1b2c3d4 （十六进制，推荐）
+      //   "chinese"       → _变量 （中文字符，增加逆向阅读难度）
+      //   "invisible"     → 零宽字符（肉眼不可见，但编辑器可能显示异常）
+      //   "math-symbols"  → _∑∫∂∂ （数学符号）
+      //   "custom"        → 自定义前缀/后缀
+      // 不可用值: "unicode" / "base64" / "random"（无效）
+      // 注意事项:
+      //   invisible 风格在某些终端或编辑器上可能显示为问号
+      //   chinese 风格在英文开发环境可能造成混淆
+      // 为什么此模块选择 "hex":
+      //   十六进制是混淆工具的标准风格，兼容性最好，
+      //   且在反编译工具中看起来最『混乱』（无意义数字串）。
+      style: "hex",
+
+      // --- 保留名称（不改名） ---
+      // 可用值: ["__init__", "main", "build"] 等
+      // 不可用值: 不存在的标识符
+      // 注意事项:
+      //   • 虽然模块导入不受函数名影响（到模块对象），
+      //     但保留 build 名可以减少不必要的风险
+      //   • __init__ 保留是为了兼容导入机制
+      //   • 如无必要，不要保留更多名称
+      // 为什么此模块保留空数组:
+      //   Python 的模块导入不受函数名影响，
+      //   cli.py 通过 sprotect.encrypt.build 调用时
+      //   实际引用的是函数对象，与名称无关。
+      //   所以不需要保留任何函数名。
+      //   但是 build 函数名建议保留（此处为空是考虑到
+      //   如果未来通过字符串名称访问函数，保留列表需要更新）。
+      //   当前代码库中没有这种模式。
+      reserved: [],
+    },
+
+    // --- 加密字符串 ---
+    // 可用值: true | false
+    // 注意事项:
+    //   • 本模块包含大量字符串：
+    //     "  WARN: no Python files found"
+    //     "  Private key saved: {key_path}"
+    //     "  WARN: {rel} - {e}"
+    //     "  Watermark report: {rpath}"
+    //     "  Batch ID: {wm.bid}"
+    //     "loader.pye"、"run.bat"、"requirements.txt" 等
+    //   • 这些字符串虽然不全是敏感信息，但加密后可以防止
+    //     攻击者从日志字符串推断构建流程状态
+    // 为什么此模块选择 true:
+    //   加密所有字符串可以防止攻击者通过字符串搜索定位
+    //   关键代码区域（如 "loader.pye" 字符串定位到 loader 生成逻辑）。
     encrypt_strings: true,
+
+    // --- 加密数字 ---
+    // 可用值: true | false
+    // 注意事项:
+    //   • 本模块的数字敏感度中等：
+    //     32（密钥长度）、12（nonce）、9（压缩等级）、
+    //     5（密钥数量）、2（最少分片）、0x1000 等
+    //   • 加密这些数字对 build 性能影响可忽略
+    // 为什么此模块选择 true:
+    //   数字加密可以隐藏分片数量、密钥长度等参数，
+    //   这些参数决定了保护强度。
     encrypt_numbers: true,
+
+    // --- 控制流平坦化 ---
+    // 可用值: true | false
+    // 注意事项:
+    //   • build 函数有一个大循环 for idx, fp in enumerate(py_files)
+    //     被平坦化后循环体被打散，增加了逆向者的理解难度
+    //   • 性能影响：build 是"一次性操作"，影响可忽略
+    // 为什么此模块选择 true:
+    //   build 函数的控制流图直接揭示了保护流水线的执行顺序。
+    //   平坦化后顺序被打散，攻击者无法从 CFG 快速理解
+    //   扫描→混淆→加密→分片→loader 的流程顺序。
     control_flow_flattening: true,
+
+    // --- 死代码注入 ---
+    // 可用值: true | false
+    // 注意事项:
+    //   • build 函数体较大（约 170 行），注入死代码可以
+    //     让反编译结果膨胀到 300+ 行
+    // 为什么此模块选择 true:
+    //   死代码注入配合控制流平坦化，使 build 函数的
+    //   反编译结果变得极其庞大和混乱。
     dead_code_injection: true,
   },
-  anti_debug: { enabled: true, action: "exit", checks: ["pdb", "debugger", "vm"] },
-  virtualization: { enabled: true, mode: "full" },
+
+  anti_debug: {
+    // --- 总开关 ---
+    // 可用值: true | false
+    // 为什么此模块选择 true:
+    //   保护 build 过程不被调试器分析。
+    enabled: true,
+
+    // --- 检测到异常后的动作 ---
+    // 可用值: "exit" | "warn" | "corrupt"
+    // "exit": 直接退出（推荐）
+    // "warn": 仅警告（调试用）
+    // "corrupt": 破坏内存后退出（最激进）
+    action: "exit",
+
+    // --- 启用的检测项 ---
+    // 完整可用值:
+    //   "pdb"      检测 sys.gettrace()
+    //   "ptrace"   检测 Linux ptrace 附加
+    //   "debugger" 检测 pydevd / PYTHONDEBUG 环境变量
+    //   "vm"       检测 VirtualBox / VMware / QEMU
+    //   "sandbox"  检测沙箱目录
+    //   "timing"   时序检测
+    //   "cuckoo"   检测 Cuckoo 沙箱
+    //   "ida"      检测 IDA Pro 远程调试端口
+    //   "procmon"  检测 Process Monitor
+    // 为什么此模块选择这三项:
+    //   build 仅在开发者/CI 机器上运行，几秒钟就结束。
+    //   攻击者很难在如此短的时间窗口内附加调试器，
+    //   但如果有调试器（pdb）或 IDE 调试器（debugger），
+    //   或者 build 在 VM 中运行（vm —— 提示可能被自动分析），
+    //   应该立即阻止。
+    //   未选择: sandbox, cuckoo, ida, procmon, timing
+    //     • build 不在沙箱中运行，检测成本高于收益
+    //     • build 短时运行，时序检测可能因 CPU 调度波动误判
+    //     • IDA 远程调试针对的是运行时程序而非 build 过程
+    //   注意: 此模块的 anti_debug 保护的是 build 脚本自身，
+    //   不是生成的 .pye 文件的运行时保护。
+    //   .pye 的运行保护在 loader.py 生成的运行时代码中实现。
+    checks: ["pdb", "debugger", "vm"],
+  },
+
+  virtualization: {
+    // --- 启用虚拟化 ---
+    // 可用值: true | false
+    // 注意事项:
+    //   • ⚠️ 此选项在此文件中实际无效（当前版本预留标记）
+    //   • 虚拟化会大幅降低 build 速度（10-50x），
+    //     而 build 本身已经需要几秒到几十秒
+    //   • 目前 encrypt.py 没有被"虚拟化引擎"支持的文件列表匹配到
+    //   • 此选项存在是为了配置界面一致性（每个模块都显示）
+    // 为什么此模块选择 true:
+    //   build 作为核心调度模块，如果能被虚拟化引擎支持，
+    //   启用虚拟化可以最大程度保护。
+    //   但实际部署时须注意性能影响——build 时间可能从 10s 变成 5min。
+    enabled: true,
+
+    // --- 虚拟化模式 ---
+    // 可用值: "partial" | "full"
+    // "partial" = 仅虚拟化指定函数（需要在 functions 列表中指定）
+    // "full" = 所有函数虚拟化
+    mode: "full",
+  },
 }

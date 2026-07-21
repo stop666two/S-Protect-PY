@@ -1,27 +1,106 @@
 {
   // ==========================================
-  // 类型定义模块 - 精细化配置
-  // 包含所有 Enum、Dataclass 类型定义
-  // 注意：类型本身不能被混淆（否则运行时反射会出问题）
+  // 类型定义模块 — 所有 Enum 和 Dataclass
+  // ==========================================
+  // 此模块包含:
+  //   • 6 个 Enum: ObfuscateLevel, InterdependencyMode, NamingStyle,
+  //                AntiDebugAction, VirtualizationMode, WatermarkLevel
+  //   • 1 个 Enum: EncryptAlgorithm
+  //   • 14 个 @dataclass: 从 RenameRules 到 Config（顶层聚合）
+  //   • HybridEncryptConfig（混合加密配置）
+  //
+  // ════════════════════════════════════════════
+  // ⚠️  关 键 约 束（违反将导致运行时崩溃）
+  // ════════════════════════════════════════════
+  //   1. Enum 名称不能混淆 — enum 的 name/value 属性被反射访问
+  //      (如: ObfuscateLevel.L5.value → 5 被 config.py 比较)
+  //   2. Dataclass 字段名不能混淆 — 被 config.py 的 d.get("field") 访问
+  //      (如: d.get("level", 3) 匹配 ObfuscateConfig.level)
+  //   3. 类名不能混淆 — 被 isinstance() 和类型注解引用
+  //      (如: EncryptConfig 被 _enc() 显式构造)
+  //   4. 字符串不能加密 — 枚举值和配置默认值以字符串形式出现
+  //      (如: "chain", "exit", "hex" 被 config.py 匹配)
+  //
+  // 结论: 此模块只能做最低限度混淆（仅变量重命名）。
   // ==========================================
 
   obfuscate: {
+    // --- 混淆等级 ---
+    // 为什么用 2:
+    //   level 1: 仅修改变量名（安全）
+    //   level 2: 额外进行一些安全变换（对类型模块无影响）
+    //   level 3+: 会改变类结构（Enum 的元类、dataclass 的生成方法），不可接受
     level: 2,
+
+    // --- 重命名变量 ---
+    // ✅ 可以开启
+    // 原因: 类型模块中变量很少（主要是 Enum 成员和 dataclass 字段）
+    //       局部变量改名不影响外部访问
     rename_variables: true,
-    rename_functions: false,   // Enum/dataclass 方法不改名
-    rename_classes: false,     // 类名被广泛引用，不能改名
+
+    // --- 重命名函数 ---
+    // ❗ 必须为 false
+    // 原因:
+    //   • Enum 的 __init__、__new__、__format__ 等魔术方法被 Python 运行时隐式调用
+    //   • dataclass 的 __init__、__repr__、__eq__、__hash__ 由 @dataclass 装饰器自动生成
+    //   • 如果这些方法被改名, Python 运行时无法找到正确入口, 触发 TypeError
+    //   • 手写的 __post_init__ 如果被改名也会失效
+    rename_functions: false,
+
+    // --- 重命名类 ---
+    // ❗ 必须为 false
+    // 原因:
+    //   • Config 聚合类被所有模块引用（from types import Config）
+    //   • EncryptConfig、ObfuscateConfig 等子 config 被 config.py 的 _enc() 显式构造
+    //   • AntiDebugConfig 被 anti_debug.py 的 _check() 用 isinstance 检查
+    //   • 类名一改, 所有 import 和 isinstance 全部 NameError
+    rename_classes: false,
+
     rename_rules: {
       style: "hex",
-      reserved: [],            // 不保留任何名字（但 rename_classes=false 所以不影响）
+      reserved: [],
     },
-    encrypt_strings: false,    // 枚举值字符串不改，影响序列化
-    encrypt_numbers: false,    // 枚举数字不改
+
+    // --- 加密字符串 ---
+    // ❗ 必须为 false
+    // 原因:
+    //   • Enum 的 value 属性以字符串形式存在, 如:
+    //     - AntiDebugAction.CHAIN.value → "chain"（被 config.py 的 d.get("action") 匹配）
+    //     - NamingStyle.HEX.value → "hex"
+    //   • 加密后: d.get("action") 匹配到的是乱码, 永远不等于 "chain"
+    //   • 结果: 所有配置反序列化异常, 程序启动即崩
+    encrypt_strings: false,
+
+    // --- 加密数字 ---
+    // ❗ 必须为 false
+    // 原因:
+    //   • Enum 的整数值被用于比较, 如 ObfuscateLevel.L5 = 5
+    //   • config.py 中 d.get("level", 3) 返回 int, 与 Enum 成员比较
+    //   • 数字加密后使用 EncryptedInt 包装, 比较操作返回 False
+    //   • 结果: level 判断永远不匹配, 默认值接管, 逻辑混乱
+    encrypt_numbers: false,
+
+    // --- 控制流平坦化 ---
+    // ❗ 必须为 false
+    // 原因:
+    //   • dataclass 不包含复杂控制流（只有字段定义）
+    //   • __init__ 由 @dataclass 装饰器自动生成, 平坦化不作用于装饰器生成的字节码
+    //   • 安全起见强制关闭, 避免意外
     control_flow_flattening: false,
+
+    // --- 死代码注入 ---
+    // ❗ 必须为 false
+    // 原因: 类型模块无函数体, 死代码注入无目标, 设置无效
     dead_code_injection: false,
   },
 
   anti_debug: {
+    // --- 总开关 ---
+    // 为什么 false:
+    //   类型定义在 build 机器上运行（受保护环境）, 最终用户不直接执行此模块
+    //   反调试检查只应部署在最终交付物中, 而非中间构建产物
     enabled: false,
+
     action: "warn",
     checks: [],
   },

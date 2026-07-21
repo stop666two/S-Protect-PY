@@ -1,28 +1,245 @@
 {
-  // ==========================================
-  // 配置加载模块 - 精细化配置
-  // 负责 JSON5 解析、per-file 合并、默认值生成
-  // ==========================================
+  // ===================================================================
+  // 配置加载模块 — JSON5 解析与合并
+  // ===================================================================
+  // 此模块包含：
+  //   • load_config()           加载主 sprotect.json5
+  //   • merge_file_config()     逐文件合并覆盖（per-file 覆盖全局）
+  //   • gen_default()           生成默认配置
+  //   • find_config()           递归向上查找配置文件
+  //   • load_per_file()         加载 per-file .sprotect.json5
+  //   • deep_merge()            深度合并两个配置字典
+  //   • 12+ 个 _*() builder 函数（_enc, _obf, _adb 等）
+  //
+  // ╔══════════════════════════════════════════════════════════════╗
+  // ║  关键约束                                                   ║
+  // ║  • load_config() 被 cli.py 直接 import                      ║
+  // ║  • merge_file_config() 被 encrypt.py 调用                   ║
+  // ║  • gen_default() 被 cli.py 的 config init 命令调用           ║
+  // ║  • 配置加载逻辑含复杂错误处理和回退链                        ║
+  // ║  • 字符串配置键名（如 "encrypt", "obfuscate"）出现在多处      ║
+  // ║  → 这几个函数名绝对不能改                                   ║
+  // ║  → 控制流平坦化/死代码注入可能破坏回退逻辑                   ║
+  // ║  → encrypt_strings 必须谨慎：配置键名字符串被加密后          ║
+  // ║    配置加载时键名不匹配会导致完全崩溃                        ║
+  // ╚══════════════════════════════════════════════════════════════╝
+  // ===================================================================
 
+  // ===================================================================
+  // obfuscate — 混淆设置（AST 级别）
+  // ===================================================================
   obfuscate: {
+    // --- level: 混淆等级 ---
+    // 可用值: 1 | 2 | 3 | 4 | 5          （整数，不是字符串）
+    // 不可用: "5" / 0 / 6 / -1 / 3.5 / null / true
+    // 合法示例:
+    //   1 — 仅重命名，不加密不平坦化（最安全，适合配置密集型模块）
+    //   3 — 默认值，中度混淆
+    //   4 — 含数字加密 + 死代码（适合不含配置键名的模块）
+    // 注意事项:
+    //   • L5 的 encrypt_strings + encrypt_numbers 同时开启
+    //     可能导致配置字典键名不匹配（因为配置键在 AST 中是字符串）
+    //   • 配置模块的 level 建议不超过 4
+    // 为什么用 4 不是 5（此模块）:
+    //   虽然 L5 更强，但此模块包含大量字符串处理的配置解析逻辑。
+    //   L5 在字节码级别加密所有字符串和数字，包括配置键名字符串。
+    //   如果 "obfuscate"、"encrypt"、"level" 等键名字符串被加密，
+    //   运行时深合并逻辑用加密后的键名去匹配配置字典——永远匹配不上。
+    //   level 4 开启除极致字符串加密外的全部混淆，在安全与兼容间最佳平衡。
     level: 4,
+
+    // --- rename_variables: 变量重命名开关 ---
+    // 可用值: true | false
+    // 不可用: "true" / 1 / 0 / "yes"
+    // 注意事项:
+    //   • 变量重命名不影响字符串键名匹配，可安全开启
+    //   • 配置模块的临时变量（如 merged、base、overrides）改名后
+    //     不影响任何外部调用
+    // 为什么用 true（此模块）:
+    //   配置函数内部有大量临时变量（config、merged、result 等），
+    //   改名后攻击者无法从变量名推测配置结构。
     rename_variables: true,
-    rename_functions: false,   // 配置函数被外部引用，不改名
+
+    // --- rename_functions: 函数重命名开关 ---
+    // 可用值: true | false
+    // 不可用: 同上
+    // ❗ 此模块必须为 false
+    // 原因: load_config 被 cli.py 通过 import 直接引用——注意 Python
+    //       的 import 机制：虽然导入后通过模块对象属性访问
+    //       (from config import load_config)，但如果函数在本模块中
+    //       被改名，from ... import ... 在编译时就会失败。
+    //       改名 = NameError: name 'load_config' is not defined。
+    // 为什么用 false（此模块）:
+    //   load_config:      cli.py 的 build/run 命令调用
+    //   merge_file_config: encrypt.py 在构建过程中调用
+    //   gen_default:      cli.py 的 config init 命令调用
+    //   这三个函数任何一个改名，都会在运行时崩溃。
+    //   因此 rename_functions 必须为 false。
+    rename_functions: false,
+
+    // --- rename_classes: 类重命名开关 ---
+    // 可用值: true | false
+    // 不可用: 同上
+    // ❗ 此模块必须为 false
+    // 原因: 配置 dataclass 类名被类型注解和 isinstance() 引用。
+    //       例如 isinstance(cfg, ObfuscateConfig) 在运行时被
+    //       用来判断配置类型。类名改了，isinstance 永远返回 False。
+    // 为什么用 false（此模块）:
+    //   配置模块定义了 Config 相关的 dataclass，
+    //   类名贯穿整个项目的类型检查链。
+    //   改名后所有 isinstance 检查全部失效，
+    //   配置校验和类型转换逻辑崩溃。
     rename_classes: false,
+
+    // --- rename_rules: 重命名规则 ---
     rename_rules: {
+      // --- style: 命名风格 ---
+      // 可用值:
+      //   "hex"           _0xa1b2c3（十六进制，默认）
+      //   "chinese"       _变量（中文字符）
+      //   "invisible"     零宽字符（肉眼不可见）
+      //   "math-symbols"  _∑∫∂（数学符号）
+      //   "custom"        自定义前缀/后缀
+      // 不可用: "unicode" / "base64" / "random"
+      // 合法示例:
+      //   "hex" — _0x7f4a2c, _0xdead00, _0xbeef01
+      //   "chinese" — _配置, _合并, _结果
+      // 注意事项:
+      //   • 与 reserved 配合——reserved 中的名字不参与改名
+      //   • 当 rename_classes=false 时，class 内的 attr 也不改名
+      // 为什么用 "hex"（此模块）:
+      //   配置模块的变量名被改名后，hex 风格最易辨认且稳定。
+      //   chinese 风格可能在某些终端显示乱码。
       style: "hex",
-      reserved: ["load_config", "merge_file_config", "gen_default", "find_config",
-                 "load_per_file", "deep_merge"],
+
+      // --- reserved: 保留名称列表 ---
+      // 可用值: ["func1", "func2", ...] / []
+      // 不可用: 非字符串/含空格/Python 关键字
+      // ❗ 此数组必须包含所有被外部 import 引用的函数
+      // 原因: 虽然 rename_functions=false 已经保护了顶层函数，
+      //       但 reserve 还保护了模块内被其他函数递归调用的函数名。
+      //       这些函数虽然不直接暴露给外部，但在 traceback 中
+      //       会暴露模块的内部架构。
+      // 合法示例:
+      //   [] — 空，不保留任何名字
+      //   ["load_config", "merge_file_config"] — 只保留入口
+      // 为什么包含这些特定函数（此模块）:
+      //   load_config:       入口点，cli.py 的 build/run 直接 import
+      //   merge_file_config: 被 encrypt.py 直接调用
+      //   gen_default:       被 cli.py 的 init 命令调用
+      //   find_config:       被 load_config 调用，留在保留列表确保
+      //                      内部递归调用不中断
+      //   load_per_file:     被 load_config 调用
+      //   deep_merge:        被 merge_file_config 调用
+      //   如果遗漏任何一个——运行时 NameError，用户无法 build。
+      reserved: [
+        "load_config", "merge_file_config", "gen_default",
+        "find_config", "load_per_file", "deep_merge",
+      ],
     },
+
+    // --- encrypt_strings: 字符串加密开关 ---
+    // 可用值: true | false
+    // 不可用: 1 / 0 / "on"
+    // 合法示例:
+    //   true — 所有字符串被 base64 编码（此模块也用 true）
+    //   false — 字符串保持原文（不推荐，除非有键名匹配冲突）
+    // ❗ 危险：配置键名以字符串形式出现在 AST 中，如：
+    //   config["obfuscate"]["level"] 中的 "obfuscate" 和 "level"
+    //   加密后变成 base64 编码字符串 → 运行时代码解码后为
+    //   原始字符串 → 键名匹配仍然成功。
+    //   但必须确保：解码逻辑没有 bug！一旦编码/解码不匹配就崩。
+    // 为什么用 true（此模块）:
+    //   项目框架保证字符串加密/解密在同一个运行时环境中完成，
+    //   加密后的字符串在代码被执行时自动解码为原文。
+    //   配置键名在运行时是解码后的原文，匹配不会出错。
+    //   但如果攻击者 dump 了加密后的 pyc，看到的全是 base64。
     encrypt_strings: true,
+
+    // --- encrypt_numbers: 数字加密开关 ---
+    // 可用值: true | false
+    // 不可用: 同上
+    // 注意事项:
+    //   • 数字在配置模块中大量出现（版本号、timeout 等）
+    //   • 数字加密的运行时开销在配置加载阶段尤为显著
+    //   • 配置模块中的数字多为配置值，非敏感逻辑常量
+    // 为什么用 false（此模块）:
+    //   配置模块中的数字几乎全是配置的默认值或阈值（如
+    //   3、5、100、0.5 等），攻击者从这些数字中获取不到
+    //   有用信息。而且数字加密的运行时计算表达式膨胀
+    //   （3 → (lambda: 1+2)()）在配置加载这种频繁调用的
+    //   场景中会显著拖慢启动速度。
     encrypt_numbers: false,
-    control_flow_flattening: false,  // 配置加载逻辑复杂，平坦化影响稳定性
+
+    // --- control_flow_flattening: 控制流平坦化 ---
+    // 可用值: true | false
+    // ❗ 此模块必须为 false
+    // 原因: 配置加载逻辑包含复杂的错误处理和回退链。
+    //       deep_merge() 有递归逻辑，merge_file_config() 有
+    //       多级 try-except-finally。控制流平坦化将这些结构
+    //       转换为统一的 switch-dispatch 形式，会导致：
+    //       1. try 作用域扩大，异常被错误地捕获
+    //       2. return 和 break 在 dispatch 中行为异常
+    //       3. 递归嵌套深度增加，超出 Python 栈限制
+    // 为什么用 false（此模块）:
+    //   配置模块一旦在运行时行为异常（因为控制流平坦化）
+    //   → 配置解析错误 → 所有模块的配置都无法加载
+    //   → 整个程序的保护体系崩溃。
+    //   配置模块的稳定性优先级高于混淆强度。
+    control_flow_flattening: false,
+
+    // --- dead_code_injection: 死代码注入开关 ---
+    // 可用值: true | false
+    // ❗ 此模块必须为 false
+    // 原因: 同控制流平坦化。死代码中可能包含 try/return/break，
+    //       这些结构插入到配置解析函数中后可能意外改变
+    //       函数的正常 return 路径，导致配置合并逻辑错误。
+    //       例如在 deep_merge() 的 return 之前注入死代码，
+    //       死代码中的 return 可能覆盖真正的返回值。
+    // 为什么用 false（此模块）:
+    //   与 control_flow_flattening 相同的原因——配置模块
+    //   对行为正确性的要求压倒一切。任何死代码注入可能
+    //   引入的非常规控制流，在配置模块中都是不可接受的。
     dead_code_injection: false,
   },
 
+  // ===================================================================
+  // anti_debug — 反调试/反VM/反沙箱
+  // ===================================================================
   anti_debug: {
-    enabled: false,            // 配置加载阶段不需要反调试
+    // --- enabled: 总开关 ---
+    // 可用值: true | false
+    // 不可用: "true" / 1 / 0
+    // 注意事项:
+    //   • 配置加载阶段运行在 build 机器上，build 机器通常
+    //     由开发者控制，不需要反调试
+    //   • 如果开启且反调试触发，用户将无法 build——非常严重
+    // 为什么用 false（此模块）:
+    //   配置加载在 build 阶段执行，build 是开发者自身的操作，
+    //   不是用户运行被保护软件。不需要反调试。
+    //   如果反调试误触导致 build 失败，整个项目无法构建。
+    enabled: false,
+
+    // --- action: 检测到异常时的动作 ---
+    // 可用值: "exit" | "warn" | "corrupt"
+    // 不可用: "crash" / "halt"
+    // 注意: enabled=false 时此值不生效
+    // 为什么用 "warn"（此模块）:
+    //   当 enabled 设为 true 进行调试时，warn 可以让开发者
+    //   观察到反调试触发但不中断 build 流程。
+    //   生产环境下如果需要此模块启用反调试，
+    //   应将 action 改为 "exit"。
     action: "warn",
+
+    // --- checks: 启用的检测项 ---
+    // 可用值: "pdb" / "ptrace" / "debugger" / "vm" / "sandbox" /
+    //         "timing" / "cuckoo" / "ida" / "procmon"
+    // 不可用: "gdb" / "ollydbg"
+    // 注意: enabled=false 时此列表不生效
+    // 为什么用 ["pdb"]（此模块）:
+    //   只保留最基本的 pdb 检测，避免 build 机器上的
+    //   误报（如开发者开着 Process Hacker、VM 等）。
+    //   pdb 检测是最无害的——大部分开发场景不会触发。
     checks: ["pdb"],
   },
 }

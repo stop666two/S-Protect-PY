@@ -1,20 +1,275 @@
 {
-  project: { name: "full-protection-demo", version: "3.0.0", entry: "main.py" },
-  obfuscate: { level: 5, rename_variables: true, rename_functions: true, rename_classes: true,
-    rename_rules: { style: "hex", reserved: [], prefix: "_0x", suffix: "", min_length: 6, blacklist: [] },
-    encrypt_strings: true, encrypt_numbers: true, string_min_length: 2, string_encrypt_ratio: 1.0,
-    control_flow_flattening: true, dead_code_injection: true, dead_code_density: 0.5,
-    opaque_predicate_count: 5, remove_docstrings: true, strip_blank_lines: true },
-  encrypt: { algorithm: "aes-256-gcm", interdependency: "hybrid",
-    backup: true, shard_count: 5, compress_level: 9, polymorphic_padding: true, polymorphic_padding_max: 1024 },
-  anti_debug: { enabled: true, action: "exit",
-    checks: ["pdb", "ptrace", "debugger", "vm", "sandbox", "timing", "cuckoo", "ida", "procmon"],
-    block_tracing: true, wipe_memory: true },
-  virtualization: { enabled: true, mode: "full" },
-  watermark: { enabled: true, levels: ["file", "code", "runtime"], batch_id: "full-test-v3" },
-  expiration: { enabled: true, expires_at: "2030-12-31T23:59:59Z" },
-  environment: { enabled: true, strict_mode: true },
-  sandbox: { enabled: true, detect_cuckoo: true, detect_sandboxie: true, detect_docker: true, detect_ci: true },
-  bootloader: { anti_dump: true, periodic_check_interval: 3.0 },
-  output: { verbose: true },
+  // ==========================================
+  // 示例项目 — 完全保护演示配置
+  // ==========================================
+  // 此配置展示了 S-Protect-PY 全部功能开启时的完整样子。
+  //
+  // ════════════════════════════════════════════
+  //  适 用 场 景
+  // ════════════════════════════════════════════
+  //   ✅  功能测试 / 集成测试
+  //   ✅  客户演示 / 产品展示
+  //   ✅  性能基准测试（评估各功能的性能开销）
+  //   ✅  熟悉 S-Protect-PY 的最佳入门配置
+  //
+  //   ❌  生产环境: 功能全开会大幅增加体积和运行开销
+  //                  建议按需裁剪
+  //
+  // ════════════════════════════════════════════
+  //  配 置 总 览（13 个配置模块）
+  // ════════════════════════════════════════════
+  //   1. project      — 项目元信息
+  //   2. obfuscate    — 代码混淆（等级 + 子开关）
+  //   3. encrypt      — 文件加密（算法 + 混合加密 + 分片）
+  //   4. anti_debug   — 反调试（9 种检测 + 退出动作）
+  //   5. virtualization — 虚拟化保护
+  //   6. watermark    — 水印（文件/代码/运行时）
+  //   7. expiration   — 过期控制
+  //   8. environment  — 环境检测
+  //   9. sandbox      — 沙箱检测
+  //   10. bootloader  — 引导加载器
+  //   11. output      — 输出控制
+  // ==========================================
+
+  project: {
+    // 项目名称
+    name: "full-protection-demo",
+    // 项目版本号（影响输出目录名）
+    version: "3.0.0",
+    // 程序入口文件（相对于 project/ 目录）
+    entry: "main.py",
+  },
+
+  obfuscate: {
+    // ──────────────────────────────────────────
+    // 基础混淆 — 等级 5（最高级）
+    // ──────────────────────────────────────────
+
+    // 混淆等级 1-5, 5 为最激进
+    level: 5,
+
+    // 重命名局部变量为随机/十六进制名
+    rename_variables: true,
+    // 重命名函数
+    rename_functions: true,
+    // 重命名类
+    rename_classes: true,
+
+    // ── 重命名规则 ──
+    rename_rules: {
+      style: "hex",       // 命名风格: hex | random | custom
+      reserved: [],       // 保留名字列表（不混淆）
+      prefix: "_0x",      // 重命名前缀
+      suffix: "",         // 重命名后缀
+      min_length: 6,      // 新名字最短长度
+      blacklist: [],      // 黑名单（禁止使用的名字）
+    },
+
+    // ── 字符串加密 ──
+    // 所有字符串字面量变为运行时解密的加密数据
+    encrypt_strings: true,
+    // 所有数字变为 EncryptedInt 包装
+    encrypt_numbers: true,
+    // 参与加密的字符串最短长度（低于此长度不加密，避免性能浪费）
+    string_min_length: 2,
+    // 字符串加密比例 0.0~1.0, 1.0 表示全部加密
+    string_encrypt_ratio: 1.0,
+
+    // ── 控制流保护 ──
+    // 把 if/while/for 的控制流图展平为 switch-case 调度器
+    // 使反编译工具无法重建原始控制流
+    control_flow_flattening: true,
+    // 注入无实际功能的垃圾代码, 增加分析量
+    dead_code_injection: true,
+    // 死代码密度 0.0~1.0, 0.5 表示平均每行真实代码注入半行废代码
+    dead_code_density: 0.5,
+    // 不透明谓词数量（永远真/假的 if 条件, 迷惑反编译器）
+    opaque_predicate_count: 5,
+
+    // ── 清理选项 ──
+    // 删除所有文档字符串（docstring）, 减少可读信息
+    remove_docstrings: true,
+    // 删除空行, 压缩代码体积
+    strip_blank_lines: true,
+  },
+
+  encrypt: {
+    // ──────────────────────────────────────────
+    // 文件加密 — AES-256-GCM + 依赖混合
+    // ──────────────────────────────────────────
+    // 最终构建产物 .pye 的加密参数
+
+    // 加密算法: aes-256-gcm（基于 AES 的认证加密, 提供保密性+完整性）
+    algorithm: "aes-256-gcm",
+
+    // ── 依赖混合模式 ──
+    // 控制模块间如何协同解密:
+    //   "hybrid"  → 混合模式（每个模块依赖多个其他模块, 形成网状依赖）
+    //   "chain"   → 链式依赖（A→B→C→... 线性链）
+    //   "star"    → 星形依赖（所有模块依赖一个中心模块）
+    // hybrid 安全性最高, 但也最复杂（启动最慢）
+    interdependency: "hybrid",
+
+    // 是否在加密前备份原始文件
+    backup: true,
+
+    // ── Shamir 密钥分片 ──
+    // 将解密密钥拆分为 N 个分片
+    // 5 个 shard, 至少需要 3 个才能重建完整密钥
+    shard_count: 5,
+
+    // zlib 压缩级别 0~9, 9 为最压缩（最慢）
+    compress_level: 9,
+
+    // ── 多态填充 ──
+    // 每次加密时填充随机长度的随机数据
+    // 使同一文件每次加密结果都不同
+    polymorphic_padding: true,
+    // 多态填充的最大字节数
+    polymorphic_padding_max: 1024,
+
+    // ── 额外加密层 ──
+    // 在 AES-GCM 之后再套一层 Serpent + Twofish 加密
+    // 需要 pycryptodome 库支持
+    extra_layers: ["serpent", "twofish"],
+
+    // ── 混合加密 ──
+    // 在对称加密之上再套一层非对称加密（RSA）
+    // 需要用解密方私钥才能解开对称密钥
+    // 需要手动管理 RSA 密钥对
+    hybrid: {
+      enabled: true,
+      algorithm: "RSA",
+      key_size: 4096,
+      key_file: "key.pem",
+    },
+  },
+
+  anti_debug: {
+    // ──────────────────────────────────────────
+    // 反调试 — 9 种检测 + 退出动作
+    // ──────────────────────────────────────────
+
+    // 总开关
+    enabled: true,
+
+    // 检测到调试环境后的动作:
+    //   "exit"     → 立即退出进程
+    //   "crash"    → 触发崩溃（制造混淆）
+    //   "warn"     → 仅告警不退出（不推荐）
+    //   "decoy"    → 加载诱饵代码迷惑攻击者
+    action: "exit",
+
+    // 启用的检测项（全部 9 种）:
+    //   pdb:     检测 Python pdb 调试器
+    //   ptrace:  检测 ptrace 系统调用（Linux）
+    //   debugger:检测 Windows 调试器 (IsDebuggerPresent)
+    //   vm:      检测虚拟机环境（VMware/VirtualBox）
+    //   sandbox: 检测沙箱环境
+    //   timing:  计算代码执行时间差（调试时执行慢）
+    //   cuckoo:  检测 Cuckoo 沙箱
+    //   ida:     检测 IDA Pro 反汇编器
+    //   procmon: 检测进程监控工具
+    checks: [
+      "pdb", "ptrace", "debugger", "vm", "sandbox",
+      "timing", "cuckoo", "ida", "procmon",
+    ],
+
+    // 阻止调试器附加（通过 ptrace 防多进程调试）
+    block_tracing: true,
+    // 检测到调试时擦除内存中的敏感数据
+    wipe_memory: true,
+  },
+
+  virtualization: {
+    // ──────────────────────────────────────────
+    // 虚拟化保护 — 将代码转换为虚拟指令集
+    // ──────────────────────────────────────────
+    // 将关键代码段转换为自定义虚拟机的字节码
+    // 原始指令集不再存在, 反编译器完全失效
+
+    enabled: true,
+    // 虚拟化模式:
+    //   "full"    → 全量虚拟化（所有代码, 最安全但最慢）
+    //   "partial" → 仅虚拟化关键函数
+    //   "hybrid"  → 自动识别并虚拟化关键路径
+    mode: "full",
+  },
+
+  watermark: {
+    // ──────────────────────────────────────────
+    // 数字水印 — 追踪泄露源头
+    // ──────────────────────────────────────────
+    // 在文件中嵌入不可见的唯一标识
+    // 不同客户分发不同 batch_id 的版本
+    // 泄露后可追溯到特定分发批次
+
+    enabled: true,
+
+    // 水印层级:
+    //   file    → 文件级别（嵌入到文件元数据）
+    //   code    → 代码级别（嵌入到代码结构/变量名）
+    //   runtime → 运行时级别（程序运行时输出隐藏标识）
+    levels: ["file", "code", "runtime"],
+
+    // 批次标识（每个分发的客户/批次一个唯一 ID）
+    batch_id: "full-test-v3",
+  },
+
+  expiration: {
+    // ──────────────────────────────────────────
+    // 过期控制 — 程序在指定时间后无法运行
+    // ──────────────────────────────────────────
+    // 适用于试用版、演示版、时间受限的分发
+
+    enabled: true,
+    // 过期时间（ISO 8601 格式, UTC）
+    expires_at: "2030-12-31T23:59:59Z",
+  },
+
+  environment: {
+    // ──────────────────────────────────────────
+    // 环境检测 — 限制程序只能运行在指定环境中
+    // ──────────────────────────────────────────
+    // 可限制主机名、用户名、MAC 地址、IP 范围等
+
+    enabled: true,
+    // 严格模式: 环境不匹配时直接退出, 而非仅告警
+    strict_mode: true,
+  },
+
+  sandbox: {
+    // ──────────────────────────────────────────
+    // 沙箱检测 — 检测多种沙箱/容器环境
+    // ──────────────────────────────────────────
+
+    enabled: true,
+
+    detect_cuckoo: true,     // 检测 Cuckoo 沙箱
+    detect_sandboxie: true,  // 检测 Sandboxie
+    detect_docker: true,     // 检测 Docker 容器
+    detect_ci: true,         // 检测 CI 环境（Jenkins/GitHub Actions 等）
+  },
+
+  bootloader: {
+    // ──────────────────────────────────────────
+    // 引导加载器保护 — 启动完整性校验
+    // ──────────────────────────────────────────
+
+    // 防止内存 dump（试图从进程内存中提取原始代码）
+    anti_dump: true,
+
+    // 周期性完整性检查间隔（秒）:
+    // 运行时定期校验代码完整性
+    // 检测到被篡改则触发反调试动作
+    periodic_check_interval: 3.0,
+  },
+
+  output: {
+    // ──────────────────────────────────────────
+    // 输出控制
+    // ──────────────────────────────────────────
+    // 是否输出详细日志（构建过程可见）
+    verbose: true,
+  },
 }

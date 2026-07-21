@@ -1,12 +1,240 @@
 {
-  // ==========================================
-  // 启动器生成模块 - 精细化配置
-  // 生成 output/main.py + _runtime/loader.py
-  // 模板字符串不能加密（包含生成的代码）
-  // ==========================================
-  obfuscate: { level: 4, rename_variables: true, rename_functions: true,
-    rename_classes: true, encrypt_strings: false, encrypt_numbers: false,
-    control_flow_flattening: false, dead_code_injection: false },
-  anti_debug: { enabled: true, action: "exit",
-    checks: ["pdb", "debugger", "vm", "sandbox", "cuckoo", "ida"] },
+  // ====================================================================
+  // 启动器生成模块 — 运行时解密引擎（全量中文注释）
+  // ====================================================================
+  // 【模块职责】
+  //   此模块不直接执行解密，而是**生成**两段重要代码：
+  //
+  //   1. _runtime/loader.py — 运行时加载器
+  //      • 包含完整的模块查找器（MetaPathFinder）+ 加载器（Loader）
+  //      • 收集 .pye 文件切片并重构 master_key（XOR 恢复）
+  //      • 三层指纹验证（f1/f2/f3）提取真实密钥
+  //      • 解密 .pye 文件（AES-GCM → XOR → ChaCha → zlib）
+  //      • 额外层解密（Serpent/Twofish/Camellia/Salsa20）
+  //      • 每次 build 生成结构不同的代码（随机函数名+随机解密方式）
+  //
+  //   2. output/main.py — 启动 stub（极简）
+  //      • 解密 loader.pye 获取运行时加载器源码
+  //      • 编译并执行加载器代码
+  //      • 混合模式（hybrid）下提示输入私钥路径
+  //
+  // 【核心设计】
+  //   • gen_loader_source() 使用 f-string + 随机命名动态生成代码
+  //   • 生成的代码中变量名、函数名、类名全部随机（_xof → _0x_a1b2c3d4e5）
+  //   • 每个 build 生成不同的解密函数实现（4 种 AES-GCM 调用方式）
+  //   • 混入 2-5 个诱饵解密函数（有函数签名但无法正确解密）
+  //   • 诱饵类（_rand_name() 生成的 decoy class）增加逆向迷惑性
+  //
+  // ====================================================================
+  // ⚠️ ⚠️ ⚠️ 重要约束 ⚠️ ⚠️ ⚠️
+  //   此模块的工作方式是：生成包含 Python 代码的**字符串**。
+  //   字符串模板中使用了大量 f-string 占位符（{f_xof}, {f_load} 等），
+  //   以及模板字面量中的 {} 和标识符。
+  //
+  //   ⚡ encrypt_strings 设为 true:
+  //     字符串模板中的代码片段会被 base64 编码，
+  //     导致 gen_loader_source() 输出的字符串包含乱码，
+  //     写入 _runtime/loader.py 后语法出错，解密失败。
+  //
+  //   ⚡ control_flow_flattening 设为 true:
+  //     控制流平坦化会重构 gen_loader_source 的循环结构，
+  //     破坏 f-string 拼接逻辑中的顺序依赖，
+  //     导致生成的模板字符串混乱。
+  //
+  //   ⚡ dead_code_injection 设为 true:
+  //     在生成器函数中插入死代码 if 块，
+  //     可能修改局部变量的值，影响模板拼接。
+  //
+  //   因此这三个选项在此模块中必须为 false！
+  //   保护不依赖加密字符串/控制流，而依赖生成的 loader 代码的随机性。
+  // ====================================================================
+  //
+  // 【被调用关系】
+  //   encrypt.py    → 调用 gen_boot() 和 gen_loader_source()
+  //                    gen_boot 写入 output/main.py
+  //                    gen_loader_source 返回字符串（encrypt.py 再加密写入 loader.pye）
+  //   运行时        → output/main.py → loader.pye → _runtime/*.pye
+  //
+  // 【函数列表】
+  //   _rand_name()          — 生成随机标识符（16 种风格）
+  //   _randomized_source()  — 将源码中的标识符随机替换
+  //   _gen_decrypt_func()   — 生成结构各异的诱饵解密函数
+  //   gen_loader_source()   — 生成完整运行时加载器源码
+  //   gen_boot()            — 生成 output/main.py 启动 stub
+  // ====================================================================
+
+  obfuscate: {
+    // --- 混淆等级 ---
+    // 可用值: 1 | 2 | 3 | 4 | 5
+    // 不可用值: "5"（字符串）/ 0 / -1
+    // 注意事项:
+    //   level 4 包含数字加密，level 5 包含数字加密+死代码注入+字符串加密
+    // 为什么此模块用 4 不是 5:
+    //   level 5 = level 4 + 字符串加密（encrypt_strings）+ 死代码注入
+    //   由于此模块的特殊性（生成代码的模板字符串），
+    //   字符串加密和死代码注入都必须关闭（详见上方 ⚠️ 约束）。
+    //   level 4 的 数字加密在关联代码中影响较小（数字多出现在非模板部分），
+    //   且 level 4 不强制字符串加密，所以是此模块的最高可用等级。
+    //   实际上即使 level 4，encrypt_strings 和 control_flow_flattening 等
+    //   子项仍需单独设为 false（下面覆盖）。
+    level: 4,
+
+    // --- 重命名变量 ---
+    // 可用值: true | false
+    // 注意事项: 本模块变量名如 f_xof, f_load, f_find 等已部分随机化，
+    //   但通过混淆改名可以进一步打乱命名规律
+    // 为什么此模块选择 true:
+    //   变量命名虽然已经是随机风格，但混淆改名可以再做一次映射，
+    //   增加静态分析的难度。
+    rename_variables: true,
+
+    // --- 重命名函数 ---
+    // 可用值: true | false
+    // 注意事项:
+    //   gen_loader_source 和 gen_boot 被 encrypt.py 调用。
+    //   Python 模块导入后函数名不影响调用，所以改名安全。
+    // 为什么此模块选择 true:
+    //   函数名 gen_loader_source 暴露了"生成加载器"的用途。
+    rename_functions: true,
+
+    // --- 重命名类 ---
+    // 可用值: true | false
+    // 注意事项: 当前 loader.py 没有 class 定义，此设置无效果
+    // 为什么此模块选择 true:
+    //   保持配置一致性，未来添加类时自动保护。
+    rename_classes: true,
+
+    // --- 加密字符串 ---
+    // 可用值: true | false
+    // ❗ 不可用值: true（此模块有特殊约束）
+    // 注意事项:
+    //   ⚠️⚠️⚠️ 此模块必须为 false ⚠️⚠️⚠️
+    //   原因详解：
+    //   1. gen_loader_source() 使用 f-string 生成 Python 代码：
+    //      src = f'''def {f_xof}(l, s):
+    //          r, c = bytearray(), 0
+    //          ...
+    //      '''
+    //      如果字符串被加密，{f_xof} 等占位符会被编码为 base64，
+    //      Python 的 str.format() 无法识别解码后的乱码字符串。
+    //
+    //   2. _BOOT_STUB 和 _HYBRID_BOOT_STUB 是全局字符串常量，
+    //      其中包含 {lk}、{rd}、{entry}、{hk}、{ha}、{kp} 等
+    //      数十个 f-string 占位符。加密后这些占位符全部不可用。
+    //
+    //   3. gen_loader_source 中的模板字符串包含大量 Python 代码片段：
+    //      "import sys, os, json, hmac, hashlib, zlib, importlib.abc"
+    //      这些代码片段必须保持明文，否则生成的 loader.py 语法错误。
+    //
+    //   违反后果: 生成的 loader.pye 在解密后是一段乱码，
+    //   Python 无法编译执行，程序启动即崩溃。
+    // 为什么此模块选择 false:
+    //   字符串加密与此模块的工作模式完全冲突。此模块的保护不依赖
+    //   字符串加密，而依赖生成的 loader 代码的结构随机性。
+    encrypt_strings: false,
+
+    // --- 加密数字 ---
+    // 可用值: true | false
+    // ❗ 建议: false（此模块有特殊约束）
+    // 注意事项:
+    //   gen_loader_source 中存在数字常量：
+    //   32（密钥长度）、12（nonce 长度）、8（XOR 位）
+    //   这些数字本身不敏感，加密它们的好处有限。
+    //   但更关键的是：模板字符串的 format 调用中可能出现
+    //   数字索引或数字格式说明符（如 {0}、{:08x} 等），
+    //   加密这些数字会导致 format 调用失败。
+    //   虽然当前代码中数字没有出现在格式占位符内部，
+    //   但为安全起见关闭此选项。
+    // 为什么此模块选择 false:
+    //   风险大于收益。此模块的数字多为迭代次数和固定参数，
+    //   保护价值有限。
+    encrypt_numbers: false,
+
+    // --- 控制流平坦化 ---
+    // 可用值: true | false
+    // ❗ 必须为 false
+    // 注意事项:
+    //   ⚠️⚠️⚠️ 此模块必须为 false ⚠️⚠️⚠️
+    //   原因详解：
+    //
+    //   1. gen_loader_source() 包含一个复杂的控制流：
+    //      先创建随机名 → 构建模板字符串 → 添加诱饵函数 →
+    //      添加 Loader 类 → 添加 Finder 类 → 添加 run 函数
+    //      这个顺序是严格依赖的：变量 f_xof 等必须先定义，
+    //      才能被后面的模板字符串使用。
+    //
+    //   2. 控制流平坦化会破坏这个顺序依赖。
+    //      原本顺序执行的代码块被重排到 while-switch 结构中，
+    //      Python 的执行顺序被打乱后，变量定义和使用
+    //      的先后顺序无法保证，导致 NameError。
+    //
+    //   3. 具体来说，_gen_decrypt_func 中的 `secrets.choice(approaches)`
+    //      如果被平坦化，choose 行为可能被改变。
+    //
+    //   4. gen_loader_source 内部的 for 循环（range(_rnd.randint(2,5))）
+    //      用于生成诱饵函数。平坦化后循环被破坏，
+    //      生成的诱饵函数数量可能不正确。
+    //
+    //   违反后果: NameError: name '_0x_...' is not defined 或
+    //   生成的 loader.py 缺少部分函数定义。
+    // 为什么此模块选择 false:
+    //   控制流平坦化与此模块的代码生成模式完全不兼容。
+    control_flow_flattening: false,
+
+    // --- 死代码注入 ---
+    // 可用值: true | false
+    // ❗ 必须为 false
+    // 注意事项:
+    //   ⚠️⚠️⚠️ 此模块必须为 false ⚠️⚠️⚠️
+    //   原因详解：
+    //
+    //   1. 死代码注入会在函数体中插入随机 if 块。
+    //      这些 if 块可能被注入到 gen_loader_source 的
+    //      模板字符串拼接代码中。
+    //
+    //   2. 如果死代码块修改了局部变量（虽然不实际执行，
+    //      但静态分析可能认为变量被重新赋值），
+    //      会影响 f-string 插值结果。
+    //
+    //   3. 具体来说，_gen_decrypt_func 中的
+    //      `body.append(...)` 操作如果被插入死代码，
+    //      可能破坏 body 列表的内容顺序，导致生成的
+    //      解密函数包含乱码或多余代码行。
+    //
+    //   4. gen_loader_source 中 src 变量通过增量拼接
+    //      （+= 操作）构建，死代码注入可能中断此流程。
+    //
+    //   违反后果: 生成的 loader.py 包含不完整或乱序的代码行，
+    //   运行时抛出 IndentationError 或 SyntaxError。
+    // 为什么此模块选择 false:
+    //   死代码注入与字符串模板拼接不兼容。
+    dead_code_injection: false,
+  },
+
+  anti_debug: {
+    // --- 反调试总开关 ---
+    enabled: true,
+
+    // --- 检测到异常后的动作 ---
+    // 可用值: "exit" | "warn" | "corrupt"
+    // "exit" 立即退出程序
+    // "warn" 仅警告（仅在调试时用）
+    // "corrupt" 破坏内存后退出（最激进）
+    action: "exit",
+
+    // --- 启用的检测项 ---
+    // 可用值: "pdb" | "ptrace" | "debugger" | "vm" | "sandbox"
+    //       | "timing" | "cuckoo" | "ida" | "procmon"
+    // 注意事项:
+    //   • 此模块生成的 loader.py 运行在最终用户设备上，
+    //     所以检测项要尽可能全面
+    //   • cuckoo: 检测 Cuckoo 自动分析沙箱
+    //   • ida: 检测 IDA/Ghidra 远程调试端口
+    // 为什么此模块选择这六项:
+    //   与主配置基本一致，但不包含 ptrace（Windows 兼容问题）、
+    //   timing（loader 启动时执行时序检测会延迟启动速度）、
+    //   procmon（运行时 loader 不涉及进程监控操作）。
+    //   这六项覆盖了最终用户环境中最常见的调试和逆向场景。
+    checks: ["pdb", "debugger", "vm", "sandbox", "cuckoo", "ida"],
+  },
 }

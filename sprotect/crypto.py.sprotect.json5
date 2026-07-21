@@ -1,14 +1,244 @@
 {
-  // ==========================================
-  // 密码学引擎 - 精细化配置
-  // 三层加密：zlib压缩 → XOR流混淆 → AES-256-GCM
-  // RSA 密钥包装、多态随机填充（0-256字节）
-  // 最高安全等级 + 全虚拟化
-  // ==========================================
-  obfuscate: { level: 5, rename_variables: true, rename_functions: true,
-    rename_classes: true, encrypt_strings: true, encrypt_numbers: true,
-    control_flow_flattening: true, dead_code_injection: true },
-  anti_debug: { enabled: true, action: "exit",
-    checks: ["pdb", "debugger", "vm", "sandbox", "ida"] },
-  virtualization: { enabled: true, mode: "full" },
+  // ====================================================================
+  // 密码学引擎 — 精细化配置（每个字段全量中文注释）
+  // ====================================================================
+  // 【模块职责】
+  //   此模块是 S-Protect-PY 加密体系的底层核心，包含：
+  //   • AES-256-GCM 加密/解密（cryptography.hazmat）
+  //   • ChaCha20-Poly1305 加密/解密（pycryptodome）
+  //   • XOR 流混淆（基于 SHA256 的密钥流生成器 _xof）
+  //   • HKDF-SHA256 密钥派生（derive_layer_key）
+  //   • RSA-4096 密钥对生成 + OAEP+SHA256 加密/解密
+  //   • ECC P-256/P-384/P-521 密钥对生成 + ECIES（ECDH+HKDF+AES-GCM-GCM）
+  //   • master_key 拆分（XOR split）与分片恢复
+  //   • 三层指纹验证（f1=sha256(xor_of_all)[5:13], f2=blake3[3:11], f3=HMAC[:8]）
+  //   • 密钥伪装：1 个真实分片 + N 个诱饵（make_keys_complex）
+  //   • 多态填充 0-512 字节
+  //   • 链式哈希（chain_hash，依赖所有 payload 互为 HMAC）
+  //   • encrypt_payload v1：compress→ChaCha20→XOR→AES-GCM→fingerprint→padding
+  //   • encrypt_payload v2：compress→ChaCha20→XOR→AES-GCM→extra_layers→header
+  //
+  // 【安全等级】
+  //   此模块是整条保护链的核心。任何针对此模块的成功逆向
+  //   都意味着整个保护系统失效。因此所有 Obfuscate 选项必须拉满。
+  //
+  // 【被调用关系】
+  //   encrypt.py  → 通过 sprotect.crypto.xxx 导入使用
+  //   decrypt.py  → 通过 sprotect.crypto.xxx 导入使用
+  //   loader.py   → 运行时不直接导入，但 loader 源码中嵌入等效解密逻辑
+  //
+  // 【注意事项】
+  //   • 此模块的函数全部通过模块导入方式被调用，函数名混淆不影响外部
+  //   • encrypt_payload_v2 是 v2 格式的核心入口，encrypt_payload 是 v1
+  //   • make_keys_complex 生成 1 真+N 诱饵的密钥结构
+  //   • 三层指纹中任何一个不匹配就判定为诱饵文件
+  // ====================================================================
+
+  obfuscate: {
+    // --- 混淆等级 ---
+    // 可用值: 1 | 2 | 3 | 4 | 5
+    //   1 = 仅修改变量名和函数名（最轻量，几乎无性能影响）
+    //   2 = + 字符串加密（常量字符串被 base64 编码）
+    //   3 = + 控制流平坦化 + 不透明谓词（破坏控制流图）
+    //   4 = + 数字加密（数字常量替换为运行时计算表达式）
+    //   5 = + 死代码注入（注入永不执行的分支）+ 全部优化
+    // 不可用值: "5"（字符串类型）/ 0 / -1 / 6 / 3.5
+    // 注意事项:
+    //   • 等级越高，逆向难度越大，但代码体积和性能开销也越大
+    //   • level 5 较 level 4 额外增加死代码注入，体积膨胀约 30-50%
+    //   • level 5 较 level 1 性能下降约 2x-5x（取决于具体函数）
+    // 为什么此模块选择 5:
+    //   密码学引擎是整个保护链的基石。如果此模块的加密算法实现
+    //   被逆向工程识别和提取，攻击者可以手动调用 AES 解密函数
+    //   绕过 loader 直接解密 .pye 文件。必须使用最强混淆。
+    level: 5,
+
+    // --- 重命名变量 ---
+    // 可用值: true | false
+    // true  = 所有局部变量、参数名改为随机十六进制（如 _0xa1b2c3）
+    // false = 保留原始变量名（如 key, data, nonce 等有意义名称）
+    // 注意事项:
+    //   • 设为 true 后 stack trace 更难阅读，但 Python 的变量名
+    //     在运行时以字符串形式存储在 co_varnames 中，仍可提取
+    //   • 对性能影响极小（仅在编译期重命名，运行时无变化）
+    // 为什么此模块选择 true:
+    //   变量名如 real_key、master_key、nonce 明确指示变量用途，
+    //   必须全部重命名以隐藏语义。
+    rename_variables: true,
+
+    // --- 重命名函数 ---
+    // 可用值: true | false
+    // true  = 函数名改为随机标识符
+    // false = 保留原始函数名
+    // 注意事项:
+    //   • 此模块的函数通过 import 被 encrypt.py / decrypt.py 调用
+    //     Python 导入后通过模块对象引用函数（module.func），
+    //     函数名混淆不影响外部调用，因为实际指向的是函数对象
+    //   • 但须注意，如果测试代码通过字符串名称访问函数
+    //     （如 getattr(crypto, "aes_encrypt")），改名后会失败
+    // 为什么此模块选择 true:
+    //   当前代码库中对 crypto 的调用均使用模块导入后的函数引用，
+    //   没有任何字符串名称访问模式，可以安全开启。
+    rename_functions: true,
+
+    // --- 重命名类 ---
+    // 可用值: true | false
+    // 注意事项:
+    //   • 当前 crypto.py 中没有任何 class 定义，此设置实际无效果
+    //   • 如果将来添加了类（例如 _Serpent），该项生效
+    //   • 类的重命名只影响类名本身，不影响类的方法名
+    // 为什么此模块选择 true:
+    //   无实际效果但保持统一，将来添加类时自动获得保护。
+    rename_classes: true,
+
+    // --- 字符串加密 ---
+    // 可用值: true | false
+    // true  = 所有字符串常量被 base64 编码，运行时解码
+    // false = 字符串明文保存在 AST 中
+    // 注意事项:
+    //   • 加密后字符串在反编译工具中不可读，但运行时仍是明文
+    //     （可在对应内存地址设置断点下读取
+    //   • 开启后可通过设置 string_min_length 避免过短字符串被加密
+    //     （例：算法名 "aes" 即使加密也容易被识别）
+    //   • 性能影响很小，仅在模块加载时有一次性的解码开销
+    // 为什么此模块选择 true:
+    //   此模块包含大量敏感字符串：
+    //   "S-Protect-v6-key-verify"（HMAC 上下文）、
+    //   "sprotect:ecc-hybrid"（HKDF 域分离）、
+    //   "scryptAndAES256-CBC"（RSA 密钥保护方案）、
+    //   算法名称字符串。加密后可以隐藏密钥派生上下文和实现细节。
+    encrypt_strings: true,
+
+    // --- 数字加密 ---
+    // 可用值: true | false
+    // true  = 数字常量被替换为运行时计算表达式（如 32 → (5*6+2)）
+    // false = 数字保持原样
+    // 注意事项:
+    //   • 对性能有轻微影响（每次执行时计算表达式）
+    //   • 对本模块影响较大，因为存在大量密码学常量：
+    //     12（AES-GCM nonce）、16（HKDF salt）、32（密钥长度）、
+    //     4096（RSA 密钥尺寸）、256（曲线名）、384、521
+    //   • 加密后的数字表达式在反编译器中难以直接识别
+    // 为什么此模块选择 true:
+    //   本模块包含大量代表密钥长度、nonce 长度、迭代次数的
+    //   敏感数字常量。隐藏这些数字可以防止攻击者快速识别
+    //   加密算法的参数配置。
+    encrypt_numbers: true,
+
+    // --- 控制流平坦化 ---
+    // 可用值: true | false
+    // true  = 函数体转为 while-switch 形式的等价结构
+    // false = 保持原始控制流结构（if/for/while 不变）
+    // 注意事项:
+    //   • 开启后 IDA/Ghidra/pycdc 的反编译结果会非常混乱
+    //   • 性能影响较大（引入额外循环和跳转开销）
+    //   • 本模块中 _xof 函数（while 循环）被 flat 后性能可能下降 2-3x
+    //     但因为 _xof 每次仅运行一次用于 XOR 流生成，影响有限
+    // 为什么此模块选择 true:
+    //   本模块的加密/解密函数包含了明确的加密算法实现步骤。
+    //   如果不平坦化，攻击者可以通过控制流图快速识别算法结构。
+    //   平坦化后算法步骤被打散，极大增加逆向分析难度。
+    control_flow_flattening: true,
+
+    // --- 死代码注入 ---
+    // 可用值: true | false
+    // true  = 注入不透明谓词保护的死代码块（永远不执行）
+    // false = 不注入
+    // 注意事项:
+    //   • 配合 opaque_predicate_count 使用，控制每个函数中注入数量
+    //   • 死代码会增加代码体积（约 20-30%）但不影响运行时行为
+    //   • 与 control_flow_flattening 配合效果翻倍
+    // 为什么此模块选择 true:
+    //   本模块作为核心模块，需要给逆向者制造尽可能多的混淆。
+    //   死代码注入配合控制流平坦化可以使反编译结果极其庞大和混乱。
+    dead_code_injection: true,
+  },
+
+  anti_debug: {
+    // --- 反调试总开关 ---
+    // 可用值: true | false
+    // 注意事项:
+    //   • 设为 false 时所有反调试检测均跳过
+    // 为什么此模块选择 true:
+    //   此模块运行时不能被调试器附加，防止内存中的密钥被读取。
+    enabled: true,
+
+    // --- 检测到异常后的动作 ---
+    // 可用值: "exit" | "warn" | "corrupt"
+    //   "exit"    = 调用 sys.exit(exit_code) 立即退出（最安全）
+    //   "warn"    = 打印警告信息后继续运行（仅调试阶段使用）
+    //   "corrupt" = 通过 gc 遍历对象随机修改内存后退出（最激进）
+    // 不可用值: "abort" / "crash" / "ignore" / 空字符串
+    // 注意事项:
+    //   • "exit" 适合正式发布版本，简单直接
+    //   • "warn" 只在开发调试时使用，正式版本不得用
+    //   • "corrupt" 会在**退出前**随机修改内存中的对象值，
+    //     导致 crash dump 中的敏感数据被破坏
+    //   • corrupt 可能引起误报（修改了不应该改的对象）
+    // 为什么此模块选择 "exit":
+    //   密码学模块是保护链核心，检测到调试器应立即终止程序，
+    //   不给攻击者任何分析内存的机会。不需要激进破坏（corrupt），
+    //   因为正常退出已经足够保障安全——密钥不会持久化在内存中。
+    action: "exit",
+
+    // --- 启用的检测项 ---
+    // 完整可用值:
+    //   "pdb"       - 检测 sys.gettrace() != None（标准调试器）
+    //   "ptrace"    - 检测 ptrace 附加（Linux 调试器如 gdb）
+    //   "debugger"  - 检测 pydevd / PYTHONDEBUG 等（PyCharm/VS Code）
+    //   "vm"        - 检测 VirtualBox / VMware / QEMU / Hyper-V / Xen
+    //   "sandbox"   - 检测沙箱目录特征（如 C:\sandbox）
+    //   "timing"    - 时序检测：循环执行耗时超过 threshold 判定为调试
+    //   "cuckoo"    - 检测 Cuckoo 沙箱特定进程/文件
+    //   "ida"       - 检测 IDA Pro / Ghidra 远程调试端口
+    //   "procmon"   - 检测 Process Monitor / Process Hacker
+    // 不可用值: "gdb" / "windbg" / "ollydbg"（需通过 ptrace+debugger 覆盖）
+    // 注意事项:
+    //   • 不是越多越好——每项检测都有运行时开销
+    //   • 核心模块建议包含 vm/sandbox，因为 VM 中 CPU 指令差异
+    //     可能导致密码学操作的时序特征被分析
+    //   • ida 检测主要针对远程调试场景（IDAPython/Ghidra 插件）
+    // 为什么此模块选择这些值:
+    //   • pdb: 标准 Python 调试器检测，最基础的防线
+    //   • debugger: 检测 PyCharm 等 IDE 调试器
+    //   • vm: 密码学引擎在 VM 中运行时，硬件 RNG 可能熵不足
+    //   • sandbox: 检测动态分析沙箱环境
+    //   • ida: 检测 IDA/Ghidra 调试会话（逆向常用工具）
+    //   未选择:
+    //   • ptrace: 此模块短暂运行后即退出，ptrace 检测成本高
+    //   • timing: 密码学函数本身耗时波动大，容易误判
+    //   • cuckoo: Cuckoo 沙箱检测成本高，此模块非持久运行
+    //   • procmon: 此模块不涉及长时间的进程监控
+    checks: ["pdb", "debugger", "vm", "sandbox", "ida"],
+  },
+
+  virtualization: {
+    // --- 启用代码虚拟化 ---
+    // 可用值: true | false
+    // true  = 将 Python 函数转换为自定义字节码解释执行
+    // false = 不启用虚拟化
+    // 注意事项:
+    //   • 虚拟化会将代码转换为另一种中间表示，解释器执行
+    //   • 性能下降 10-50 倍（取决于函数复杂度和虚拟化模式）
+    //   • 启用后 pycdc / decompyle3 等字节码反编译器完全失效
+    //   • 当前版本中此功能仅作预留，实际尚未完整实现
+    // 为什么此模块选择 true（预留）:
+    //   密码学引擎的函数被虚拟化后，攻击者即使能 dump 内存
+    //   也无法直接得到可读的 Python 字节码，极大增加逆向成本。
+    //   等虚拟化功能实现后，此模块将最先受益。
+    enabled: true,
+
+    // --- 虚拟化模式 ---
+    // 可用值: "partial" | "full"
+    //   "partial" = 仅虚拟化指定函数（通过 functions 列表配置）
+    //   "full"    = 模块内所有函数虚拟化
+    // 不可用值: "smart" / "auto" / "selective"
+    // 注意事项:
+    //   • "full" 模式下性能下降最大（全部函数都走解释器）
+    //   • 建议对核心加密函数使用 full，辅助函数使用 partial
+    // 为什么此模块选择 "full":
+    //   本模块全部由加密/解密函数组成，每行代码都需要保护。
+    //   没有"不太重要"的辅助函数，所以用 full 模式。
+    mode: "full",
+  },
 }

@@ -212,6 +212,16 @@
     // 可用: true | false
     // 注意: func(a,b) -> (lambda _a0: func(_a0))(a)，增加调用栈复杂度
     obfuscate_calls: true,
+
+    // --- 算术表达式混淆 ---
+    // 可用: true | false
+    // 注意: a+b → a-(-b)，a*2^n → a<<n，等算术恒等式变换
+    obfuscate_arithmetic: true,
+
+    // --- 布尔值混淆 ---
+    // 可用: true | false
+    // 注意: True/False 替换为 1==1/1!=0 等运行时计算表达式
+    obfuscate_booleans: true,
   },
 
   // ====================================================================

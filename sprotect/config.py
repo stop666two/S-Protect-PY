@@ -40,9 +40,11 @@ def _obf(d): return ObfuscateConfig(
     remove_comments=d.get("remove_comments",True),
     strip_blank_lines=d.get("strip_blank_lines",False),
     max_line_length=d.get("max_line_length",0),
-    string_split=d.get("string_split",False),
-    obfuscate_imports=d.get("obfuscate_imports",False),
-    obfuscate_calls=d.get("obfuscate_calls",False))
+    string_split=d.get("string_split",True),
+    obfuscate_imports=d.get("obfuscate_imports",True),
+    obfuscate_calls=d.get("obfuscate_calls",True),
+    obfuscate_arithmetic=d.get("obfuscate_arithmetic",True),
+    obfuscate_booleans=d.get("obfuscate_booleans",True))
 
 def _enc(d): return EncryptConfig(
     algorithm=_te(EncryptAlgorithm, d.get("algorithm","aes-256-gcm")).value,
@@ -199,7 +201,8 @@ def gen_default(path: str) -> Path:
             "encrypt_strings":True,"encrypt_numbers":True,"string_min_length":3,"string_encrypt_ratio":1.0,
             "control_flow_flattening":True,"dead_code_injection":True,"dead_code_density":0.3,"opaque_predicate_count":2,
             "remove_docstrings":True,"remove_comments":True,"strip_blank_lines":True,"max_line_length":0,
-            "string_split":True,"obfuscate_imports":True,"obfuscate_calls":True},
+            "string_split":True,"obfuscate_imports":True,"obfuscate_calls":True,
+            "obfuscate_arithmetic":True,"obfuscate_booleans":True},
         "encrypt":{"algorithm":"aes-256-gcm","key_source":"auto","interdependency":"chain",
             "backup":True,"backup_max_count":5,"replace_originals":False,
             "shard_count":3,"shard_min_files":2,"compress_level":9,

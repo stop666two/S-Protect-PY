@@ -66,6 +66,8 @@ class ObfuscateConfig:
     string_split: bool = True                         # 字符串分割为碎片拼接
     obfuscate_imports: bool = True                    # import 转为 __import__()
     obfuscate_calls: bool = True                      # 函数调用混淆
+    obfuscate_arithmetic: bool = True                 # 算术表达式混淆
+    obfuscate_booleans: bool = True                   # True/False 混淆
 
 @dataclass
 class HybridEncryptConfig:

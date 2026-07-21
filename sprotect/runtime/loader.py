@@ -5,6 +5,10 @@ decrypt them in memory, and execute the resulting Python code.
 This enables encrypted projects to run without exposing decrypted
 source code on disk.
 
+P4 Task 4-1 integration: loads the index.sig file, reconstructs
+the private key from embedded shards, and uses RSA decryption to
+unlock the JSON5 configuration before activating the import hook.
+
 Author: S-Protect Team
 Version: 0.1.0
 """
@@ -13,13 +17,17 @@ from __future__ import annotations
 
 import importlib.abc
 import importlib.machinery
+import json
 import os
 import sys
 from types import ModuleType
 from typing import Any, Sequence
 
 from sprotect.core.decryptor import decrypt_file
+from sprotect.runtime.index import decrypt_index, verify_index_signature
+from sprotect.runtime.shard_reconstructor import ShardReconstructor
 from sprotect.types import Config
+from sprotect.utils.crypto import rsa_decrypt
 
 
 class EncryptedModuleLoader(importlib.abc.Loader):
@@ -147,22 +155,86 @@ class EncryptedPathFinder(importlib.abc.MetaPathFinder):
         return None
 
 
+def _load_index_sig(runtime_dir: str) -> tuple[dict, bytes, bytes]:
+    """Load and decrypt the index.sig file from the runtime directory.
+
+    Reads ``index.sig`` (JSON with ``index_key``, ``signing_key``,
+    ``encrypted_index``, ``rsa_encrypted_config`` fields), decrypts
+    the index, verifies its signature, and returns the index dict,
+    the signing key, and the RSA-encrypted config blob.
+
+    Args:
+        runtime_dir: Path to the ``_runtime`` directory.
+
+    Returns:
+        A tuple of (index_dict, signing_key, rsa_encrypted_config).
+
+    Raises:
+        FileNotFoundError: If index.sig does not exist.
+        ValueError: If index signature verification fails.
+    """
+    sig_path = os.path.join(runtime_dir, "index.sig")
+    if not os.path.isfile(sig_path):
+        raise FileNotFoundError(f"Index file not found: {sig_path}")
+
+    with open(sig_path, "rb") as f:
+        sig_data = json.loads(f.read().decode("utf-8"))
+
+    index_key = bytes.fromhex(sig_data["index_key"])
+    signing_key = bytes.fromhex(sig_data["signing_key"])
+    encrypted_index = bytes.fromhex(sig_data["encrypted_index"])
+    rsa_encrypted_config = bytes.fromhex(sig_data["rsa_encrypted_config"])
+
+    index = decrypt_index(encrypted_index, index_key)
+    if not verify_index_signature(index, signing_key):
+        raise ValueError("Index signature verification failed")
+
+    return index, signing_key, rsa_encrypted_config
+
+
+def _decrypt_config(
+    rsa_encrypted_config: bytes, private_key: bytes
+) -> Config:
+    """Decrypt the RSA-encrypted JSON5 configuration.
+
+    Args:
+        rsa_encrypted_config: RSA OAEP ciphertext of the config JSON.
+        private_key: PEM-encoded RSA private key bytes.
+
+    Returns:
+        A Config object parsed from the decrypted JSON.
+    """
+    from sprotect.config import _dict_to_config
+
+    plaintext = rsa_decrypt(rsa_encrypted_config, private_key)
+    config_data: dict = json.loads(plaintext.decode("utf-8"))
+    return _dict_to_config(config_data)
+
+
 def run_encrypted_project(project_dir: str, config: Config) -> None:
     """Run an encrypted project from its _runtime directory.
 
-    Installs the EncryptedPathFinder into sys.meta_path, then imports
-    and executes the project's entry module.
+    Loads and decrypts the index, reconstructs the private key from
+    embedded shards, decrypts the RSA-encrypted JSON5 configuration,
+    then installs the EncryptedPathFinder and executes the entry point.
 
     Args:
         project_dir: Root directory of the encrypted project.
-        config: Project configuration (used for entry file name).
+        config: Initial project configuration (used for entry file name).
     """
     runtime_dir = os.path.join(project_dir, "_runtime")
     if not os.path.isdir(runtime_dir):
         raise FileNotFoundError(f"Runtime directory not found: {runtime_dir}")
 
+    index, signing_key, rsa_encrypted_config = _load_index_sig(runtime_dir)
+
+    reconstructor = ShardReconstructor(runtime_dir, index)
+    private_key = reconstructor.reconstruct_private_key()
+
+    resolved_config = _decrypt_config(rsa_encrypted_config, private_key)
+
     finder = EncryptedPathFinder(runtime_dir)
     sys.meta_path.insert(0, finder)
 
-    entry_module = config.project.entry.replace(".py", "")
+    entry_module = resolved_config.project.entry.replace(".py", "")
     __import__(entry_module)

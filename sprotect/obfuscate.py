@@ -284,18 +284,17 @@ class _CallObfuscator(ast.NodeTransformer):
 class _ArithmeticObfuscator(ast.NodeTransformer):
     """Obfuscate arithmetic expressions: a+b → a-(-b), a*2 → a<<1, etc."""
 
-    def _is_str(self, node: ast.AST) -> bool:
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            return True
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "decode":
-            return True
-        return False
+    def _is_num(self, node: ast.AST) -> bool:
+        return isinstance(node, ast.Constant) and isinstance(node.value, (int, float))
 
     def visit_BinOp(self, node: ast.BinOp):
         self.generic_visit(node)
-        if isinstance(node.op, ast.Add) and not self._is_str(node.left) and not self._is_str(node.right) and secrets.randbelow(3) == 0:
+        if isinstance(node.op, ast.Add) and self._is_num(node.left) and self._is_num(node.right) and secrets.randbelow(3) == 0:
             neg = ast.UnaryOp(op=ast.USub(), operand=node.right)
             return ast.BinOp(left=node.left, op=ast.Sub(), right=neg)
+        if isinstance(node.op, ast.Sub) and self._is_num(node.left) and self._is_num(node.right) and secrets.randbelow(3) == 0:
+            neg = ast.UnaryOp(op=ast.USub(), operand=node.right)
+            return ast.BinOp(left=node.left, op=ast.Add(), right=neg)
         if isinstance(node.op, ast.Sub) and secrets.randbelow(3) == 0:
             neg = ast.UnaryOp(op=ast.USub(), operand=node.right)
             return ast.BinOp(left=node.left, op=ast.Add(), right=neg)
@@ -308,19 +307,17 @@ class _ArithmeticObfuscator(ast.NodeTransformer):
 
 
 class _BooleanObfuscator(ast.NodeTransformer):
-    """Transform True/False into expressions like 1==1/1!=1."""
+    """Transform True/False into self-equality expressions."""
 
     def visit_Constant(self, node: ast.Constant):
         if node.value is True and secrets.randbelow(2) == 0:
+            x = secrets.randbelow(1000)
             return ast.Compare(
-                left=ast.Constant(secrets.randbelow(1000)),
-                ops=[ast.Eq()],
-                comparators=[ast.Constant(secrets.randbelow(1000))])
+                left=ast.Constant(x), ops=[ast.Eq()], comparators=[ast.Constant(x)])
         if node.value is False and secrets.randbelow(2) == 0:
+            x = secrets.randbelow(1000)
             return ast.Compare(
-                left=ast.Constant(secrets.randbelow(1000)),
-                ops=[ast.NotEq()],
-                comparators=[ast.Constant(secrets.randbelow(1000))])
+                left=ast.Constant(x), ops=[ast.NotEq()], comparators=[ast.Constant(x)])
         return node
 
 

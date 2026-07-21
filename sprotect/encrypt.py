@@ -32,6 +32,11 @@ def build(project_dir, output_dir, config):
     py_files = find_py_files(project_dir, config)
     if not py_files:
         print("  WARN: no Python files found"); return
+    if len(py_files) < 2:
+        print("  WARN: only 1 file found, creating companion module for sharding")
+        helper = os.path.join(project_dir, "_sprotect_helper.py")
+        with open(helper, "w") as f: f.write("# S-Protect shard helper\n")
+        py_files.append(helper)
 
     rd = os.path.join(output_dir, "_runtime")
     os.makedirs(rd, exist_ok=True)

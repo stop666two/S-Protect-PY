@@ -371,61 +371,69 @@ _boot("{kp}")
 '''
 
 
-def _gen_decoy_boot_functions(count: int = 3) -> str:
-    """Generate realistic-looking decoy functions for the boot stub."""
-    from sprotect.decoy import generate_decoy_source
+def _rand_hex(n: int) -> str:
+    return secrets.token_hex(n)
+
+
+def _gen_decoy_boot_like(count: int) -> str:
+    """Generate decoy functions that look EXACTLY like the real _boot / _xof.
+
+    Uses the SAME imports (cryptography, AESGCM) and SAME patterns so
+    after minification real and decoy are indistinguishable."""
     parts = []
     for _ in range(count):
-        parts.append(generate_decoy_source())
+        fname = _rand_name()
+        fake_key = _rand_hex(32)
+        fake_ct = _rand_hex(secrets.randbelow(80) + 80)
+        fake_f1 = _rand_hex(4)
+        fake_f2 = _rand_hex(4)
+        fake_f3 = _rand_hex(4)
+        parts.append(f"""# {secrets.token_hex(8)}
+def {fname}({secrets.choice(['key','data','path','buf','sig'])}):
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
+    import hashlib, json, os, zlib
+    try:
+        _k = bytes.fromhex('{fake_key}')
+        _d = bytes.fromhex('{fake_ct}')
+        _x = AESGCM(_k).decrypt(_d[:12], _d[12:], b"")
+        _x = bytes(a^b for a,b in zip(_x,hashlib.sha256(_k).digest()*999))[:len(_x)]
+        _x = ChaCha20Poly1305(_k).decrypt(_x[:12], _x[12:], b"")
+        _r = zlib.decompress(_x)
+    except Exception:
+        _r = b''
+    return _r
+""")
     return "\n".join(parts)
 
 
-def _gen_fake_constants() -> str:
-    """Generate fake constant definitions to bloat the boot stub."""
+def _gen_massive_padding(target_kb: int = 55) -> str:
+    """Generate padding comments + string literals to reach target size."""
     lines = []
-    for _ in range(secrets.randbelow(4) + 3):
-        name = _rand_name()
-        val = secrets.choice([
-            f"'{secrets.token_hex(8)}'",
-            str(secrets.randbelow(999999)),
-            f"b'{secrets.token_hex(secrets.randbelow(16)+4)}'",
-            f"0x{secrets.token_hex(secrets.randbelow(4)+2)}",
-        ])
-        lines.append(f"{name} = {val}")
+    size = 0
+    while size < target_kb * 1024:
+        block = "\n".join(
+            f"# {_rand_hex(64)}"
+            for _ in range(secrets.randbelow(10) + 5)
+        )
+        block += f"\n_{_rand_name()} = '{_rand_hex(secrets.randbelow(200)+100)}'\n"
+        lines.append(block)
+        size += len(block) + 1
     return "\n".join(lines)
 
 
-def _gen_fake_imports() -> str:
-    """Generate fake import statements (all must be valid at runtime)."""
-    valid_imports = [
-        "import sys, os, json, re, math, hashlib, base64, struct, zlib",
-        "import itertools, collections, functools, random, string",
-        "from math import sqrt, floor, ceil, sin, cos",
-        "from os import path, name, getpid",
-        "from sys import platform, version, argv",
-        "from hashlib import sha256, md5, sha1",
-        "from base64 import b64encode, b64decode",
-        "from struct import pack, unpack",
-        "import binascii, tempfile, uuid, copy",
-        "from random import randint, choice, seed",
-        "import logging, datetime, decimal, statistics",
-    ]
-    lines = []
-    for _ in range(secrets.randbelow(3) + 1):
-        lines.append(secrets.choice(valid_imports))
-    return "\n".join(lines)
-
-
-def _gen_opaque_predicate() -> str:
-    """Generate a single opaque predicate (always true)."""
-    x = secrets.randbelow(100000)
-    preds = [
-        f"if ({x} ^ {x}) + 1 == 1:\n    pass",
-        f"if {x} ** 0 == 1:\n    pass",
-        f"if len(str({x})) >= 1:\n    pass",
-        f"if isinstance({x}, int):\n    pass",
-    ]
-    return secrets.choice(preds)
+_gen_fake_imports_large = """import sys, os, json, re, math, hashlib, base64, struct, zlib
+import itertools, collections, functools, random, string, binascii
+import tempfile, uuid, copy, logging, datetime, decimal, statistics
+from math import sqrt, floor, ceil, sin, cos, tan, log, exp
+from os import path, name, getpid, getcwd, environ, sep
+from sys import platform, version, argv, executable, modules, path as sys_path
+from hashlib import sha256, md5, sha1, sha224, sha384, sha512, blake2b
+from base64 import b64encode, b64decode, a85encode, a85decode, b32decode
+from struct import pack, unpack, calcsize, iter_unpack
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes"""
 
 
 def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
@@ -440,18 +448,12 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
     else:
         boot = _BOOT_STUB.format(lk=loader_key.hex(), rd="_runtime", entry=entry_module)
 
-    # Inject decoy content before minification
-    decoy_funcs = _gen_decoy_boot_functions(secrets.randbelow(3) + 2)
-    fake_consts = _gen_fake_constants()
-    fake_imports = _gen_fake_imports()
-    opaque = "\n".join(_gen_opaque_predicate() for _ in range(secrets.randbelow(3) + 1))
+    # Generate LARGE amounts of decoy content
+    decoy_count = secrets.randbelow(20) + 30  # 30-50 fake boot functions
+    decoy_boot = _gen_decoy_boot_like(decoy_count)
+    padding = _gen_massive_padding(80)  # 80KB of padding
 
-    # Prepend: fake imports + decoy constants
-    header = fake_imports + "\n\n" + fake_consts + "\n\n" + opaque + "\n"
-    # Append: more decoy functions + opaque predicates
-    footer = "\n\n" + decoy_funcs + "\n" + opaque
-
-    boot = header + boot + footer
+    boot = _gen_fake_imports_large + "\n\n" + padding + "\n\n" + decoy_boot + "\n\n" + boot
 
     from sprotect.minify import minify_source
     boot = minify_source(boot, add_garbage=True)

@@ -28,16 +28,19 @@ def build(project_dir, output_dir, config):
         print(f"  请先清理该目录再构建:")
         print(f"    Remove-Item -Recurse -Force '{os.path.abspath(output_dir)}'")
         print(f"  或手动删除 {output_dir} 下的所有文件")
-        raise SystemExit(1)
+        return
     py_files = find_py_files(project_dir, config)
     if not py_files:
         print("  WARN: no Python files found"); return
+    helper_created = False
     if len(py_files) < 2:
         print("  WARN: only 1 file found, creating companion module for sharding")
         helper = os.path.join(project_dir, "_sprotect_helper.py")
         with open(helper, "w") as f: f.write("# S-Protect shard helper\n")
         py_files.append(helper)
+        helper_created = True
 
+    helper_created = False
     rd = os.path.join(output_dir, "_runtime")
     os.makedirs(rd, exist_ok=True)
 
@@ -102,22 +105,9 @@ def build(project_dir, output_dir, config):
                                            config.encrypt.compress_level,
                                            config.encrypt.polymorphic_padding_max)
             p = json.loads(payload_bytes.decode())
-            kpos = secrets.randbelow(5)
-            keys = [os.urandom(32) for _ in range(5)]
-            keys[kpos] = shards[idx]
-            for i, kv in enumerate(keys): p[f"k{i+1}"] = kv.hex()
-            xored = bytearray(32)
-            for kb in keys:
-                for i in range(min(32, len(kb))): xored[i] ^= kb[i]
-            p["f1"] = hashlib.sha256(bytes(xored)).hexdigest()[5:13]
-            try:
-                import blake3; p["f2"] = blake3.blake3(shards[idx]).hexdigest()[3:11]
-            except:
-                p["f2"] = hashlib.sha256(shards[idx]).hexdigest()[3:11]
-            try:
-                p["f3"] = hmac.new(shards[idx], b"S-Protect-v6-key-verify", "sha256").hexdigest()[:8]
-            except:
-                p["f3"] = ""
+            from sprotect.crypto import make_keys_complex
+            keys_dict, _ = make_keys_complex(shards[idx], 4)
+            p.update(keys_dict)
             if wm: p["wm"] = wm.file_payload()
             payload = json.dumps(p, separators=(",", ":")).encode()
             pye_path = os.path.join(rd, hex_name + ".pye")
@@ -138,6 +128,11 @@ def build(project_dir, output_dir, config):
         for i, fp in enumerate(py_files):
             results[i] = _process_one(i, fp)
 
+    failed = sum(1 for r in results if r is None)
+    if failed:
+        print(f"  ERROR: {failed}/{len(py_files)} files failed to encrypt")
+        if failed == len(py_files):
+            raise RuntimeError("All files failed to encrypt")
     for r in results:
         if r:
             mod_name, hex_name, payload = r
@@ -216,6 +211,10 @@ def build(project_dir, output_dir, config):
             print(f"  Batch ID: {wm.bid}")
         except Exception as e:
             print(f"  Watermark report: {e}")
+
+    if helper_created:
+        try: os.remove(helper)
+        except OSError: pass
 
     entry_mod = config.project.entry.replace(".py", "")
     entry_hex = module_map.get(entry_mod, "")

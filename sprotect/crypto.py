@@ -81,8 +81,8 @@ def blake3_hash(data: bytes) -> str:
 
 
 # ---- Complex multi-layer key fingerprint ----
-def make_keys_complex(real_key: bytes, decoy_count: int = 2) -> tuple[dict, str]:
-    """Generate k1-k3 with real key at random position.
+def make_keys_complex(real_key: bytes, decoy_count: int = 4) -> tuple[dict, str]:
+    """Generate k1-k5 with real key at random position.
     Uses complex multi-layer fingerprint verification:
     Layer 1: SHA256(xor_all_keys) truncated
     Layer 2: blake3(real_key) specific bytes
@@ -103,11 +103,10 @@ def make_keys_complex(real_key: bytes, decoy_count: int = 2) -> tuple[dict, str]
     # f1 = SHA256(xor_of_all)[5:13] - depends on ALL keys
     # Only the real key set produces the correct xor result
     f1 = hashlib.sha256(xored).hexdigest()[5:13]
-    # f2 = blake3(real_key)[3:11]
     try:
         f2 = blake3_hash(real_key)[3:11]
     except:
-        f2 = hashlib.sha256(real_key).hexdigest()[3:11]
+        f2 = hashlib.sha256(b"f2-domain:" + real_key).hexdigest()[8:16]
     # f3 = HMAC-SHA256(key_material, context)[:8]
     import hmac as _hm
     f3 = _hm.new(real_key, b"S-Protect-v6-key-verify", "sha256").hexdigest()[:8]
@@ -131,11 +130,10 @@ def verify_fingerprint(p: dict, potential_key: bytes) -> bool:
     f1_expected = hashlib.sha256(bytes(xored)).hexdigest()[5:13]
     if p.get("f1", "") != f1_expected: return False
 
-    # f2 check: blake3(potential_key)[3:11]
     try:
         f2_expected = blake3_hash(potential_key)[3:11]
     except:
-        f2_expected = hashlib.sha256(potential_key).hexdigest()[3:11]
+        f2_expected = hashlib.sha256(b"f2-domain:" + potential_key).hexdigest()[8:16]
     if p.get("f2", "") != f2_expected: return False
 
     # f3 check: HMAC-SHA256
@@ -150,11 +148,7 @@ def encrypt_payload(source_data: bytes, real_key: bytes,
                     compress: int = 9, pad_max: int = 512) -> bytes:
     """Encrypt with ChaCha20 + AES-GMC dual layer + complex fingerprints."""
     compressed = zlib.compress(source_data, level=compress)
-    # Layer 1: ChaCha20-Poly1305
-    try:
-        c20 = chacha20_encrypt(compressed, real_key)
-    except:
-        c20 = compressed
+    c20 = chacha20_encrypt(compressed, real_key)
     # Layer 2: XOR obfuscation
     xored = xor_stream(c20, hashlib.sha256(real_key).digest())
     # Layer 3: AES-GCM

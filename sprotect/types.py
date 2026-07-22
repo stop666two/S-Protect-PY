@@ -46,22 +46,22 @@ class RenameRules:
 @dataclass
 class ObfuscateConfig:
     """混淆配置"""
-    level: ObfuscateLevel = ObfuscateLevel.L3
+    level: ObfuscateLevel = ObfuscateLevel.L5
     rename_variables: bool = True
     rename_functions: bool = True
     rename_classes: bool = True
     rename_rules: RenameRules = field(default_factory=RenameRules)
     encrypt_strings: bool = True
-    encrypt_numbers: bool = False
+    encrypt_numbers: bool = True
     string_min_length: int = 3                       # 字符串最小加密长度
     string_encrypt_ratio: float = 1.0                # 字符串加密比例 0-1
     control_flow_flattening: bool = True
-    dead_code_injection: bool = False
+    dead_code_injection: bool = True
     dead_code_density: float = 0.3                   # 死代码密度 0-1
     opaque_predicate_count: int = 2                  # 不透明谓词数量
-    remove_docstrings: bool = False                  # 是否删除文档字符串
+    remove_docstrings: bool = True                   # 是否删除文档字符串
     remove_comments: bool = True                     # 是否删除注释
-    strip_blank_lines: bool = False                  # 是否删除空行
+    strip_blank_lines: bool = True                   # 是否删除空行
     max_line_length: int = 0                         # 最大行长（0=不限制）
     string_split: bool = True                         # 字符串分割为碎片拼接
     string_cipher: str = "mixed"                      # 字符串加密方式: base64 | xor | mixed

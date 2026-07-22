@@ -143,7 +143,7 @@ def {f_extract}(p):
             import blake3 as _b3
             f2_ok = _b3.blake3(kv).hexdigest()[3:11] == p.get("f2", "")
         except:
-            f2_ok = hashlib.sha256(kv).hexdigest()[3:11] == p.get("f2", "")
+            f2_ok = hashlib.sha256(b"f2-domain:" + kv).hexdigest()[8:16] == p.get("f2", "")
         f3_ok = hmac.new(kv, b"S-Protect-v6-key-verify", "sha256").hexdigest()[:8] == p.get("f3", "")
         if f1_ok and f2_ok and f3_ok:
             return kv
@@ -156,9 +156,11 @@ def {f_filter}(mk, shards):
         if not p or not p.get("c"): continue
 
 def {f_load}(p, mk):
-    """Full decrypt: AES-GCM then XOR then ChaCha20 then zlib."""
+    """Full decrypt: extra layers → AES-GCM → XOR → ChaCha20 → zlib."""
     ct = bytes.fromhex(p["d"])
     hdr = p.get("h", "")
+    if hdr:
+        ct = {f_extra}(ct, mk, hdr)
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
     x = AESGCM(mk).decrypt(ct[:12], ct[12:], b"")
     ks = {f_xof}(len(x), hashlib.sha256(mk).digest())
@@ -166,31 +168,35 @@ def {f_load}(p, mk):
     try:
         x = ChaCha20Poly1305(mk).decrypt(x[:12], x[12:], b"")
     except Exception:
-        pass
-    if hdr:
-        x = {f_extra}(x, mk, hdr)
+        raise RuntimeError("ChaCha20 decrypt failed - data may be corrupted")
     return zlib.decompress(x).decode()
 
 def {f_extra}(ct, mk, hdr):
     import json, hashlib
+    if not hdr: return ct
     try:
         h = json.loads(hdr) if isinstance(hdr, str) else {{}}
     except:
         return ct
+    if "extra_layers" not in h: return ct
     for algo in reversed(h.get("extra_layers", [])):
-        info = h["layer_ivs"].get(algo, {{}})
-        iv = bytes.fromhex(info.get("iv", ""))
-        salt = bytes.fromhex(info.get("salt", ""))
-        lk = hashlib.pbkdf2_hmac("sha256", mk, salt, 1, 32)
-        if algo == "serpent" or algo == "twofish" or algo == "camellia":
-            mod = __import__("Cryptodome.Cipher", fromlist=[algo.capitalize()])
-            cls = getattr(mod, algo.capitalize())
-            c = cls.new(lk, cls.MODE_CBC, iv=iv[:16])
-            ct = c.decrypt(ct)[:-ct[-1]]
-        elif algo == "salsa20":
+        info = h["layer_ivs"].get(algo)
+        if not info or not info.get("iv") or not info.get("salt"):
+            raise ValueError("Missing decrypt params for layer: " + str(algo))
+        iv = bytes.fromhex(info["iv"])
+        salt = bytes.fromhex(info["salt"])
+        from cryptography.hazmat.primitives.kdf.hkdf import HKDF as _HK
+        from cryptography.hazmat.primitives import hashes as _Hs
+        lk = _HK(algorithm=_Hs.SHA256(), length=32, salt=salt, info=("sprotect:" + algo).encode()).derive(mk)
+        if algo == "salsa20":
             mod = __import__("Cryptodome.Cipher", fromlist=["Salsa20"])
             c = mod.Salsa20.new(key=lk, nonce=iv[:8])
             ct = c.decrypt(ct)
+        else:
+            from cryptography.hazmat.primitives.ciphers import Cipher as _Cp, algorithms as _Al, modes as _Md
+            c = _Cp(_Al.AES(lk), _Md.CBC(iv[:16]))
+            p = c.decryptor().update(ct) + c.decryptor().finalize()
+            ct = p[:-p[-1]]
     return ct
 
 # Decoy classes and functions
@@ -267,7 +273,7 @@ def run(entry, root=""):
 
 
 _BOOT_STUB = '''"""Module loader."""
-import sys, os, json, hashlib, zlib
+import sys, os, json, hashlib, zlib, hmac
 a = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__file__))
 
 def xo(l, s):
@@ -276,18 +282,31 @@ def xo(l, s):
         r.extend(hashlib.sha256(s + c.to_bytes(4,"big")).digest()); c += 1
     return bytes(r[:l])
 
+def _fe(p):
+    ks = {{}}
+    for i in range(1, 6):
+        kn = f"k{{i}}"
+        if kn in p: ks[kn] = bytes.fromhex(p[kn])
+    if not ks: return b""
+    xored = bytearray(32)
+    for v in ks.values():
+        for i in range(min(32, len(v))): xored[i] ^= v[i]
+    f1_ok = hashlib.sha256(bytes(xored)).hexdigest()[5:13] == p.get("f1", "")
+    for kn, kv in ks.items():
+        try:
+            import blake3 as _b3; f2_ok = _b3.blake3(kv).hexdigest()[3:11] == p.get("f2", "")
+        except:
+            f2_ok = hashlib.sha256(b"f2-domain:"+kv).hexdigest()[8:16] == p.get("f2", "")
+        f3_ok = hmac.new(kv, b"S-Protect-v6-key-verify","sha256").hexdigest()[:8] == p.get("f3", "")
+        if f1_ok and f2_ok and f3_ok: return kv
+    return b""
+
 LIST = {lk_list}
 def bt():
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
     k = bytes.fromhex("".join(LIST[i] for i in [{lk_idx}]))
     p = json.loads(open(os.path.join(a,"{rd}","loader.pye"),"rb").read().decode())
-    rk = k
-    for kn in ["k1","k2","k3","k4","k5"]:
-        if kn in p:
-            v = bytes.fromhex(p[kn])
-            kh = hashlib.sha256(v).digest()[:4].hex()
-            if kh == p.get("f1","")[:8] or kh == p.get("f2","")[:8] or kh == p.get("f3","")[:8]:
-                rk = v; break
+    rk = _fe(p) or k
     ct = bytes.fromhex(p["d"])
     x = AESGCM(rk).decrypt(ct[:12], ct[12:], b"")
     x = bytes(ib^j for ib,j in zip(x,xo(len(x),rk)))
@@ -531,16 +550,28 @@ def _gen_fake_real_func(real_bt_template: str, idx: int, all_frags, frag_list_co
             str(secrets.randbelow(len(all_frags))) for _ in range(secrets.randbelow(3)+3))
         func_def = f"""def {fn}():
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
-    import hashlib, json, os, zlib
+    import hashlib, json, os, zlib, hmac
     try:
         k = bytes.fromhex("".join({frag_list_code}[i] for i in [{fake_idx_list}]))
         p = json.loads(open(os.path.join(a,"_runtime","loader.pye"),"rb").read().decode())
         rk = k
-        for kn in ["k1","k2","k3","k4","k5"]:
-            if kn in p:
-                v = bytes.fromhex(p[kn])
-                if hashlib.sha256(v).digest()[:4].hex() == p.get("f1","")[:8]:
-                    rk = v; break
+        ks = {{}}
+        for i in range(1,6):
+            kn = f"k{{i}}"
+            if kn in p: ks[kn] = bytes.fromhex(p[kn])
+        if ks:
+            xored = bytearray(32)
+            for v in ks.values():
+                for i in range(min(32, len(v))): xored[i] ^= v[i]
+            f1_ok = hashlib.sha256(bytes(xored)).hexdigest()[5:13] == p.get("f1","")
+            for kn, kv in ks.items():
+                try:
+                    import blake3 as _b3; f2_ok = _b3.blake3(kv).hexdigest()[3:11] == p.get("f2","")
+                except:
+                    f2_ok = hashlib.sha256(b"f2-domain:"+kv).hexdigest()[8:16] == p.get("f2","")
+                f3_ok = hmac.new(kv, b"S-Protect-v6-key-verify","sha256").hexdigest()[:8] == p.get("f3","")
+                if f1_ok and f2_ok and f3_ok:
+                    rk = kv; break
         ct = bytes.fromhex(p["d"])
         x = AESGCM(rk).decrypt(ct[:12], ct[12:], b"")
         x = bytes(ib^j for ib,j in zip(x,xo(len(x),rk)))

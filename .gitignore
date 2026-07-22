@@ -30,4 +30,4 @@ RULES.md
 # Test reports
 output/report.html
 output/report.md
-*.spec
+*.specpython/

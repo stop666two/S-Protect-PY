@@ -102,8 +102,10 @@ class Obfuscator(ast.NodeTransformer):
         tree = ast.parse(src)
         self._collect(tree)
         tree = self.visit(tree)
+        if self.map:
+            tree = _AttrObfuscator(self.map).visit(tree)
         if self.cfg.obfuscate_imports:
-            tree = _ImportObfuscator().visit(tree)
+            tree = _ImportObfuscator(self.map).visit(tree)
         if self.cfg.obfuscate_arithmetic:
             tree = _ArithmeticObfuscator().visit(tree)
         if self.cfg.obfuscate_booleans:
@@ -225,8 +227,27 @@ class Obfuscator(ast.NodeTransformer):
         self._fstring_depth += 1; r = self.generic_visit(n); self._fstring_depth -= 1; return r
 
 
+class _AttrObfuscator(ast.NodeTransformer):
+    """Rename attribute access (obj.ATTR) using the shared rename map."""
+
+    def __init__(self, rename_map: dict[str, str]):
+        self._map = rename_map
+
+    def visit_Attribute(self, node: ast.Attribute):
+        self.generic_visit(node)
+        if node.attr in self._map:
+            node.attr = self._map[node.attr]
+        return node
+
+
 class _ImportObfuscator(ast.NodeTransformer):
     """Transform import statements into __import__() calls."""
+
+    def __init__(self, rename_map: dict[str, str] | None = None):
+        self._map = rename_map or {}
+
+    def _r(self, name: str) -> str:
+        return self._map.get(name, name)
 
     def visit_Import(self, node: ast.Import):
         new_nodes: list[ast.AST] = []
@@ -245,15 +266,16 @@ class _ImportObfuscator(ast.NodeTransformer):
     def visit_ImportFrom(self, node: ast.ImportFrom):
         if not node.module:
             return node
-        names_list = ast.List(elts=[ast.Constant(a.name) for a in node.names], ctx=ast.Load())
+        names_list = ast.List(elts=[ast.Constant(self._r(a.name)) for a in node.names], ctx=ast.Load())
         base = ast.Call(
             func=ast.Name(id="__import__"),
             args=[ast.Constant(node.module)],
             keywords=[ast.keyword(arg="fromlist", value=names_list)])
         new_nodes: list[ast.AST] = []
         for alias in node.names:
-            attr = ast.Attribute(value=base, attr=alias.name, ctx=ast.Load())
-            target = alias.asname or alias.name
+            renamed_attr = self._r(alias.name)
+            attr = ast.Attribute(value=base, attr=renamed_attr, ctx=ast.Load())
+            target = self._r(alias.asname or alias.name)
             new_nodes.append(ast.Assign(targets=[ast.Name(id=target, ctx=ast.Store())], value=attr))
         return new_nodes if len(new_nodes) != 1 else new_nodes[0]
 

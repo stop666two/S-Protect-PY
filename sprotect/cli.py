@@ -17,6 +17,7 @@ def _parser() -> argparse.ArgumentParser:
     b.add_argument("--project", default="./project", help="Source project directory")
     b.add_argument("--output", default="./output", help="Output directory")
     b.add_argument("-c", "--config", help="Path to sprotect.json5")
+    b.add_argument("--clean", action="store_true", help="Auto-clean output directory before build")
 
     e = s.add_parser("encrypt", help="Encrypt individual files")
     e.add_argument("files", nargs="+")
@@ -51,6 +52,10 @@ def _parser() -> argparse.ArgumentParser:
     pk.add_argument("--icon", help="Custom .exe icon")
 
     s.add_parser("version", help="Show version")
+
+    ru = s.add_parser("run", help="Run an encrypted project")
+    ru.add_argument("--dir", default="./output", help="Output directory (default: ./output)")
+
     return p
 
 
@@ -142,6 +147,10 @@ def main(argv: list[str] | None = None) -> int:
         out = str(Path(a.output).resolve())
         if not Path(proj).is_dir():
             print(f"Error: project directory not found: {proj}", file=sys.stderr); return 1
+        if getattr(a, "clean", False) and Path(out).is_dir():
+            import shutil
+            shutil.rmtree(out, ignore_errors=True)
+            print(f"  Cleaned: {out}")
         if cfg.encrypt.backup: backup(proj)
         build_project(proj, out, cfg)
         print(f"Project '{cfg.project.name}' encrypted.")
@@ -153,6 +162,23 @@ def main(argv: list[str] | None = None) -> int:
             if exe:
                 print(f"  Packed: {exe}")
         return 0
+
+    if a.cmd == "run":
+        run_dir = str(Path(a.dir).resolve())
+        entry = os.path.join(run_dir, cfg.project.entry)
+        if not os.path.isfile(entry):
+            print(f"Entry not found: {entry}", file=sys.stderr); return 1
+        env = os.environ.copy()
+        env_file = os.path.join(run_dir, ".env")
+        if os.path.isfile(env_file):
+            for line in open(env_file, encoding="utf-8"):
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    env[k.strip()] = v.strip().strip("\"'")
+        import subprocess
+        r = subprocess.run([sys.executable, entry], cwd=run_dir, env=env)
+        return r.returncode
 
     if a.cmd == "encrypt":
         for f in a.files:

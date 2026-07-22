@@ -1,7 +1,7 @@
 """S-Protect-PY CLI."""
 
 from __future__ import annotations
-import argparse, sys, json5
+import argparse, sys, os, json5
 from pathlib import Path
 from sprotect import __version__
 from sprotect.config import load_config, gen_default
@@ -86,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Watermark: {'VALID' if ok else 'INVALID or not found'}")
             return 0 if ok else 1
         elif a.wa == "list":
-            import os, glob
+            import glob
             path = a.dir
             if not os.path.isdir(path):
                 print(f"Directory not found: {path}")
@@ -109,7 +109,6 @@ def main(argv: list[str] | None = None) -> int:
         print(f"S-Protect-PY v{__version__}"); return 0
 
     if a.cmd == "init":
-        import os
         for d in [a.project, a.output]:
             p = Path(d)
             p.mkdir(parents=True, exist_ok=True)
@@ -149,11 +148,17 @@ def main(argv: list[str] | None = None) -> int:
         if not Path(proj).is_dir():
             print(f"Error: project directory not found: {proj}", file=sys.stderr); return 1
         if getattr(a, "clean", False) and Path(out).is_dir():
-            import shutil
-            shutil.rmtree(out, ignore_errors=True)
-            print(f"  Cleaned: {out}")
+            import shutil as _su
+            _orig = os.getcwd()
+            try:
+                os.chdir(os.path.dirname(out) or ".")
+                _su.rmtree(out, ignore_errors=True)
+            finally:
+                os.chdir(_orig)
         if cfg.encrypt.backup: backup(proj)
         build_project(proj, out, cfg)
+        if not Path(os.path.join(out, "main.py")).is_file():
+            print(f"  Build failed: output incomplete", file=sys.stderr); return 1
         print(f"Project '{cfg.project.name}' encrypted.")
         print(f"  Output: {out}")
         print(f"  Entry:  {cfg.project.entry}")

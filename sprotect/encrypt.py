@@ -26,11 +26,7 @@ def _extract_d(pye_bytes: bytes) -> tuple[str, dict]:
 def build(project_dir, output_dir, config):
     """Build encrypted project: obfuscate, encrypt, generate boot loader."""
     if os.path.isdir(output_dir) and os.listdir(output_dir):
-        print(f"  ERROR: 输出目录不为空: {os.path.abspath(output_dir)}")
-        print(f"  请先清理该目录再构建:")
-        print(f"    Remove-Item -Recurse -Force '{os.path.abspath(output_dir)}'")
-        print(f"  或手动删除 {output_dir} 下的所有文件")
-        return
+        print(f"  WARN: 输出目录不为空，将覆盖现有文件: {os.path.abspath(output_dir)}")
     py_files = find_py_files(project_dir, config)
     if not py_files:
         print("  WARN: no Python files found"); return

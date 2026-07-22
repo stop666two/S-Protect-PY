@@ -240,8 +240,8 @@ class Obfuscator(ast.NodeTransformer):
 
 
 class _AttrObfuscator(ast.NodeTransformer):
-    """Rename attribute access (obj.ATTR). Skips when the object is a
-    function parameter (likely dict-like) or an import name (stdlib module)."""
+    """Rename attribute access (obj.ATTR). Only renames when the object
+    itself is a renamed project variable — stdlib/third-party types are safe."""
 
     def __init__(self, rename_map: dict[str, str], param_names: set[str],
                  import_names: set[str]):
@@ -251,7 +251,8 @@ class _AttrObfuscator(ast.NodeTransformer):
 
     def visit_Attribute(self, node: ast.Attribute):
         self.generic_visit(node)
-        if node.attr in self._map and isinstance(node.value, ast.Name):
+        if (node.attr in self._map and isinstance(node.value, ast.Name)
+                and node.value.id in self._map):
             if node.value.id in self._param_names:
                 return node
             if node.value.id in self._import_names:

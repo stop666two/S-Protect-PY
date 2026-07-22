@@ -240,9 +240,36 @@ class {cls_F}(importlib.abc.MetaPathFinder):
             return s
         return None
 
+def _verify_manifest(root):
+    mf = os.path.join(root or _SD, "integrity_manifest.json")
+    if not os.path.isfile(mf): return
+    import json as _js
+    manifest = _js.loads(open(mf, "rb").read().decode())
+    for rel, expected in manifest.items():
+        fp = os.path.join(_D, rel)
+        if not os.path.isfile(fp):
+            raise RuntimeError("Integrity: missing " + rel)
+        h = hashlib.sha256()
+        with open(fp, "rb") as f:
+            while True:
+                chunk = f.read(65536)
+                if not chunk: break
+                h.update(chunk)
+        if h.hexdigest() != expected:
+            raise RuntimeError("Integrity: modified " + rel)
+    actual = set()
+    for r, _, fs in os.walk(_D):
+        for f in fs:
+            if f.endswith(".pye"):
+                actual.add(os.path.relpath(os.path.join(r, f), _D).replace("\\\\", "/"))
+    extra = actual - set(manifest)
+    if extra:
+        raise RuntimeError("Integrity: extra files " + str(extra))
+
 def run(entry, root=""):
     """Run entry: decrypt map, collect shards, load modules."""
     if not _MAP: raise RuntimeError("No module map")
+    _verify_manifest(root)
     mmap = json.loads(_MAP)
     shards = {{}}
     for mn, hn in mmap.items():

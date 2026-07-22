@@ -18,6 +18,7 @@ def _parser() -> argparse.ArgumentParser:
     b.add_argument("--output", default="./output", help="Output directory")
     b.add_argument("-c", "--config", help="Path to sprotect.json5")
     b.add_argument("--clean", action="store_true", help="Auto-clean output directory before build")
+    b.add_argument("--watch", action="store_true", help="Watch project files and auto-rebuild on change")
 
     e = s.add_parser("encrypt", help="Encrypt individual files")
     e.add_argument("files", nargs="+")
@@ -161,6 +162,26 @@ def main(argv: list[str] | None = None) -> int:
             exe = do_pack(out, cfg.pack)
             if exe:
                 print(f"  Packed: {exe}")
+        if getattr(a, "watch", False):
+            import time
+            py_files = sorted(p for p in Path(proj).rglob("*.py") if not any(
+                d in p.parts for d in ("__pycache__", ".git", "_backup", "_runtime")))
+            mtimes = {str(p): os.path.getmtime(p) for p in py_files}
+            print(f"  Watching {len(py_files)} files...")
+            try:
+                while True:
+                    time.sleep(1)
+                    for p in py_files:
+                        fp = str(p)
+                        mt = os.path.getmtime(fp)
+                        if mt != mtimes[fp]:
+                            print(f"\n  Change detected: {p.name}")
+                            mtimes[fp] = mt
+                            build_project(proj, out, cfg)
+                            print(f"  Rebuild done. Watching...")
+                            break
+            except KeyboardInterrupt:
+                print("\n  Watch stopped.")
         return 0
 
     if a.cmd == "run":

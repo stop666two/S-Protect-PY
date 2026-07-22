@@ -8,6 +8,7 @@ from sprotect.types import Config
 from sprotect.config import merge_file_config
 from sprotect.obfuscate import Obfuscator, collect_defs
 from sprotect.project import find_py_files
+from sprotect.virtualize import virtualize_source
 from sprotect.crypto import aes_key, split_key, chain_hash, encrypt_payload, encrypt_payload_v2, generate_decoy_payload, rsa_generate_keypair, rsa_encrypt_master_key, ecc_generate_keypair, ecc_encrypt_master_key
 from sprotect.loader import gen_boot, gen_loader_source
 from sprotect.backup import backup
@@ -93,6 +94,8 @@ def build(project_dir, output_dir, config):
             src = open(fp, encoding="utf-8-sig").read()
             if fc.obfuscate.level.value >= 1:
                 src = Obfuscator(fc.obfuscate, shared_map, shared_params).obfuscate(src)
+            if fc.virtualization.enabled and fc.virtualization.functions:
+                src = virtualize_source(src, fc.virtualization)
             if wm: src = wm.code(src)
             extra = fc.encrypt.extra_layers or []
             if extra:
@@ -185,6 +188,25 @@ def build(project_dir, output_dir, config):
                        "f1":"","f2":"","f3":""}
     open(os.path.join(rd, "loader.pye"), "wb").write(
         json.dumps(loader_payload, separators=(",", ":")).encode())
+
+    # Integrity manifest
+    manifest = {}
+    for r, _, fs in os.walk(rd):
+        for f in sorted(fs):
+            if f.endswith(".pye"):
+                fp = os.path.join(r, f)
+                h = hashlib.sha256()
+                with open(fp, "rb") as fh:
+                    while True:
+                        chunk = fh.read(65536)
+                        if not chunk: break
+                        h.update(chunk)
+                rel = os.path.relpath(fp, rd).replace("\\", "/")
+                manifest[rel] = h.hexdigest()
+    mpath = os.path.join(output_dir, "integrity_manifest.json")
+    with open(mpath, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, separators=(",", ":"))
+    print(f"  Integrity manifest: {mpath} ({len(manifest)} files)")
 
     # Watermark report
     if wm:

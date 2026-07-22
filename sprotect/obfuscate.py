@@ -104,6 +104,8 @@ class Obfuscator(ast.NodeTransformer):
         tree = self.visit(tree)
         if self.cfg.obfuscate_imports:
             tree = _ImportObfuscator(self.map).visit(tree)
+            # Re-rename Name nodes in newly created import assignments
+            _PostRename(self.map).visit(tree)
         if self.cfg.obfuscate_arithmetic:
             tree = _ArithmeticObfuscator().visit(tree)
         if self.cfg.obfuscate_booleans:
@@ -223,6 +225,18 @@ class Obfuscator(ast.NodeTransformer):
         self._fstring_depth += 1; r = self.generic_visit(n); self._fstring_depth -= 1; return r
     def visit_JoinedStr(self, n):
         self._fstring_depth += 1; r = self.generic_visit(n); self._fstring_depth -= 1; return r
+
+
+class _PostRename(ast.NodeTransformer):
+    """Rename Name nodes in the tree after import transformation."""
+
+    def __init__(self, rename_map: dict[str, str]):
+        self._map = rename_map
+
+    def visit_Name(self, node: ast.Name):
+        if node.id in self._map:
+            node.id = self._map[node.id]
+        return self.generic_visit(node)
 
 
 class _ImportObfuscator(ast.NodeTransformer):

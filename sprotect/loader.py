@@ -107,9 +107,9 @@ def gen_loader_source() -> str:
 
     # Build the loader source with random names
     src = f'''"""Runtime v7 - auto-generated, randomized structure."""
-    import sys, os, json, hmac, hashlib, zlib, importlib.abc, importlib.machinery
-    sys.dont_write_bytecode = True
-    try: _SD = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__file__))
+import sys, os, json, hmac, hashlib, zlib, importlib.abc, importlib.machinery
+sys.dont_write_bytecode = True
+try: _SD = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__file__))
 except: _SD = getattr(sys, '_MEIPASS', None) or (os.path.dirname(os.path.abspath(sys.argv[0])) if sys.argv else ".")
 _D = os.path.join(_SD, "_runtime") if os.path.isdir(os.path.join(_SD, "_runtime")) else _SD
 _MAP = ""

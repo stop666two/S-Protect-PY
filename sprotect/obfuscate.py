@@ -301,25 +301,37 @@ class _ImportObfuscator(ast.NodeTransformer):
 
 
 class _CallObfuscator(ast.NodeTransformer):
-    """Wrap function calls in lambda wrappers."""
+    """Wrap function calls in lambda wrappers to break static analysis."""
 
     def visit_Call(self, node: ast.Call):
         self.generic_visit(node)
         if isinstance(node.func, ast.Name) and node.func.id in ("__import__", "exec", "eval", "compile", "getattr", "hasattr"):
             return node
-        if isinstance(node.func, ast.Attribute):
-            return node
-        if len(node.args) <= 2 and not node.keywords and secrets.randbelow(4) == 0:
-            arg_names = [f"_a{i}" for i in range(len(node.args))]
-            lambda_args = ast.arguments(
-                args=[ast.arg(arg=n) for n in arg_names],
-                posonlyargs=[], kwonlyargs=[], kw_defaults=[], defaults=[])
-            inner_call = ast.Call(func=node.func,
-                args=[ast.Name(id=n, ctx=ast.Load()) for n in arg_names],
-                keywords=[])
-            lambda_node = ast.Lambda(args=lambda_args, body=inner_call)
-            return ast.Call(func=lambda_node,
-                args=node.args, keywords=[])
+        if len(node.args) <= 3 and not node.keywords and secrets.randbelow(3) == 0:
+            if isinstance(node.func, ast.Attribute):
+                arg_count = 1 + len(node.args)
+                arg_names = [f"_a{i}" for i in range(arg_count)]
+                inner_call = ast.Call(
+                    func=ast.Attribute(value=ast.Name(id=arg_names[0], ctx=ast.Load()),
+                                       attr=node.func.attr, ctx=ast.Load()),
+                    args=[ast.Name(id=n, ctx=ast.Load()) for n in arg_names[1:]],
+                    keywords=[])
+                lambda_args = ast.arguments(
+                    args=[ast.arg(arg=n) for n in arg_names],
+                    posonlyargs=[], kwonlyargs=[], kw_defaults=[], defaults=[])
+                return ast.Call(func=ast.Lambda(args=lambda_args, body=inner_call),
+                    args=[node.func.value] + node.args, keywords=[])
+            else:
+                arg_count = 1 + len(node.args)
+                arg_names = [f"_a{i}" for i in range(arg_count)]
+                inner_call = ast.Call(func=ast.Name(id=arg_names[0], ctx=ast.Load()),
+                    args=[ast.Name(id=n, ctx=ast.Load()) for n in arg_names[1:]],
+                    keywords=[])
+                lambda_args = ast.arguments(
+                    args=[ast.arg(arg=n) for n in arg_names],
+                    posonlyargs=[], kwonlyargs=[], kw_defaults=[], defaults=[])
+                return ast.Call(func=ast.Lambda(args=lambda_args, body=inner_call),
+                    args=[node.func] + node.args, keywords=[])
         return node
 
 

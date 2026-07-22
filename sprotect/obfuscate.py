@@ -424,9 +424,6 @@ class _ArithmeticObfuscator(ast.NodeTransformer):
         if isinstance(node.op, ast.Sub) and self._is_num(node.left) and self._is_num(node.right) and secrets.randbelow(3) == 0:
             neg = ast.UnaryOp(op=ast.USub(), operand=node.right)
             return ast.BinOp(left=node.left, op=ast.Add(), right=neg)
-        if isinstance(node.op, ast.Sub) and secrets.randbelow(3) == 0:
-            neg = ast.UnaryOp(op=ast.USub(), operand=node.right)
-            return ast.BinOp(left=node.left, op=ast.Add(), right=neg)
         if isinstance(node.op, ast.Mult) and isinstance(node.right, ast.Constant) and isinstance(node.right.value, int):
             v = node.right.value
             if v > 0 and (v & (v - 1)) == 0 and secrets.randbelow(2) == 0:

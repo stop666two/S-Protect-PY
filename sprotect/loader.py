@@ -109,6 +109,9 @@ def gen_loader_source() -> str:
     src = f'''"""Runtime v7 - auto-generated, randomized structure."""
 import sys, os, json, hmac, hashlib, zlib, importlib.abc, importlib.machinery
 sys.dont_write_bytecode = True
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 try: _SD = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__file__))
 except: _SD = getattr(sys, '_MEIPASS', None) or (os.path.dirname(os.path.abspath(sys.argv[0])) if sys.argv else ".")
 _D = os.path.join(_SD, "_runtime") if os.path.isdir(os.path.join(_SD, "_runtime")) else _SD
@@ -303,6 +306,9 @@ def run(entry, root=""):
 _BOOT_STUB = '''"""Module loader."""
 import sys, os, json, hashlib, zlib, hmac
 sys.dont_write_bytecode = True
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 a = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__file__))
 
 def xo(l, s):
@@ -354,6 +360,9 @@ run("{entry}", a)
 _HYBRID_BOOT_STUB = '''"""Hybrid loader."""
 import sys, os, json, hashlib, zlib
 sys.dont_write_bytecode = True
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 _R = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__file__))
 
 def _boot(key_path):

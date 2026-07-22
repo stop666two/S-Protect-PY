@@ -150,23 +150,22 @@ def main(argv: list[str] | None = None) -> int:
         if getattr(a, "clean", False) and Path(out).is_dir():
             import shutil as _su, time as _tm
             for _ in range(5):
-                any_left = False
-                for p in list(Path(out).iterdir()):
-                    try:
+                try:
+                    for p in list(Path(out).iterdir()):
                         if p.is_dir():
                             _su.rmtree(p, ignore_errors=True)
                         else:
                             p.unlink(missing_ok=True)
-                    except: pass
-                    if p.exists():
-                        any_left = True
-                if not any_left:
-                    break
+                    if not any(Path(out).iterdir()):
+                        break
+                except (FileNotFoundError, PermissionError):
+                    pass
                 _tm.sleep(0.5)
         if cfg.encrypt.backup: backup(proj)
         build_project(proj, out, cfg)
-        if not Path(os.path.join(out, "main.py")).is_file():
-            print(f"  Build failed: output incomplete", file=sys.stderr); return 1
+        entry_name = cfg.project.entry
+        if not Path(os.path.join(out, entry_name)).is_file():
+            print(f"  Build failed: {entry_name} not generated", file=sys.stderr); return 1
         print(f"Project '{cfg.project.name}' encrypted.")
         print(f"  Output: {out}")
         print(f"  Entry:  {cfg.project.entry}")

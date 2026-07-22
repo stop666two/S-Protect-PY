@@ -126,6 +126,8 @@ class Obfuscator(ast.NodeTransformer):
             tree = _LiteralEncryptor(self.cfg, self._fstring_depth).visit(tree)
         if self.cfg.obfuscate_calls:
             tree = _CallObfuscator().visit(tree)
+        if self.cfg.control_flow_flattening:
+            tree = _ControlFlowFlattener().visit(tree)
         if self.cfg.dead_code_injection:
             self._inject_dead_code(tree)
         ast.fix_missing_locations(tree)
@@ -332,6 +334,34 @@ class _CallObfuscator(ast.NodeTransformer):
                     posonlyargs=[], kwonlyargs=[], kw_defaults=[], defaults=[])
                 return ast.Call(func=ast.Lambda(args=lambda_args, body=inner_call),
                     args=[node.func] + node.args, keywords=[])
+        return node
+
+
+class _ControlFlowFlattener(ast.NodeTransformer):
+    """Flatten control flow: convert sequential code to state machine."""
+
+    def visit_FunctionDef(self, node: ast.FunctionDef):
+        self.generic_visit(node)
+        if len(node.body) < 3:
+            return node
+        sname = f"_s{secrets.token_hex(2)}"
+        state_st = ast.Name(id=sname, ctx=ast.Store())
+        state_ld = ast.Name(id=sname, ctx=ast.Load())
+        blocks = list(enumerate(node.body))
+        if len(blocks) < 3:
+            return node
+        if_chain = None
+        for i, (_, stmt) in reversed(list(enumerate(blocks))):
+            if i == len(blocks) - 1:
+                if_chain = stmt
+            else:
+                next_val = ast.BinOp(left=state_ld, op=ast.Add(), right=ast.Constant(1))
+                if_chain = ast.If(
+                    test=ast.Compare(left=state_ld, ops=[ast.Eq()], comparators=[ast.Constant(i)]),
+                    body=[stmt, ast.Assign(targets=[state_st], value=next_val)],
+                    orelse=[if_chain] if isinstance(if_chain, ast.If) else [if_chain])
+        dispatch = ast.While(test=ast.Constant(True), body=[if_chain], orelse=[])
+        node.body = [ast.Assign(targets=[state_st], value=ast.Constant(0)), dispatch]
         return node
 
 

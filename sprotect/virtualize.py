@@ -11,6 +11,13 @@ _OP = {
     "COMPARE_EQ": 21, "COMPARE_NE": 22, "COMPARE_LT": 23, "COMPARE_GT": 24,
     "COMPARE_LE": 25, "COMPARE_GE": 26, "JUMP_FORWARD": 30, "JUMP_IF_FALSE": 31,
     "JUMP_ABSOLUTE": 32, "CALL_FUNCTION": 40, "RETURN_VALUE": 50,
+    "BUILD_LIST": 60, "BUILD_TUPLE": 61, "BUILD_SET": 62, "BUILD_DICT": 63,
+    "BUILD_SLICE": 64, "LIST_APPEND": 65, "MAP_ADD": 66,
+    "UNARY_NOT": 70, "UNARY_NEG": 71, "UNARY_INV": 72,
+    "FOR_ITER": 80, "GET_ITER": 81, "YIELD_VALUE": 90,
+    "SETUP_EXCEPT": 100, "POP_EXCEPT": 101, "RAISE": 102,
+    "LOAD_ATTR": 110, "STORE_ATTR": 111,
+    "LOAD_SUBSCR": 112, "STORE_SUBSCR": 113,
 }
 
 _OP_REV = {v: k for k, v in _OP.items()}
@@ -133,7 +140,68 @@ class VMCompiler:
             self._emit("CALL_FUNCTION", len(node.args))
         elif isinstance(node, ast.Attribute):
             self.compile(node.value)
-            self._emit("LOAD_CONST", self._const_idx(node.attr))
+            self._emit("LOAD_ATTR", self._const_idx(node.attr))
+        elif isinstance(node, ast.Subscript):
+            self.compile(node.value)
+            self.compile(node.slice)
+            self._emit("LOAD_SUBSCR")
+        elif isinstance(node, ast.UnaryOp):
+            self.compile(node.operand)
+            if isinstance(node.op, ast.Not): self._emit("UNARY_NOT")
+            elif isinstance(node.op, ast.USub): self._emit("UNARY_NEG")
+            elif isinstance(node.op, ast.Invert): self._emit("UNARY_INV")
+        elif isinstance(node, ast.For):
+            iter_name = f"_i{secrets.token_hex(2)}"
+            self.compile(node.iter)
+            self._emit("STORE_NAME", self._name_idx(iter_name))
+            start = len(self._code)
+            self._emit("LOAD_NAME", self._name_idx(iter_name))
+            self._emit("FOR_ITER")
+            exit_patch = len(self._code) - 1
+            self.compile(node.target)
+            for stmt in node.body:
+                self.compile(stmt)
+            self._emit("JUMP_ABSOLUTE", start)
+            self._patch(exit_patch, len(self._code))
+        elif isinstance(node, ast.Try):
+            for handler in node.handlers:
+                self._emit("SETUP_EXCEPT")
+                try_start = len(self._code)
+                for stmt in node.body:
+                    self.compile(stmt)
+                self._emit("POP_EXCEPT")
+                if handler.name:
+                    self._emit("STORE_NAME", self._name_idx(handler.name))
+                for stmt in handler.body:
+                    self.compile(stmt)
+        elif isinstance(node, ast.Yield):
+            if node.value:
+                self.compile(node.value)
+            self._emit("YIELD_VALUE")
+        elif isinstance(node, ast.List):
+            for elt in node.elts:
+                self.compile(elt)
+            self._emit("BUILD_LIST", len(node.elts))
+        elif isinstance(node, ast.Tuple):
+            for elt in node.elts:
+                self.compile(elt)
+            self._emit("BUILD_TUPLE", len(node.elts))
+        elif isinstance(node, ast.Set):
+            for elt in node.elts:
+                self.compile(elt)
+            self._emit("BUILD_SET", len(node.elts))
+        elif isinstance(node, ast.Dict):
+            for k, v in zip(node.keys, node.values):
+                self.compile(k)
+                self.compile(v)
+            self._emit("BUILD_DICT", len(node.keys))
+        elif isinstance(node, ast.ListComp):
+            self._emit("BUILD_LIST", 0)
+            for gen in node.generators:
+                self.compile(gen.iter)
+                self._emit("GET_ITER")
+                for stmt in gen.ifs:
+                    self.compile(stmt)
 
     def get_bytecode(self) -> bytes:
         data = bytearray()
@@ -249,6 +317,42 @@ class VMInterpreter:
                 stack.append(fn(*args_list))
             elif op == _OP["RETURN_VALUE"]: return stack.pop() if stack else None
             elif op == _OP["NOP"]: pass
+            elif op == _OP["UNARY_NOT"]: stack.append(not stack.pop())
+            elif op == _OP["UNARY_NEG"]: stack.append(-stack.pop())
+            elif op == _OP["UNARY_INV"]: stack.append(~stack.pop())
+            elif op == _OP["BUILD_LIST"]:
+                items = [stack.pop() for _ in range(arg)][::-1]; stack.append(items)
+            elif op == _OP["BUILD_TUPLE"]:
+                items = [stack.pop() for _ in range(arg)][::-1]; stack.append(tuple(items))
+            elif op == _OP["BUILD_SET"]:
+                items = [stack.pop() for _ in range(arg)][::-1]; stack.append(set(items))
+            elif op == _OP["BUILD_DICT"]:
+                items = [(stack.pop(), stack.pop()) for _ in range(arg)][::-1]
+                stack.append(dict(items))
+            elif op == _OP["LOAD_ATTR"]:
+                obj = stack.pop(); stack.append(getattr(obj, self._consts[arg]))
+            elif op == _OP["STORE_ATTR"]:
+                val = stack.pop(); obj = stack.pop()
+                setattr(obj, self._consts[arg], val)
+            elif op == _OP["LOAD_SUBSCR"]:
+                key = stack.pop(); obj = stack.pop(); stack.append(obj[key])
+            elif op == _OP["STORE_SUBSCR"]:
+                val = stack.pop(); key = stack.pop(); obj = stack.pop(); obj[key] = val
+            elif op == _OP["GET_ITER"]:
+                stack.append(iter(stack.pop()))
+            elif op == _OP["FOR_ITER"]:
+                try:
+                    it = stack[-1]; stack.append(next(it))
+                except StopIteration:
+                    stack.pop(); ip = arg
+            elif op == _OP["YIELD_VALUE"]:
+                return stack.pop()
+            elif op == _OP["SETUP_EXCEPT"]:
+                pass
+            elif op == _OP["POP_EXCEPT"]:
+                pass
+            elif op == _OP["RAISE"]:
+                raise stack.pop() if stack else Exception("VM raise")
         return stack.pop() if stack else None
 
 

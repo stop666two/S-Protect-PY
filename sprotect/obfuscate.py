@@ -310,6 +310,8 @@ class _CallObfuscator(ast.NodeTransformer):
         self.generic_visit(node)
         if isinstance(node.func, ast.Name) and node.func.id in ("__import__", "exec", "eval", "compile", "getattr", "hasattr"):
             return node
+        if any(isinstance(a, ast.Starred) for a in node.args):
+            return node
         if len(node.args) <= 3 and not node.keywords and secrets.randbelow(3) == 0:
             if isinstance(node.func, ast.Attribute):
                 arg_count = 1 + len(node.args)

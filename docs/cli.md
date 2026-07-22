@@ -13,22 +13,22 @@ sprotect build                          # 默认 project/ → output/
 sprotect build --project ./src          # 指定源码目录
 sprotect build --output ./dist          # 指定输出目录
 sprotect build -c myconfig.json5        # 使用自定义配置
-sprotect build --clean                  # 自动清空输出目录（无需手动删除）
+sprotect build --clean                  # 自动清空输出目录
 sprotect build --watch                  # 监控源码变化自动重构建
 ```
 
 构建流程：
-1. 若 `--clean`，自动清空 output 目录
-2. 备份 project/ → \_backup/
+1. 若 `--clean`，尝试清空 output 目录（失败则警告 + 覆盖）
+2. 备份 project/ 到 _backup/
 3. 扫描所有 .py 文件
-4. 第一遍：收集跨文件命名映射（含属性名）
-5. 逐文件：混淆 → 虚拟化（若配置）→ 加密 → 写入 .pye
+4. 第一遍：收集跨文件命名映射 + import 名 + 函数参数名
+5. 逐文件：混淆（含属性重命名、调用混淆）→ 虚拟化（若配置）→ 蜜罐注入 → 加密 → 写入 .pye
 6. 链式哈希校验
-7. 生成诱饵文件
+7. 生成诱饵文件 + 蜜罐函数
 8. 生成 loader + boot stub
-9. 完整性白名单（integrity\_manifest.json）
-10. 水印报告
-11. 若 `--watch`，进入监控模式等待文件变更
+9. 输出至 `_meta/` 目录：integrity\_manifest.json、build.spec、protection\_report.html、watermark\_report.json
+10. 若 `--watch`，进入监控模式
+11. 检测输出文件完整性（入口文件是否存在）
 
 ## run — 运行加密项目
 
@@ -37,15 +37,15 @@ sprotect run                            # 运行 ./output/
 sprotect run --dir ./dist               # 运行指定目录
 ```
 
-- 自动加载 output/.env 到环境变量（支持 hybrid 密钥路径配置）
+- 自动加载 output/.env 到环境变量
 - 透传子进程退出码
 
-## pack — 打包为 exe
+## pack — 打包为 exe（PyInstaller）
 
 ```bash
-sprotect pack                           # 打包 output/ 为 exe（需 PyInstaller）
-sprotect pack --onedir                  # 目录模式（启动更快）
-sprotect pack --noconsole               # 隐藏控制台（GUI 程序）
+sprotect pack                           # 打包 output/ 为 exe
+sprotect pack --onedir                  # 目录模式
+sprotect pack --noconsole               # 隐藏控制台
 sprotect pack --icon myapp.ico          # 自定义图标
 ```
 

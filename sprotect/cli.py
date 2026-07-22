@@ -148,13 +148,21 @@ def main(argv: list[str] | None = None) -> int:
         if not Path(proj).is_dir():
             print(f"Error: project directory not found: {proj}", file=sys.stderr); return 1
         if getattr(a, "clean", False) and Path(out).is_dir():
-            import shutil as _su
-            _orig = os.getcwd()
-            try:
-                os.chdir(os.path.dirname(out) or ".")
-                _su.rmtree(out, ignore_errors=True)
-            finally:
-                os.chdir(_orig)
+            import shutil as _su, time as _tm
+            for _ in range(5):
+                any_left = False
+                for p in list(Path(out).iterdir()):
+                    try:
+                        if p.is_dir():
+                            _su.rmtree(p, ignore_errors=True)
+                        else:
+                            p.unlink(missing_ok=True)
+                    except: pass
+                    if p.exists():
+                        any_left = True
+                if not any_left:
+                    break
+                _tm.sleep(0.5)
         if cfg.encrypt.backup: backup(proj)
         build_project(proj, out, cfg)
         if not Path(os.path.join(out, "main.py")).is_file():

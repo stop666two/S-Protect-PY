@@ -103,14 +103,14 @@
 
     // --- checks: 启用的检测项列表 ---
     // 可用值: "pdb" | "ptrace" | "debugger" | "vm" | "sandbox"
-    //        | "timing" | "cuckoo" | "ida" | "procmon"
+    //        | "timing" | "cuckoo" | "ida" | "procmon", "gpu"
     // 不可用: 不存在的检测项名称
     // 注意事项: 建议全部开启，每一项都有其特定防御场景。
     //   如果某些检测在特定环境下误报，可通过 per_check_actions
     //   单独覆盖其行为而非直接移除。
     checks: [
       "pdb", "ptrace", "debugger", "vm",
-      "sandbox", "timing", "cuckoo", "ida", "procmon",
+      "sandbox", "timing", "cuckoo", "ida", "procmon", "gpu",
     ],
 
     // --- per_check_actions: 逐检测项覆盖动作 ---

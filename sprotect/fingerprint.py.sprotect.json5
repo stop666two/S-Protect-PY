@@ -1,0 +1,8 @@
+{
+  obfuscate: {
+    level: 4,
+    encrypt_strings: false,
+    control_flow_flattening: false,
+    dead_code_injection: false,
+  },
+}

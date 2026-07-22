@@ -210,7 +210,7 @@ def gen_default(path: str) -> Path:
             "polymorphic_padding":True,"polymorphic_padding_max":512,"aad_context":"S-Protect-PY",
             "extra_layers":[],"hybrid":{},"workers":0},
         "anti_debug":{"enabled":True,"action":"exit",
-            "checks":["pdb","ptrace","debugger","vm","sandbox","timing","cuckoo","ida","procmon"],
+            "checks":["pdb","ptrace","debugger","vm","sandbox","timing","cuckoo","ida","procmon","gpu"],
             "per_check_actions":[],"process_whitelist":[],"block_tracing":True,
             "timing_threshold":2.0,"exit_code":1,"wipe_memory":True,"corrupt_on_exit":False},
         "virtualization":{"enabled":False,"mode":"partial","functions":[],"glob_patterns":[],

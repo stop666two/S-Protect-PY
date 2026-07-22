@@ -130,6 +130,7 @@ class Obfuscator(ast.NodeTransformer):
             tree = _ControlFlowFlattener().visit(tree)
         if self.cfg.dead_code_injection:
             self._inject_dead_code(tree)
+            tree = _HoneypotInjector(self.map).visit(tree)
         ast.fix_missing_locations(tree)
         return ast.unparse(tree)
 
@@ -334,6 +335,39 @@ class _CallObfuscator(ast.NodeTransformer):
                     posonlyargs=[], kwonlyargs=[], kw_defaults=[], defaults=[])
                 return ast.Call(func=ast.Lambda(args=lambda_args, body=inner_call),
                     args=[node.func] + node.args, keywords=[])
+        return node
+
+
+class _HoneypotInjector(ast.NodeTransformer):
+    """Inject honeypot functions that look like real decrypt/validate logic."""
+
+    _TRAP_SOURCES = [
+        'def {name}({args}):\n    import sys\n    while True:\n        pass\n    return None\n',
+        'def {name}({args}):\n    import os\n    try:\n        os._exit(0)\n    except:\n        pass\n    return None\n',
+        'def {name}({args}):\n    _d = bytearray(1024)\n    for i in range(1024):\n        _d[i] = (i * 7 + 3) & 0xFF\n    return bytes(_d)\n',
+        'def {name}({args}):\n    import hashlib as _h\n    _k = _h.sha256(b"key").hexdigest()\n    _v = _h.md5(b"data").hexdigest()\n    return _k[:8] == _v[:8]\n',
+    ]
+    _TRAP_ARGS = ["", "key, iv", "data, sig", "path, mode, ctx", "buf, offset"]
+
+    def __init__(self, name_map: dict[str, str]):
+        self._map = name_map
+
+    def visit_Module(self, node: ast.Module):
+        self.generic_visit(node)
+        used_names = set(self._map.values())
+        for _ in range(secrets.randbelow(3) + 2):
+            fn = secrets.token_hex(5)
+            while fn in used_names:
+                fn = secrets.token_hex(5)
+            used_names.add(fn)
+            args = secrets.choice(self._TRAP_ARGS)
+            tpl = secrets.choice(self._TRAP_SOURCES)
+            trap_src = tpl.format(name=fn, args=args)
+            try:
+                trap_tree = ast.parse(trap_src)
+                node.body.extend(trap_tree.body)
+            except SyntaxError:
+                pass
         return node
 
 

@@ -24,8 +24,9 @@ def find_py_files(project_dir: str, config: Config) -> list[str]:
     exc = config.files.exclude or []
     root = os.path.abspath(project_dir)
     result = []
+    excluded = set(config.files.exclude_dirs) | {"__pycache__", ".git"}
     for r, dirs, files in os.walk(root):
-        dirs[:] = [d for d in dirs if not d.startswith("_") and not d.startswith(".")]
+        dirs[:] = [d for d in dirs if d not in excluded and not d.startswith(".")]
         for f in files:
             if not f.endswith(".py"): continue
             fp = os.path.join(r, f)

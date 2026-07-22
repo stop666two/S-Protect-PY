@@ -39,9 +39,25 @@ class AntiDebug:
         return sys.gettrace() is not None
 
     def _chk_ptrace(self):
-        if platform.system() != "Linux": return False
-        try: return ctypes.CDLL("libc.so.6", use_errno=True).ptrace(0, 0, 0, 0) == -1
-        except: return False
+        if platform.system() == "Linux":
+            try: return ctypes.CDLL("libc.so.6", use_errno=True).ptrace(0, 0, 0, 0) == -1
+            except: return False
+        if platform.system() == "Windows":
+            try:
+                ntdll = ctypes.WinDLL("ntdll.dll", use_last_error=True)
+                info = ctypes.c_ulong()
+                h = ctypes.windll.kernel32.GetCurrentProcess()
+                STATUS_INFO_LEN_MISMATCH = 0xC0000004
+                ret = ntdll.NtQueryInformationProcess(h, 7, ctypes.byref(info), ctypes.sizeof(info), None)
+                return ret != STATUS_INFO_LEN_MISMATCH and info.value != 0
+            except: pass
+            try:
+                k32 = ctypes.WinDLL("kernel32.dll", use_last_error=True)
+                is_dbg = ctypes.c_bool()
+                k32.CheckRemoteDebuggerPresent(k32.GetCurrentProcess(), ctypes.byref(is_dbg))
+                return is_dbg.value
+            except: pass
+        return False
 
     def _chk_debugger(self):
         if sys.gettrace() is not None: return True

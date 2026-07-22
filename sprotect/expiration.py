@@ -22,13 +22,16 @@ class Expiration:
                 return self.cfg.on_network_fail != "reject"
         return True
     def _ntp(self):
-        for srv in ["pool.ntp.org", "time.google.com", "time.cloudflare.com"]:
-            try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.settimeout(3)
-                s.sendto(b"\x1b" + 47 * b"\x00", (srv, 123))
-                d, _ = s.recvfrom(1024); s.close()
-                if len(d) >= 48:
-                    t = struct.unpack("!12I", d)[10] - 2208988800
-                    return datetime.fromtimestamp(t, tz=timezone.utc)
-            except: pass
+        for srv in self.cfg.ntp_servers:
+            for family in (socket.AF_INET, socket.AF_INET6):
+                try:
+                    addrs = socket.getaddrinfo(srv, 123, family, socket.SOCK_DGRAM)
+                    if not addrs: continue
+                    s = socket.socket(family, socket.SOCK_DGRAM); s.settimeout(self.cfg.ntp_timeout)
+                    s.sendto(b"\x1b" + 47 * b"\x00", addrs[0][4])
+                    d, _ = s.recvfrom(1024); s.close()
+                    if len(d) >= 48:
+                        t = struct.unpack("!12I", d)[10] - 2208988800
+                        return datetime.fromtimestamp(t, tz=timezone.utc)
+                except: pass
         return None

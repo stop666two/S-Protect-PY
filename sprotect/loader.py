@@ -91,7 +91,7 @@ def _gen_decrypt_func(num: int) -> str:
 
 
 def gen_loader_source() -> str:
-    """Generate the runtime loader source with ALL random names and varying structure."""
+    """Generate the runtime loader source with randomized names and structure."""
     import secrets as _sec, random as _rnd
     _rnd.seed(_sec.randbits(32))
 

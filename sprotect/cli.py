@@ -155,7 +155,6 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if a.cmd == "encrypt":
-        from sprotect.encrypt import encrypt_file as ef
         for f in a.files:
             if not Path(f).exists():
                 print(f"Error: {f} not found", file=sys.stderr); return 1

@@ -103,43 +103,4 @@ def generate_trap_source() -> str:
     )
 
 
-def make_decoy_payload(source: str, real_key: bytes) -> bytes:
-    """Process decoy source through the SAME pipeline as real code:
-    minify → compress → encrypt.
-    This makes decoy and real files structurally identical.
-    """
-    from sprotect.minify import minify_source
-    from sprotect.crypto import aes_encrypt
-    
-    # Same minification as real code
-    minified = minify_source(source, add_garbage=False)
-    # Same compression
-    compressed = zlib.compress(minified.encode(), 9)
-    # Same encryption
-    ct = aes_encrypt(compressed, real_key)
-    
-    import json
-    # Same payload structure as real files
-    keys = {"k1": real_key.hex(), "k2": os.urandom(32).hex(), "k3": os.urandom(32).hex()}
-    f1 = hashlib.sha256(real_key).digest()[:4].hex()
-    from sprotect.crypto import verify_fingerprint
-    # Generate matching fingerprints
-    import hmac as _hm
-    import os as _os
-    k2_b = _os.urandom(32); k3_b = _os.urandom(32)
-    xored = bytearray(32)
-    for kb in [real_key, k2_b, k3_b]:
-        for i in range(min(32, len(kb))): xored[i] ^= kb[i]
-    fingerprints = {
-        "f1": hashlib.sha256(bytes(xored)).hexdigest()[5:13],
-        "f2": hashlib.sha256(real_key).hexdigest()[3:11],
-        "f3": _hm.new(real_key, b"S-Protect-v6-key-verify", "sha256").hexdigest()[:8],
-    }
-    
-    payload = {
-        "v": 7, "d": ct.hex(), "c": _os.urandom(32).hex(),
-        "p": _os.urandom(_os.urandom(1)[0]).hex(), "h": hashlib.sha256(source.encode()).hexdigest(),
-    }
-    payload.update(keys)
-    payload.update(fingerprints)
-    return json.dumps(payload, separators=(",", ":")).encode()
+

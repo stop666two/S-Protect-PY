@@ -7,6 +7,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 
 def derive_layer_key(master_key: bytes, info: str) -> tuple[bytes, bytes]:
+    """Derive sub-key using HKDF-SHA256 with domain separation via info string."""
     salt = hashlib.sha256(info.encode()).digest()[:16]
     hkdf = HKDF(
         algorithm=hashes.SHA256(),

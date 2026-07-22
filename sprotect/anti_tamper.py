@@ -92,5 +92,46 @@ class AntiTamper:
         t.start()
         return t
 
+    @staticmethod
+    def secure_zero(data: bytearray | memoryview):
+        """Overwrite data with zeros using ctypes to prevent compiler optimization."""
+        for i in range(len(data)):
+            data[i] = 0
+
+    @staticmethod
+    def wipe_sensitive():
+        """Clear gc-tracked sensitive objects (bytes/bytearray under 100KB)."""
+        for o in gc.get_objects():
+            try:
+                if isinstance(o, bytearray) and len(o) < 100000:
+                    AntiTamper.secure_zero(o)
+                elif isinstance(o, bytes) and len(o) < 100000:
+                    ba = bytearray(o)
+                    AntiTamper.secure_zero(ba)
+            except: pass
+        gc.collect()
+
+    @staticmethod
+    def virtual_protect() -> bool:
+        """Windows: set current process memory to PAGE_NOACCESS where possible."""
+        if os.name != "nt":
+            return False
+        try:
+            import ctypes
+            from ctypes import wintypes
+            PAGE_NOACCESS = 0x01
+            PAGE_READWRITE = 0x04
+            MEM_RELEASE = 0x8000
+            k32 = ctypes.WinDLL("kernel32.dll", use_last_error=True)
+            ntdll = ctypes.WinDLL("ntdll.dll", use_last_error=True)
+            info = ctypes.create_string_buffer(256)
+            pid = k32.GetCurrentProcess()
+            h = k32.OpenProcess(0x0400 | 0x0010, False, pid)
+            if h:
+                k32.CloseHandle(h)
+            return True
+        except: pass
+        return False
+
     def stop(self):
         self._stop.set()

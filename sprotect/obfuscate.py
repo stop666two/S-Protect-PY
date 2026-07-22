@@ -374,9 +374,17 @@ class _HoneypotInjector(ast.NodeTransformer):
 class _ControlFlowFlattener(ast.NodeTransformer):
     """Flatten control flow: convert sequential code to state machine."""
 
+    def _has_yield(self, node: ast.AST) -> bool:
+        """Check if a function body contains yield/generator expressions."""
+        for n in ast.walk(node):
+            if isinstance(n, (ast.Yield, ast.YieldFrom, ast.GeneratorExp,
+                              ast.ListComp, ast.SetComp, ast.DictComp)):
+                return True
+        return False
+
     def visit_FunctionDef(self, node: ast.FunctionDef):
         self.generic_visit(node)
-        if len(node.body) < 3:
+        if len(node.body) < 3 or self._has_yield(node):
             return node
         sname = f"_s{secrets.token_hex(2)}"
         state_st = ast.Name(id=sname, ctx=ast.Store())
@@ -396,6 +404,9 @@ class _ControlFlowFlattener(ast.NodeTransformer):
                     orelse=[if_chain] if isinstance(if_chain, ast.If) else [if_chain])
         dispatch = ast.While(test=ast.Constant(True), body=[if_chain], orelse=[])
         node.body = [ast.Assign(targets=[state_st], value=ast.Constant(0)), dispatch]
+        return node
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
         return node
 
 

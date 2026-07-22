@@ -1,7 +1,11 @@
+import os
 from sprotect.crypto import derive_layer_key
 
+def _key32(): return os.urandom(32)
+def _iv16(): return os.urandom(16)
+
 def test_derive_layer_key_deterministic():
-    mk = b"test_master_key_32_bytes_long!!"
+    mk = _key32()
     k1, s1 = derive_layer_key(mk, "sprotect:serpent")
     k2, s2 = derive_layer_key(mk, "sprotect:serpent")
     assert k1 == k2
@@ -9,7 +13,7 @@ def test_derive_layer_key_deterministic():
     assert len(k1) == 32
 
 def test_derive_layer_key_domain_sep():
-    mk = b"test_master_key_32_bytes_long!!"
+    mk = _key32()
     k1, _ = derive_layer_key(mk, "sprotect:serpent")
     k2, _ = derive_layer_key(mk, "sprotect:twofish")
     assert k1 != k2
@@ -24,8 +28,8 @@ from sprotect.crypto_extra import (
 
 def test_serpent_roundtrip():
     data = b"Hello Serpent AES!" * 100
-    key = b"k" * 32
-    iv = b"i" * 16
+    key = _key32()
+    iv = _iv16()
     ct = encrypt_serpent(data, key, iv)
     assert ct != data
     pt = decrypt_serpent(ct, key, iv)
@@ -33,16 +37,16 @@ def test_serpent_roundtrip():
 
 def test_serpent_wrong_key():
     data = b"test data here!!"
-    key = b"k" * 32
-    iv = b"i" * 16
+    key = _key32()
+    iv = _iv16()
     ct = encrypt_serpent(data, key, iv)
-    wrong = decrypt_serpent(ct, b"x" * 32, iv)
+    wrong = decrypt_serpent(ct, _key32(), iv)
     assert wrong != data
 
 def test_twofish_roundtrip():
     data = b"Hello Twofish CBC!" * 50
-    key = b"t" * 32
-    iv = b"i" * 16
+    key = _key32()
+    iv = _iv16()
     ct = encrypt_twofish(data, key, iv)
     assert ct != data
     pt = decrypt_twofish(ct, key, iv)
@@ -50,8 +54,8 @@ def test_twofish_roundtrip():
 
 def test_camellia_roundtrip():
     data = b"Hello Camellia CBC!" * 50
-    key = b"c" * 32
-    iv = b"i" * 16
+    key = _key32()
+    iv = _iv16()
     ct = encrypt_camellia(data, key, iv)
     assert ct != data
     pt = decrypt_camellia(ct, key, iv)
@@ -59,8 +63,8 @@ def test_camellia_roundtrip():
 
 def test_salsa20_roundtrip():
     data = b"Hello Salsa20 stream!" * 50
-    key = b"s" * 32
-    nonce = b"n" * 8
+    key = _key32()
+    nonce = os.urandom(8)
     ct = encrypt_salsa20(data, key, nonce)
     assert ct != data
     pt = decrypt_salsa20(ct, key, nonce)
@@ -71,7 +75,7 @@ from sprotect.crypto import encrypt_payload_v2, decrypt_payload_v2
 
 def test_encrypt_payload_v2_no_extra():
     data = b"test source code here"
-    key = b"m" * 32
+    key = _key32()
     ct, hdr = encrypt_payload_v2(data, key, [])
     assert "version" in hdr
     assert hdr["extra_layers"] == []
@@ -80,7 +84,7 @@ def test_encrypt_payload_v2_no_extra():
 
 def test_encrypt_payload_v2_with_serpent():
     data = b"test source with serpent" * 100
-    key = b"m" * 32
+    key = _key32()
     ct, hdr = encrypt_payload_v2(data, key, ["serpent"])
     assert "serpent" in hdr["layer_ivs"]
     pt = decrypt_payload_v2(ct, key, hdr)
@@ -88,7 +92,7 @@ def test_encrypt_payload_v2_with_serpent():
 
 def test_encrypt_payload_v2_all_layers():
     data = b"test source ALL layers" * 200
-    key = b"m" * 32
+    key = _key32()
     ct, hdr = encrypt_payload_v2(data, key, ["serpent", "twofish", "camellia", "salsa20"])
     for algo in ["serpent", "twofish", "camellia", "salsa20"]:
         assert algo in hdr["layer_ivs"]
@@ -100,14 +104,14 @@ from sprotect.decrypt import encrypt_to_pye, decrypt_from_pye
 
 def test_pye_v2_header_roundtrip():
     data = b"def foo(): pass"
-    key = b"m" * 32
+    key = _key32()
     pye = encrypt_to_pye(data, key, ["serpent"])
     pt = decrypt_from_pye(pye)
     assert pt == data
 
 def test_pye_v2_no_extra_roundtrip():
     data = b"print('hello')" * 50
-    key = b"m" * 32
+    key = _key32()
     pye = encrypt_to_pye(data, key, [])
     pt = decrypt_from_pye(pye)
     assert pt == data
@@ -119,21 +123,21 @@ from sprotect.crypto import (
 )
 
 def test_rsa_roundtrip():
-    mk = b"m" * 32
+    mk = _key32()
     pub, priv = rsa_generate_keypair(2048)
     enc = rsa_encrypt_master_key(mk, pub)
     dec = rsa_decrypt_master_key(enc, priv)
     assert dec == mk
 
 def test_rsa_passphrase():
-    mk = b"m" * 32
+    mk = _key32()
     pub, priv = rsa_generate_keypair(2048, "test123")
     enc = rsa_encrypt_master_key(mk, pub)
     dec = rsa_decrypt_master_key(enc, priv, "test123")
     assert dec == mk
 
 def test_ecc_roundtrip():
-    mk = b"m" * 32
+    mk = _key32()
     pub, priv = ecc_generate_keypair("P-256")
     enc = ecc_encrypt_master_key(mk, pub)
     dec = ecc_decrypt_master_key(enc, priv)

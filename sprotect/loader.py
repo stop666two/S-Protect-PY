@@ -109,9 +109,12 @@ def gen_loader_source() -> str:
     src = f'''"""Runtime v7 - auto-generated, randomized structure."""
 import sys, os, json, hmac, hashlib, zlib, importlib.abc, importlib.machinery
 sys.dont_write_bytecode = True
+try:
+    import locale; _enc = locale.getpreferredencoding() or "utf-8"
+except: _enc = "utf-8"
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding=_enc, errors="replace")
+    sys.stderr.reconfigure(encoding=_enc, errors="replace")
 try: _SD = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__file__))
 except: _SD = getattr(sys, '_MEIPASS', None) or (os.path.dirname(os.path.abspath(sys.argv[0])) if sys.argv else ".")
 _D = os.path.join(_SD, "_runtime") if os.path.isdir(os.path.join(_SD, "_runtime")) else _SD
@@ -245,7 +248,10 @@ class {cls_F}(importlib.abc.MetaPathFinder):
         return None
 
 def _verify_manifest(root):
-    mf = os.path.join(root or _SD, "integrity_manifest.json")
+    base = root or _SD
+    mf = os.path.join(base, "integrity_manifest.json")
+    if not os.path.isfile(mf):
+        mf = os.path.join(base, "_meta", "integrity_manifest.json")
     if not os.path.isfile(mf): return
     import json as _js
     manifest = _js.loads(open(mf, "rb").read().decode())
@@ -306,9 +312,12 @@ def run(entry, root=""):
 _BOOT_STUB = '''"""Module loader."""
 import sys, os, json, hashlib, zlib, hmac
 sys.dont_write_bytecode = True
+try:
+    import locale; _enc = locale.getpreferredencoding() or "utf-8"
+except: _enc = "utf-8"
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding=_enc, errors="replace")
+    sys.stderr.reconfigure(encoding=_enc, errors="replace")
 a = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__file__))
 
 def xo(l, s):
@@ -360,9 +369,12 @@ run("{entry}", a)
 _HYBRID_BOOT_STUB = '''"""Hybrid loader."""
 import sys, os, json, hashlib, zlib
 sys.dont_write_bytecode = True
+try:
+    import locale; _enc = locale.getpreferredencoding() or "utf-8"
+except: _enc = "utf-8"
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    sys.stdout.reconfigure(encoding=_enc, errors="replace")
+    sys.stderr.reconfigure(encoding=_enc, errors="replace")
 _R = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__file__))
 
 def _boot(key_path):

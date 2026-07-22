@@ -186,6 +186,10 @@ def build(project_dir, output_dir, config):
     open(os.path.join(rd, "loader.pye"), "wb").write(
         json.dumps(loader_payload, separators=(",", ":")).encode())
 
+    # Create _meta/ directory for metadata files
+    meta_dir = os.path.join(output_dir, "_meta")
+    os.makedirs(meta_dir, exist_ok=True)
+
     # Integrity manifest
     manifest = {}
     for r, _, fs in os.walk(rd):
@@ -200,10 +204,63 @@ def build(project_dir, output_dir, config):
                         h.update(chunk)
                 rel = os.path.relpath(fp, rd).replace("\\", "/")
                 manifest[rel] = h.hexdigest()
-    mpath = os.path.join(output_dir, "integrity_manifest.json")
+    mpath = os.path.join(meta_dir, "integrity_manifest.json")
     with open(mpath, "w", encoding="utf-8") as f:
         json.dump(manifest, f, separators=(",", ":"))
     print(f"  Integrity manifest: {mpath} ({len(manifest)} files)")
+
+    # Build spec
+    spec = {
+        "project": config.project.name,
+        "version": config.project.version,
+        "entry": config.project.entry,
+        "built_at": datetime.now(timezone.utc).isoformat(),
+        "obfuscate_level": config.obfuscate.level.value,
+        "encrypt_algorithm": config.encrypt.algorithm,
+        "extra_layers": config.encrypt.extra_layers,
+        "shard_count": config.encrypt.shard_count,
+        "watermark_batch_id": wm.bid if wm else "",
+        "hybrid_encryption": config.encrypt.hybrid.enabled,
+        "file_count": len(py_files),
+        "decoy_count": max(2, len(py_files) // 2),
+    }
+    spec_path = os.path.join(meta_dir, "build.spec")
+    with open(spec_path, "w", encoding="utf-8") as f:
+        json.dump(spec, f, indent=2, ensure_ascii=False)
+    print(f"  Build spec: {spec_path}")
+
+    # Protection report
+    md5_list = []
+    for rel, h in sorted(manifest.items()):
+        fsize = os.path.getsize(os.path.join(rd, rel))
+        md5_list.append(f"    <tr><td>{rel}</td><td>{h[:16]}...</td><td>{fsize}</td></tr>")
+    layers_html = ", ".join(config.encrypt.extra_layers) if config.encrypt.extra_layers else "none"
+    report_html = f"""<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><title>保护报告 - {spec['project']}</title>
+<style>body{{font-family:sans-serif;max-width:800px;margin:40px auto;padding:0 20px}}
+table{{width:100%;border-collapse:collapse;margin:10px 0}}
+th,td{{padding:8px 12px;text-align:left;border-bottom:1px solid #ddd}}
+th{{background:#333;color:#fff}}
+.section{{background:#f5f5f5;padding:8px 12px;font-weight:bold;margin-top:20px}}
+</style></head><body>
+<h1>保护报告</h1>
+<p>项目: {spec['project']} v{spec['version']} | 构建时间: {spec['built_at']}</p>
+<div class="section">保护配置</div>
+<table><tr><td>混淆等级</td><td>L{spec['obfuscate_level']}</td></tr>
+<tr><td>加密算法</td><td>{spec['encrypt_algorithm']}</td></tr>
+<tr><td>额外加密层</td><td>{layers_html}</td></tr>
+<tr><td>密钥分片数</td><td>{spec['shard_count']}</td></tr>
+<tr><td>混合加密</td><td>{'是' if spec['hybrid_encryption'] else '否'}</td></tr>
+<tr><td>水印批次</td><td>{spec['watermark_batch_id'] or '无'}</td></tr>
+<tr><td>文件数</td><td>{spec['file_count']} 源码 + {spec['decoy_count']} 诱饵</td></tr></table>
+<div class="section">文件清单 ({len(manifest)} 个)</div>
+<table><thead><tr><th>文件</th><th>哈希</th><th>大小</th></tr></thead><tbody>
+{chr(10).join(md5_list)}
+</tbody></table></body></html>"""
+    rpt_path = os.path.join(meta_dir, "protection_report.html")
+    with open(rpt_path, "w", encoding="utf-8") as f:
+        f.write(report_html)
+    print(f"  Protection report: {rpt_path}")
 
     # Watermark report
     if wm:
@@ -224,7 +281,7 @@ def build(project_dir, output_dir, config):
                        "project": config.project.name, "total": len(records),
                        "batch_id": wm.bid if wm else "",
                        "records": records}
-            rpath = os.path.join(output_dir, "watermark_report.json")
+            rpath = os.path.join(meta_dir, "watermark_report.json")
             with open(rpath, "w", encoding="utf-8") as f:
                 json.dump(report, f, indent=2, ensure_ascii=False)
             print(f"  Watermark report: {rpath}")

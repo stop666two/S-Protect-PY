@@ -289,3 +289,6 @@ A: 运行只需要 Python 标准库（hmac/hashlib/zlib/json）。`cryptography`
 
 **Q: --clean 和 --watch 可以同时用吗？**
 A: 可以。`--clean` 在首次 build 前清空，`--watch` 在后续 rebuild 时不会再次清空。
+
+**Q: importlib.reload() 对加密模块不起作用？**
+A: 是的。`importlib.reload()` 会重新执行模块代码，但 AST 混淆后的重命名变量与内存中已有的名称不一致。这是 AST 级别混淆的固有局限。如需热重载支持，建议对目标模块降低混淆等级或排除重命名。

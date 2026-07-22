@@ -377,10 +377,10 @@ class _ControlFlowFlattener(ast.NodeTransformer):
     """Flatten control flow: convert sequential code to state machine."""
 
     def _has_yield(self, node: ast.AST) -> bool:
-        """Check if a function body contains yield/generator expressions."""
         for n in ast.walk(node):
             if isinstance(n, (ast.Yield, ast.YieldFrom, ast.GeneratorExp,
-                              ast.ListComp, ast.SetComp, ast.DictComp)):
+                              ast.ListComp, ast.SetComp, ast.DictComp,
+                              ast.AsyncFunctionDef)):
                 return True
         return False
 

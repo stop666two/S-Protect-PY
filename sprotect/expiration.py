@@ -8,18 +8,25 @@ class Expiration:
     def __init__(self, cfg: ExpirationConfig): self.cfg = cfg
     def check(self, encrypted_at: str, expires_at: str | None) -> bool:
         if not self.cfg.enabled: return True
-        now = datetime.now(timezone.utc)
+        nt = self._ntp() if self.cfg.ntp_check else None
+        if nt is not None:
+            ref = nt
+            local = datetime.now(timezone.utc)
+            drift = abs((local - nt).total_seconds())
+            if drift > self.cfg.max_drift_seconds:
+                return self.cfg.on_network_fail != "reject"
+        else:
+            ref = datetime.now(timezone.utc)
+            if self.cfg.ntp_check:
+                if self.cfg.on_network_fail == "reject":
+                    return False
         enc = datetime.fromisoformat(encrypted_at)
         if enc.tzinfo is None: enc = enc.replace(tzinfo=timezone.utc)
-        if now < enc: return False
+        if ref < enc: return False
         if expires_at:
             exp = datetime.fromisoformat(expires_at)
             if exp.tzinfo is None: exp = exp.replace(tzinfo=timezone.utc)
-            if now > exp: return False
-        if self.cfg.ntp_check:
-            nt = self._ntp()
-            if nt and abs((now - nt).total_seconds()) > 3600:
-                return self.cfg.on_network_fail != "reject"
+            if ref > exp: return False
         return True
     def _ntp(self):
         for srv in self.cfg.ntp_servers:

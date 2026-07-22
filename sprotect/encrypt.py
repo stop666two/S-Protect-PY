@@ -48,10 +48,11 @@ def build(project_dir, output_dir, config):
 
     shared_map = {}
     shared_params: set[str] = set()
+    shared_imports: set[str] = set()
     for fp in py_files:
         try:
             collect_defs(open(fp, encoding="utf-8-sig").read(), config.obfuscate,
-                         shared_map, shared_params)
+                         shared_map, shared_params, shared_imports)
         except: pass
 
     from sprotect.watermark import Watermark
@@ -93,7 +94,7 @@ def build(project_dir, output_dir, config):
         try:
             src = open(fp, encoding="utf-8-sig").read()
             if fc.obfuscate.level.value >= 1:
-                src = Obfuscator(fc.obfuscate, shared_map, shared_params).obfuscate(src)
+                src = Obfuscator(fc.obfuscate, shared_map, shared_params, shared_imports).obfuscate(src)
             if fc.virtualization.enabled and fc.virtualization.functions:
                 src = virtualize_source(src, fc.virtualization)
             if wm: src = wm.code(src)

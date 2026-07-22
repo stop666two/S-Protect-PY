@@ -6,7 +6,8 @@ from sprotect.types import ObfuscateConfig
 from sprotect.random_gen import NameGen
 
 def collect_defs(source: str, cfg: ObfuscateConfig, mapping: dict[str, str],
-                 param_names: set[str] | None = None) -> None:
+                 param_names: set[str] | None = None,
+                 import_names: set[str] | None = None) -> None:
     reserved = set(cfg.rename_rules.reserved or [])
     gen = NameGen(cfg.rename_rules.style, cfg.rename_rules.dictionary)
     try:
@@ -31,6 +32,16 @@ def collect_defs(source: str, cfg: ObfuscateConfig, mapping: dict[str, str],
             elif cfg.rename_variables and isinstance(node, ast.AnnAssign):
                 if isinstance(node.target, ast.Name) and node.target.id not in reserved and not node.target.id.startswith("_") and node.target.id not in (param_names or set()):
                     mapping.setdefault(node.target.id, gen.gen())
+            if import_names is not None:
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        import_names.add(alias.asname or alias.name.split(".")[0])
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module:
+                        import_names.add(node.module.split(".")[0])
+                    for alias in node.names:
+                        if alias.asname:
+                            import_names.add(alias.asname)
     except SyntaxError: pass
 
 
@@ -65,10 +76,12 @@ def _split_string(s: str, n: int = 3) -> ast.Call:
 
 class Obfuscator(ast.NodeTransformer):
     def __init__(self, cfg: ObfuscateConfig, mapping: dict[str, str] | None = None,
-                 param_names: set[str] | None = None):
+                 param_names: set[str] | None = None,
+                 import_names: set[str] | None = None):
         self.cfg = cfg
         self.map = mapping if mapping is not None else {}
         self.param_names = param_names or set()
+        self.import_names = import_names or set()
         self.reserved = set(cfg.rename_rules.reserved or [])
         self.gen = NameGen(cfg.rename_rules.style, cfg.rename_rules.dictionary)
         self._class_depth = 0; self._fstring_depth = 0; self._params: list[set[str]] = []
@@ -103,7 +116,7 @@ class Obfuscator(ast.NodeTransformer):
         self._collect(tree)
         tree = self.visit(tree)
         if self.map:
-            tree = _AttrObfuscator(self.map, self.param_names).visit(tree)
+            tree = _AttrObfuscator(self.map, self.param_names, self.import_names).visit(tree)
         if self.cfg.obfuscate_imports:
             tree = _ImportObfuscator(self.map).visit(tree)
         if self.cfg.obfuscate_arithmetic:
@@ -228,16 +241,21 @@ class Obfuscator(ast.NodeTransformer):
 
 
 class _AttrObfuscator(ast.NodeTransformer):
-    """Rename attribute access (obj.ATTR) — skips function params for safety."""
+    """Rename attribute access (obj.ATTR). Skips when the object is a
+    function parameter (likely dict-like) or an import name (stdlib module)."""
 
-    def __init__(self, rename_map: dict[str, str], param_names: set[str]):
+    def __init__(self, rename_map: dict[str, str], param_names: set[str],
+                 import_names: set[str]):
         self._map = rename_map
         self._param_names = param_names
+        self._import_names = import_names
 
     def visit_Attribute(self, node: ast.Attribute):
         self.generic_visit(node)
-        if node.attr in self._map:
-            if isinstance(node.value, ast.Name) and node.value.id in self._param_names:
+        if node.attr in self._map and isinstance(node.value, ast.Name):
+            if node.value.id in self._param_names:
+                return node
+            if node.value.id in self._import_names:
                 return node
             node.attr = self._map[node.attr]
         return node

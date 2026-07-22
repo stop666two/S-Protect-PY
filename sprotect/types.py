@@ -113,7 +113,7 @@ class AntiDebugConfig:
     action: AntiDebugAction = AntiDebugAction.EXIT
     checks: list[str] = field(default_factory=lambda: [
         "pdb", "ptrace", "debugger", "vm", "sandbox",
-        "timing", "cuckoo", "ida", "procmon",
+        "timing", "cuckoo", "ida", "procmon", "gpu",
     ])
     per_check_actions: list[AntiDebugCheckConfig] = field(default_factory=list)
     process_whitelist: list[str] = field(default_factory=list)  # 进程白名单

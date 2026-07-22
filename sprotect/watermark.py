@@ -94,3 +94,56 @@ def verify_watermark(pye_path: str, secret_key: str = "") -> bool:
     if secret_key:
         return wm.get("sig_ok", False) and wm.get("auth_ok", False)
     return wm.get("sig_ok", False)
+
+
+def patch_watermark(pye_path: str, new_bid: str, secret_key: str = "",
+                    append: bool = False) -> dict | None:
+    """Hot-patch watermark on an existing .pye file without re-encryption.
+
+    Args:
+        pye_path: Path to .pye file
+        new_bid: New batch ID to set
+        secret_key: Key for HMAC authenticity signing
+        append: If True, keeps old bid in a 'prev' field
+
+    Returns:
+        Updated watermark dict, or None on failure
+    """
+    try:
+        with open(pye_path, "rb") as f:
+            raw = f.read()
+        p = json.loads(raw.decode())
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+
+    ts = datetime.now(timezone.utc).isoformat()
+    sig = hashlib.sha256(new_bid.encode()).hexdigest()[:16]
+    wm = {"bid": new_bid, "ts": ts, "sig": sig, "t": "patched"}
+
+    old_wm = p.get("wm") or p.get("WM")
+    if append and old_wm and isinstance(old_wm, dict):
+        wm["prev"] = old_wm.get("bid", "")
+
+    if secret_key:
+        auth_data = f"{new_bid}|{ts}"
+        wm["auth"] = hmac.new(secret_key.encode(), auth_data.encode(), "sha256").hexdigest()[:16]
+
+    p["wm"] = wm
+    with open(pye_path, "wb") as f:
+        f.write(json.dumps(p, separators=(",", ":")).encode())
+    return wm
+
+
+def patch_watermark_batch(runtime_dir: str, new_bid: str, secret_key: str = "",
+                          append: bool = False) -> int:
+    """Patch watermark on all .pye files in a directory.
+
+    Returns:
+        Number of files successfully patched.
+    """
+    import os, glob
+    count = 0
+    for f in sorted(glob.glob(os.path.join(runtime_dir, "**", "*.pye"), recursive=True)):
+        if patch_watermark(f, new_bid, secret_key, append):
+            count += 1
+    return count

@@ -157,6 +157,37 @@ class AntiDebug:
             except: pass
         return False
 
+    def _chk_gpu(self):
+        """Detect GPU debugging / CUDA sandbox environments."""
+        suspicious_env = [
+            "CUDA_ENABLE_CRC_CHECK", "NSIGHT_CUDA_DEBUGGER", "CUDA_MANAGED_FORCE_DEVICE_ALLOC",
+            "NVCOMPILER_ACC_NOTIFY", "CUDA_PROFILE", "CUDA_VISIBLE_DEVICES",
+            "COMPUTE_PROFILE", "CUDA_BIN_PATH", "CUDA_INC_PATH",
+        ]
+        for var in suspicious_env:
+            if var in os.environ:
+                return True
+        try:
+            import ctypes
+            if platform.system() == "Windows":
+                k32 = ctypes.WinDLL("kernel32.dll", use_last_error=True)
+                buf = ctypes.create_string_buffer(256)
+                sz = ctypes.c_uint32(256)
+                if k32.GetModuleBaseNameA(0, 0, buf, sz) > 0:
+                    n = buf.value.decode().lower() if buf.value else ""
+                    gpu_tools = ["nsight", "cuda-gdb", "nvidia-smi", "nvprof",
+                                 "nvvp", "cuobjdump", "nvdisasm", "gpu-debug"]
+                    if any(t in n for t in gpu_tools):
+                        return True
+        except: pass
+        try:
+            if os.path.isfile("/usr/local/cuda/bin/cuda-gdb"):
+                return True
+            if os.path.isfile("/usr/bin/nvidia-smi") and not os.path.isfile("/usr/bin/nvidia-persistenced"):
+                return True
+        except: pass
+        return False
+
     def _act(self, c: str):
         if not hasattr(self, "cfg") or self.cfg.action.value == "exit":
             self._wipe(); os._exit(1)

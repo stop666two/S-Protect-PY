@@ -102,6 +102,8 @@ class Obfuscator(ast.NodeTransformer):
         tree = ast.parse(src)
         self._collect(tree)
         tree = self.visit(tree)
+        if self.map:
+            tree = _AttrObfuscator(self.map, self.param_names).visit(tree)
         if self.cfg.obfuscate_imports:
             tree = _ImportObfuscator(self.map).visit(tree)
         if self.cfg.obfuscate_arithmetic:
@@ -223,6 +225,22 @@ class Obfuscator(ast.NodeTransformer):
         self._fstring_depth += 1; r = self.generic_visit(n); self._fstring_depth -= 1; return r
     def visit_JoinedStr(self, n):
         self._fstring_depth += 1; r = self.generic_visit(n); self._fstring_depth -= 1; return r
+
+
+class _AttrObfuscator(ast.NodeTransformer):
+    """Rename attribute access (obj.ATTR) — skips function params for safety."""
+
+    def __init__(self, rename_map: dict[str, str], param_names: set[str]):
+        self._map = rename_map
+        self._param_names = param_names
+
+    def visit_Attribute(self, node: ast.Attribute):
+        self.generic_visit(node)
+        if node.attr in self._map:
+            if isinstance(node.value, ast.Name) and node.value.id in self._param_names:
+                return node
+            node.attr = self._map[node.attr]
+        return node
 
 
 class _ImportObfuscator(ast.NodeTransformer):

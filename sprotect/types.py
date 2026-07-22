@@ -195,7 +195,12 @@ class FilesConfig:
     include: list[str] = field(default_factory=lambda: ["**/*.py"])
     exclude: list[str] = field(default_factory=list)
     exclude_dirs: list[str] = field(default_factory=lambda: [
-        "_runtime", "_backup", "__pycache__", ".git",
+        "_runtime", "_backup", "_meta", "_workspace",
+        "output", "dist", "build",
+        "__pycache__", ".git", ".idea", ".vscode",
+        "venv", ".venv", "env", ".env",
+        "node_modules", "__pypackages__",
+        ".pytest_cache", ".mypy_cache", ".ruff_cache",
     ])
 
 @dataclass

@@ -196,7 +196,12 @@ def merge_file_config(main: Config, py_path: str) -> Config:
 
 def gen_default(path: str) -> Path:
     d = {
-        "files":{"include":["**/*.py"],"exclude":[],"exclude_dirs":["_runtime","_backup","__pycache__",".git"]},
+        "files":{"include":["**/*.py"],"exclude":[],
+            "exclude_dirs":["_runtime","_backup","_meta","_workspace","output","dist","build",
+                           "__pycache__",".git",".idea",".vscode",
+                           "venv",".venv","env",".env",
+                           "node_modules","__pypackages__",
+                           ".pytest_cache",".mypy_cache",".ruff_cache"]},
         "obfuscate":{"level":5,"rename_variables":True,"rename_functions":True,"rename_classes":True,
             "rename_rules":{"style":"hex","reserved":["__init__","main"],"prefix":"_0x","suffix":"","min_length":6,"blacklist":[]},
             "encrypt_strings":True,"encrypt_numbers":True,"string_min_length":3,"string_encrypt_ratio":1.0,

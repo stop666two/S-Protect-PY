@@ -40,8 +40,7 @@ def collect_defs(source: str, cfg: ObfuscateConfig, mapping: dict[str, str],
                     if node.module:
                         import_names.add(node.module.split(".")[0])
                     for alias in node.names:
-                        if alias.asname:
-                            import_names.add(alias.asname)
+                        import_names.add(alias.asname or alias.name)
     except SyntaxError: pass
 
 

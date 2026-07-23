@@ -544,6 +544,13 @@ def _check_vm():
 
 _MEM_BASELINE = None
 
+def _stack_noise(func, *a, **kw):
+    """Execute a function through deep lambda chain to obscure call stack."""
+    _l = lambda f=func, aa=a, kk=kw: f(*aa, **kk)
+    for _ in range(6):
+        _l = lambda inner=_l: inner()
+    return _l()
+
 def _memory_check():
     """Verify code segment integrity against baseline. Call periodically."""
     import hashlib as _h4, sys as _s4, os as _o4
@@ -586,9 +593,9 @@ def run(entry, root="", _return_src=False):
         raise RuntimeError("Unsafe execution environment")
     if not _MAP: raise RuntimeError("No module map")
     _verify_manifest(root)
-    _anti_checks()
-    _memory_check()
-    _time_check()
+    _stack_noise(_anti_checks)
+    _stack_noise(_memory_check)
+    _stack_noise(_time_check)
     # Time wall: auto-exit after N minutes
     import threading as _tw, time as _tmw
     _EXPIRE_MINUTES = 60

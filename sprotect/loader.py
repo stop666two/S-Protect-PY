@@ -1206,36 +1206,30 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
             _decoy_hex_ops.append(
                 f"_t{secrets.token_hex(2)} = len(_HEX_VARS['{_hex_var_names[_vn]}'])")
 
-    # Build polymorphic derive_code: 2-3 safe paths producing the SAME salt
-    _salt_var_name = _hex_var_names[_real_salt_idx]
+    # Build anti-AI salt: split across 3 pairs of hex vars, XOR to recover original salt
+    # Path 0: direct read (keeps original salt), Paths 1-2: XOR pairs that cancel to original
     _real_salt_bytes = bytes.fromhex(build_salt)
-    _path_bodies = []
-    # Path 0: Direct hex read (original)
-    _path_bodies.append(f"_salt = bytes.fromhex(_HEX_VARS['{_salt_var_name}'])")
-    # Path 1: XOR of two vars that cancel to produce same salt
-    _p1_idx = secrets.randbelow(_hex_pool_size)
-    while _p1_idx == _real_salt_idx:
-        _p1_idx = secrets.randbelow(_hex_pool_size)
-    _p1_name = _hex_var_names[_p1_idx]
-    _p1_key = bytes.fromhex(_hex_keys[_p1_idx])
-    _p1_cancel = bytes(a ^ b for a, b in zip(_real_salt_bytes, _p1_key))
-    _p1_extra = f"_h{secrets.token_hex(3)}"
-    _hex_pairs.append(f"'{_p1_extra}':'{_p1_cancel.hex()}'")
-    _path_bodies.append(
-        f"_a = bytes.fromhex(_HEX_VARS['{_p1_name}'])\n"
-        f"_b = bytes.fromhex(_HEX_VARS['{_p1_extra}'])\n"
-        f"_salt = bytes(x ^ y for x, y in zip(_a, _b))")
-    # Path 2: SHA256 chain XOR (only if salt is exactly 32 bytes)
-    if len(build_salt) == 64:
-        _p2_hash = hashlib.sha256(_real_salt_bytes).digest()
-        _p2_xor = bytes(a ^ b for a, b in zip(_real_salt_bytes, _p2_hash))
-        _p2_extra = f"_h{secrets.token_hex(3)}"
-        _hex_pairs.append(f"'{_p2_extra}':'{_p2_xor.hex()}'")
+    _salt_var_name = _hex_var_names[_real_salt_idx]
+    _path_bodies = [f"_salt = bytes.fromhex(_HEX_VARS['{_salt_var_name}'])"]  # Path 0: direct
+    for _pi in range(2):  # Paths 1-2: XOR pairs
+        _i1 = secrets.randbelow(_hex_pool_size)
+        while _i1 == _real_salt_idx:
+            _i1 = secrets.randbelow(_hex_pool_size)
+        _i2 = secrets.randbelow(_hex_pool_size)
+        while _i2 in (_real_salt_idx, _i1):
+            _i2 = secrets.randbelow(_hex_pool_size)
+        _n1 = _hex_var_names[_i1]
+        _n2 = _hex_var_names[_i2]
+        _rk = os.urandom(32)
+        _c = bytes(a ^ b for a, b in zip(_real_salt_bytes, _rk))
+        _hex_keys[_i1] = _rk.hex()
+        _hex_keys[_i2] = _c.hex()
+        _hex_pairs[_i1] = f"'{_n1}':'{_rk.hex()}'"
+        _hex_pairs[_i2] = f"'{_n2}':'{_c.hex()}'"
         _path_bodies.append(
-            f"_h = hashlib.sha256(bytes.fromhex(_HEX_VARS['{_salt_var_name}'])).digest()\n"
-            f"_x = bytes.fromhex(_HEX_VARS['{_p2_extra}'])\n"
-            f"_salt = bytes(a ^ b for a, b in zip(_h, _x))")
-    # Path selection: hash of PID mod path count
+            f"_a = bytes.fromhex(_HEX_VARS['{_n1}'])\n"
+            f"_b = bytes.fromhex(_HEX_VARS['{_n2}'])\n"
+            f"_salt = bytes(x ^ y for x, y in zip(_a, _b))")
     _path_count = len(_path_bodies)
     _all_lines = list(_decoy_hex_ops)
     _all_lines.append(f"_pid = __import__('os').getpid()")

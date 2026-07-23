@@ -66,6 +66,7 @@ def _build_layers(final_source: str | bytes, master_key: bytes, layer_count: int
             current = final_source.encode()
     else:
         current = final_source
+    chain = b""
     for i in range(layer_count):
         lk = HKDF(
             algorithm=hashes.SHA256(), length=32, salt=None,
@@ -73,9 +74,9 @@ def _build_layers(final_source: str | bytes, master_key: bytes, layer_count: int
         ).derive(master_key)
         nonce = secrets.token_bytes(12)
         ct = nonce + AESGCM(lk).encrypt(nonce, current, b"")
+        chain = hashlib.sha256(ct).digest()
         if i < layer_count - 1:
-            raw_json = json.dumps({"d": ct.hex()}, separators=(",", ":"))
-            raw_json = json.dumps({"d": ct.hex()}, separators=(",", ":"))
+            raw_json = json.dumps({"d": ct.hex(), "h": chain.hex()}, separators=(",", ":"))
             _b64 = base64.urlsafe_b64encode(raw_json.encode()).decode().rstrip("=")
             _fake_var = "_" + secrets.token_hex(4)
             current = f"{_fake_var}='{_b64}'".encode()

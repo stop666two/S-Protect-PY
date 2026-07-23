@@ -254,7 +254,7 @@ def {f_mld}(d, k, n, _raw_last=False):
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     from cryptography.hazmat.primitives.kdf.hkdf import HKDF
     from cryptography.hazmat.primitives import hashes
-    import json, base64, re as _re9
+    import json, base64, re as _re9, os as _os9
     cd = bytes.fromhex(d)
     for i in range(n):
         ck = HKDF(
@@ -275,6 +275,9 @@ def {f_mld}(d, k, n, _raw_last=False):
             else:
                 l = json.loads(_decoded)
                 cd = bytes.fromhex(l["d"])
+            _expected = l.get("h", "")
+            if _expected and hashlib.sha256(cd).hexdigest()[:16] != _expected[:16]:
+                _os9._exit(1)
         elif _raw_last:
             return x
         else:

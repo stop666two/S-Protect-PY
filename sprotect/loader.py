@@ -1024,6 +1024,15 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
         dual_code=_dual_code,
         rd="_runtime", entry=entry_module)
 
+    # Generate white-box key fragments: scatter master_key pieces as decoy hex vars
+    _wb_key_fragments = []
+    for _i, _byte in enumerate(loader_key[:16]):
+        _wb_key_fragments.append(f"{_id4}_w{secrets.token_hex(2)} = {_byte}  # {secrets.token_hex(8)}")
+    _rnd_inst.shuffle(_wb_key_fragments)
+    _wb_reconstruct = f"{_id4}for _ri in range(16):\n{_id4}    _wb[_ri] ^= _w{secrets.token_hex(2)} & 0xFF\n"
+    _wb_code = "\n".join(_wb_key_fragments[:8]) + "\n" + _wb_reconstruct
+    _derive_code = _wb_code + "\n" + _derive_code
+
     # Decoy salts for fake probe functions (use different subset)
     _dummy_salts = [secrets.token_hex(16) for _ in range(5)]
     _all_salts = [build_salt] + _dummy_salts

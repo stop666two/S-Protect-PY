@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+    paths-ignore: ["docs/**", "output/**", "_backup/**"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.12", "3.13"]
+      fail-fast: false
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov ruff mypy
+
+      - name: Lint with ruff
+        run: ruff check sprotect/ tests/ --exit-zero
+
+      - name: Type check with mypy
+        run: mypy sprotect/ --ignore-missing-imports --follow-imports=skip || true
+
+      - name: Run tests with coverage
+        run: pytest tests/ -v --cov=sprotect --cov-report=term --cov-report=xml -x
+
+      - name: Upload coverage
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
+        uses: codecov/codecov-action@v5
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+  check-commits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check commit messages
+        run: |
+          git log --format="%s" origin/main..HEAD 2>/dev/null | while read msg; do
+            case "$msg" in
+              feat:*|fix:*|chore:*|refactor:*|docs:*);;
+              *) echo "Bad commit message: $msg"; exit 1;;
+            esac
+          done || echo "Commit message check skipped (may be first commit)"

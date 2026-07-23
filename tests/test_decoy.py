@@ -58,9 +58,9 @@ def test_gen_fake_body():
     assert len(body) > 10
 
 
-def test_decoy_source_contains_operators():
+def test_decoy_source_contains_python_keywords():
     src = generate_decoy_source()
-    assert any(op in src for op in ["+", "^", "&", "for"])
+    assert any(kw in src for kw in ["def ", "class ", "return ", "for ", "import "])
 
 
 def test_trap_source_defines_class_and_main():

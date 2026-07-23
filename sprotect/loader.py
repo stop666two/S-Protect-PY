@@ -760,6 +760,8 @@ def run(entry, root="", _return_src=False):
     e = os.path.join(_D, entry_hex + ".pye")
     pp = json.loads(open(e, "rb").read().decode())
     src = {f_load}(pp, mk)
+    _memory_check()
+    _trace_verify("modules_ready")
     return src
 '''
 
@@ -1039,6 +1041,12 @@ import tempfile, uuid, copy, logging, datetime, decimal, statistics
 from math import sqrt, floor, ceil, sin, cos, tan, log, exp
 from os import path, name, getpid, getcwd, environ, sep
 from sys import platform, version, argv, executable, modules, path as sys_path
+try:
+    import cryptography.hazmat.primitives.asymmetric.padding as _cph_pad
+    import cryptography.hazmat.primitives.asymmetric.rsa as _cph_rsa
+    import cryptography.hazmat.primitives.serialization as _cph_ser
+    import cryptography.x509 as _cph_x5
+except: pass
 from hashlib import sha256, md5, sha1, sha224, sha384, sha512, blake2b
 from base64 import b64encode, b64decode, a85encode, a85decode, b32decode
 from struct import pack, unpack, calcsize, iter_unpack

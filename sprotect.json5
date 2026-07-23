@@ -6,7 +6,7 @@
   obfuscate: {
     level: 5,
     rename_variables: true, rename_functions: true, rename_classes: true,
-    rename_rules: { style: "hex", reserved: ["__init__", "main", "validate_chain", "cross_verify", "hash_file", "sha256_file", "sha256_data", "b64encode", "b64decode", "xor_data", "interleave", "deinterleave", "is_prime", "fibonacci", "factorial", "rot13", "leet_speak", "run_all", "print_summary", "check_integrity", "CHAIN_REGISTRY", "FILE_REGISTRY", "CHAIN_MAP", "SEED_POOL", "_run"], prefix: "_0x", suffix: "", min_length: 12, blacklist: [] },
+    rename_rules: { style: "hex", reserved: ["__init__", "main", "validate_chain", "cross_verify", "hash_file", "sha256_file", "sha256_data", "b64encode", "b64decode", "xor_data", "interleave", "deinterleave", "is_prime", "fibonacci", "factorial", "gcd", "lcm", "power_mod", "digit_sum", "reverse_number", "collatz_steps", "rot13", "leet_speak", "reverse_str", "is_palindrome", "count_vowels", "caesar_shift", "atbash", "run_all", "print_summary", "check_integrity", "CHAIN_REGISTRY", "FILE_REGISTRY", "CHAIN_MAP", "SEED_POOL", "_run"], prefix: "_0x", suffix: "", min_length: 12, blacklist: [] },
     encrypt_strings: true, encrypt_numbers: true, string_min_length: 1, string_encrypt_ratio: 1.0,
     control_flow_flattening: true, dead_code_injection: true, dead_code_density: 0.5, opaque_predicate_count: 5,
     remove_docstrings: true, remove_comments: true, strip_blank_lines: true, max_line_length: 0,

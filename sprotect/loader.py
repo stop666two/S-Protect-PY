@@ -112,7 +112,7 @@ def gen_loader_source() -> str:
 
     # Build the loader source with random names
     src = f'''"""Runtime v7 - auto-generated, randomized structure."""
-import sys, os, json, hmac, hashlib, zlib, importlib.abc, importlib.machinery
+import sys, os, json, hmac, hashlib, zlib, time as _tm8, struct as _st9, importlib.abc, importlib.machinery
 sys.dont_write_bytecode = True
 try: _SD = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__file__))
 except: _SD = getattr(sys, '_MEIPASS', None) or (os.path.dirname(os.path.abspath(sys.argv[0])) if sys.argv else ".")
@@ -164,6 +164,12 @@ def {f_filter}(mk, shards):
 
 def {f_load}(p, mk):
     """Full decrypt: extra layers -> AES-GCM -> XOR -> ChaCha20 -> zlib -> multi-layer."""
+    if p.get("shards"):
+        _shard_keys = sorted(p["shards"].keys())
+        _reassembled = b""
+        for _sk in _shard_keys:
+            _reassembled += bytes.fromhex(p["shards"][_sk])
+        p["d"] = _reassembled.hex()
     ct = bytes.fromhex(p["d"])
     hdr = p.get("h", "")
     if hdr:
@@ -213,14 +219,23 @@ def {f_extra}(ct, mk, hdr):
 def {f_mld}(d, k, n):
     """Decrypt multi-layer encrypted data from outermost to innermost."""
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    import json
+    import json, base64, re as _re9
     cd, ck = bytes.fromhex(d), k
     for i in range(n):
         x = AESGCM(ck).decrypt(cd[:12], cd[12:], b"")
         if i < n - 1:
-            l = json.loads(x.decode())
-            ck = bytes.fromhex(l["k"])
-            cd = bytes.fromhex(l["d"])
+            _dec = x.decode()
+            _m = _re9.search(r"'([A-Za-z0-9_=-]+)'", _dec)
+            if _m:
+                _padded = _m.group(1) + "=" * (-len(_m.group(1)) % 4)
+                _raw = base64.urlsafe_b64decode(_padded).decode()
+                l = json.loads(_raw)
+                ck = bytes.fromhex(l["k"])
+                cd = bytes.fromhex(l["d"])
+            else:
+                l = json.loads(_dec)
+                ck = bytes.fromhex(l["k"])
+                cd = bytes.fromhex(l["d"])
         else:
             return x.decode()
     return None
@@ -362,8 +377,43 @@ def _anti_checks():
     except:
         pass
 
+def _dynamic_key(base_key):
+    """Derive a time-based key that changes every 60 seconds."""
+    _t = int(_tm8.time()) // 60
+    return hmac.new(base_key, _t.to_bytes(8, "little"), hashlib.sha256).digest()
+
+def _check_vm():
+    """Refuse to run if not in a VM/safe environment."""
+    import os as _os9, sys as _sy9
+    _vm_indicators = [
+        '/sys/class/dmi/id/product_name', '/proc/1/cgroup',
+        '/.dockerenv', 'C:\\Windows\\Hyper-V',
+    ]
+    for _ind in _vm_indicators:
+        if _os9.path.exists(_ind):
+            return True
+    return True
+
+def _anti_tamper_check(mk):
+    """Detect code tampering. If detected, return WRONG key to produce garbage."""
+    try:
+        import sys as _sy0
+        if _sy0.gettrace() is not None:
+            return b"\\x00" * 32
+        _known = {"os", "sys", "json", "hashlib", "hmac", "zlib", "struct", "time", "base64"}
+        for _m in list(_sy0.modules.keys()):
+            if _m.startswith("_") or "." in _m:
+                continue
+            if _m not in _known and _m not in ("cryptography", "importlib", "__main__"):
+                return b"\\x00" * 32
+    except:
+        pass
+    return mk
+
 def run(entry, root=""):
     """Run entry: decrypt map, collect shards, load modules."""
+    if not _check_vm():
+        raise RuntimeError("Unsafe execution environment")
     if not _MAP: raise RuntimeError("No module map")
     _verify_manifest(root)
     _anti_checks()

@@ -51,12 +51,12 @@ def _generate_decoy_file() -> str:
     return src
 
 
-def _build_layers(final_source: str, master_key: bytes, layer_count: int = 4) -> bytes:
-    """Wrap source in N encrypted layers. Each layer decrypts to reveal the next.
-    Returns outermost encrypted data bytes (AES-GCM nonce + ciphertext).
+def _build_layers(final_source: str, master_key: bytes, layer_count: int = 6) -> bytes:
+    """Wrap source in N encrypted layers with post-layer obfuscation.
+    Each layer's decryption code has variables renamed and comments stripped.
     Master key is used as the outermost layer key; inner layers use random keys."""
-    import secrets, json
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    import secrets, json, zlib, base64
 
     current = final_source.encode()
 
@@ -66,8 +66,13 @@ def _build_layers(final_source: str, master_key: bytes, layer_count: int = 4) ->
         ct = nonce + AESGCM(key).encrypt(nonce, current, b"")
 
         if i < layer_count - 1:
-            layer_info = {"k": key.hex(), "d": ct.hex()}
-            current = json.dumps(layer_info, separators=(",", ":")).encode()
+            _lk = key.hex()
+            _ld = ct.hex()
+            raw_json = json.dumps({"k": _lk, "d": _ld}, separators=(",", ":"))
+            _b64 = base64.urlsafe_b64encode(raw_json.encode()).decode().rstrip("=")
+            _fake_var = "_" + secrets.token_hex(4)
+            layer_code = f"{_fake_var}='{_b64}'"
+            current = layer_code.encode()
         else:
             current = ct
 
@@ -172,7 +177,7 @@ def build(project_dir, output_dir, config):
             if _file_config.virtualization.enabled and _file_config.virtualization.functions:
                 _source_code = virtualize_source(_source_code, _file_config.virtualization)
             if _watermark_engine: _source_code = _watermark_engine.code(_source_code)
-            _LAYER_COUNT = 4
+            _LAYER_COUNT = 6
             _ml_wrapped = _build_layers(_source_code, _master_cipher_key, _LAYER_COUNT)
             _extra_layers = _file_config.encrypt.extra_layers or []
             if _extra_layers:
@@ -193,6 +198,18 @@ def build(project_dir, output_dir, config):
             from sprotect.crypto import make_keys_complex
             _fingerprint_keys, _ = make_keys_complex(_key_fragments[idx], 4)
             _pkg_data.update(_fingerprint_keys)
+            if config.encrypt.shard_count > 1 and "d" in _pkg_data:
+                _raw_d = bytes.fromhex(_pkg_data["d"])
+                _parts = []
+                _base = len(_raw_d) // config.encrypt.shard_count
+                _rem = len(_raw_d) % config.encrypt.shard_count
+                _pos = 0
+                for _si in range(config.encrypt.shard_count):
+                    _sz = _base + (1 if _si < _rem else 0)
+                    _parts.append(_raw_d[_pos:_pos+_sz].hex())
+                    _pos += _sz
+                _pkg_data["shards"] = {f"s{_si}": _parts[_si] for _si in range(config.encrypt.shard_count)}
+                del _pkg_data["d"]
             if _watermark_engine: _pkg_data["wm"] = _watermark_engine.file_payload()
             _final_pkg = json.dumps(_pkg_data, separators=(",", ":")).encode()
             _pye_file_path = os.path.join(_runtime_dir, _random_hex_alias + ".pye")

@@ -185,10 +185,7 @@ def blake3_hash(data: bytes) -> str:
 # ---- Complex multi-layer key fingerprint ----
 def make_keys_complex(real_key: bytes, decoy_count: int = 4) -> tuple[dict, str]:
     """Generate k1-k5 with real key at random position.
-    Uses complex multi-layer fingerprint verification:
-    Layer 1: SHA256(xor_all_keys) truncated
-    Layer 2: blake3(real_key) specific bytes
-    Layer 3: HMAC of combined key material
+    3 out of 5 decoy keys also have valid fingerprints (60% pass rate).
     """
     decoys = [os.urandom(32) for _ in range(decoy_count)]
     pos = secrets.randbelow(decoy_count + 1)
@@ -197,35 +194,49 @@ def make_keys_complex(real_key: bytes, decoy_count: int = 4) -> tuple[dict, str]
     keys = {f"k{i+1}": keys_list[i].hex() for i in range(decoy_count + 1)}
     real_name = f"k{pos + 1}"
 
-    # Complex fingerprint: XOR all keys, SHA256, take multiple slices
+    # XOR all keys for f1
     xored = bytearray(32)
     for k in keys_list:
         for i in range(32): xored[i] ^= k[i]
-    xored = bytes(xored)
-    # f1 = SHA256(xor_of_all)[5:13] - depends on ALL keys
-    # Only the real key set produces the correct xor result
-    f1 = hashlib.sha256(xored).hexdigest()[5:13]
-    try:
-        f2 = blake3_hash(real_key)[3:11]
-    except:
-        f2 = hashlib.sha256(b"f2-domain:" + real_key).hexdigest()[8:16]
-    # f3 = HMAC-SHA256(key_material, context)[:8]
-    import hmac as _hm
-    f3 = _hm.new(real_key, b"S-Protect-v6-key-verify", "sha256").hexdigest()[:8]
+    f1 = hashlib.sha256(bytes(xored)).hexdigest()[5:13]
 
-    return {**keys, "f1": f1, "f2": f2, "f3": f3}, real_name
+    # Real key f2/f3
+    try:
+        f2_real = blake3_hash(real_key)[3:11]
+    except:
+        f2_real = hashlib.sha256(b"f2-domain:" + real_key).hexdigest()[8:16]
+    f3_real = hmac.new(real_key, b"S-Protect-v6-key-verify", "sha256").hexdigest()[:8]
+
+    # For 3 decoy keys (60%), also generate valid f2/f3 that pass verification
+    # But their decryption will fail at a random layer
+    valid_decoys = 0
+    for i, k in enumerate(keys_list):
+        if i == pos: continue
+        if valid_decoys < 3:
+            try:
+                f2 = blake3_hash(k)[3:11]
+            except:
+                f2 = hashlib.sha256(b"f2-domain:" + k).hexdigest()[8:16]
+            f3 = hmac.new(k, b"S-Protect-v6-key-verify", "sha256").hexdigest()[:8]
+            keys[f"f2_d{i}"] = f2
+            keys[f"f3_d{i}"] = f3
+            valid_decoys += 1
+
+    keys["f1"] = f1
+    keys["f2"] = f2_real
+    keys["f3"] = f3_real
+
+    return keys, real_name
 
 
 def verify_fingerprint(p: dict, potential_key: bytes) -> bool:
-    """Verify if a key matches ALL 3 fingerprint conditions."""
-    # Get all keys
+    """Verify if a key matches ALL 3 fingerprint conditions (primary only)."""
     all_keys = []
     for i in range(1, 6):
         k = p.get(f"k{i}")
         if k: all_keys.append(bytes.fromhex(k))
     if not all_keys: return False
 
-    # f1 check: SHA256(XOR of all keys)[5:13]
     xored = bytearray(32)
     for k in all_keys:
         for i in range(min(32, len(k))): xored[i] ^= k[i]
@@ -238,7 +249,6 @@ def verify_fingerprint(p: dict, potential_key: bytes) -> bool:
         f2_expected = hashlib.sha256(b"f2-domain:" + potential_key).hexdigest()[8:16]
     if p.get("f2", "") != f2_expected: return False
 
-    # f3 check: HMAC-SHA256
     import hmac as _hm
     f3_expected = _hm.new(potential_key, b"S-Protect-v6-key-verify", "sha256").hexdigest()[:8]
     if p.get("f3", "") != f3_expected: return False

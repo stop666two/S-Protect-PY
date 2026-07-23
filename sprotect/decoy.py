@@ -3,7 +3,7 @@
 """Decoy code generator: generates real-looking Python code indistinguishable from real code."""
 
 from __future__ import annotations
-import secrets, hashlib, zlib, os
+import secrets, hashlib, zlib, os, random
 from sprotect.minify import minify_source
 
 
@@ -71,7 +71,7 @@ def generate_decoy_source() -> str:
         else:
             fn = _gen_fake_name()
             argc = secrets.randbelow(3) + 1
-            args = ", ".join(secrets.choice(_V67b4c) for _ in range(argc))
+            args = ", ".join(random.sample(_V67b4c, argc))
             body = _gen_fake_body()
             result = secrets.choice(_V67b4c)
             source += template.format(name=fn, args=args, body=body, result=result)

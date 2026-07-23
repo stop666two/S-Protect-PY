@@ -55,8 +55,16 @@ def _generate_decoy_file() -> str:
 
 def _build_layers(final_source: str | bytes, master_key: bytes, layer_count: int = 6) -> bytes:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    import secrets, json, zlib, base64
-    current = final_source.encode() if isinstance(final_source, str) else final_source
+    import secrets, json, zlib, base64, marshal
+    # Compile source to bytecode for harder reverse engineering
+    if isinstance(final_source, str):
+        try:
+            _code = compile(final_source, "<encrypted>", "exec")
+            current = marshal.dumps(_code)
+        except:
+            current = final_source.encode()
+    else:
+        current = final_source
     for i in range(layer_count):
         key = secrets.token_bytes(32) if i < layer_count - 1 else master_key
         nonce = secrets.token_bytes(12)

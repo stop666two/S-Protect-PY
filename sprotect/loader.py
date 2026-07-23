@@ -648,6 +648,17 @@ _final_src = run("{entry}", a)
 if isinstance(_final_src, str) and len(_final_src) > 10:
     sys.path.insert(0, a)
     exec(compile(_final_src, "", "exec"))
+# Runtime self-modification: wipe critical functions from memory
+try:
+    _m = sys.modules.get('__main__')
+    if _m and hasattr(_m, 'bt'):
+        _m.bt = lambda: ''
+    if _m and hasattr(_m, 'run'):
+        _m.run = lambda e, r='', **kw: ''
+    if _m and hasattr(_m, '_fe'):
+        _m._fe = lambda p: b''
+except:
+    pass
 '''
 
 

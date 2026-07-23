@@ -144,21 +144,47 @@ def build(project_dir, output_dir, config):
         _key_file_path = os.path.join(output_dir, _hybrid_cfg.key_file)
         with open(_key_file_path, "wb") as f:
             f.write(_private_key)
-        # Split private key into Shamir shards, store in separate folder
-        _key_shard_dir = os.path.join(output_dir, "_key_shards")
+        # Split private key into hash-chained Shamir shards, random names/sizes
+        _key_shard_dir = os.path.join(os.path.dirname(output_dir), "." + secrets.token_hex(4))
         os.makedirs(_key_shard_dir, exist_ok=True)
         _key_data = _private_key
-        _shard_n = 7
-        _shard_t = 4
+        _shard_n = 24
+        _shard_t = 12
         _key_shards = shamir_split(_key_data, _shard_n, _shard_t)
-        for _si, (_sid, _sval) in enumerate(_key_shards):
-            _sf_name = f"shard_{_sid:02d}_of_{_shard_n}.key"
-            with open(os.path.join(_key_shard_dir, _sf_name), "wb") as _sf:
-                _sf.write(_sval)
+        _ext_pool = [".dat", ".bin", ".cfg", ".tmp", ".log", ".idx", ".map",
+                     ".sig", ".key", ".bak", ".old", ".res", ".enc", ".raw",
+                     ".pyd", ".so", ".cache", ".blob", ".seg", ".part"]
+        _real_shards = []
+        _rng = __import__("random").Random(secrets.randbits(32))
+        for (_sid, _sval) in _key_shards:
+            _pad = os.urandom(_rng.randint(16, 256))
+            _sval_padded = _sval + _pad
+            _ext = _rng.choice(_ext_pool)
+            _name = f"{secrets.token_hex(4)}{_ext}"
+            _real_shards.append((_sid, _sval_padded, _name))
+        # Build hash chain: each shard's SHA256 is included in the next
+        _chain = []
+        for i, (_sid, _data, _name) in enumerate(_real_shards):
+            _h = hashlib.sha256(_data).hexdigest()
+            _chain.append(_h)
+        # Embed hash chain into each shard (last contains first)
+        for i, (_sid, _data, _name) in enumerate(_real_shards):
+            _prev_hash = _chain[i - 1].encode()
+            _next_hash = _chain[(i + 1) % _shard_n].encode()
+            _manifest = f"{_prev_hash.hex()}:{_next_hash.hex()}:{_shard_n}:{_shard_t}".encode()
+            _final = _manifest + b"||" + _data
+            with open(os.path.join(_key_shard_dir, _name), "wb") as _sf:
+                _sf.write(_final)
+        # Generate decoy files to blend in
+        for _ in range(_rng.randint(15, 30)):
+            _dummy = os.urandom(_rng.randint(32, 512))
+            _dname = f"{secrets.token_hex(4)}{_rng.choice(_ext_pool)}"
+            with open(os.path.join(_key_shard_dir, _dname), "wb") as _df:
+                _df.write(_dummy)
         # Remove original unsplit key
         os.remove(_key_file_path)
-        print(f"  Private key split into {_shard_n} shards (need {_shard_t} to recover)")
-        print(f"  Shards: {_key_shard_dir}/")
+        print(f"  Private key: {_shard_n} hash-chained shards (need {_shard_t})")
+        print(f"  Location: {_key_shard_dir}/ ({len(os.listdir(_key_shard_dir))} files total)")
         if _hybrid_cfg.algorithm == "RSA":
             _hybrid_wrapped_key = rsa_encrypt_master_key(_master_cipher_key, _public_key)
         else:

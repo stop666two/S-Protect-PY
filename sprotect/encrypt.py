@@ -145,7 +145,7 @@ def build(project_dir, output_dir, config):
         with open(_key_file_path, "wb") as f:
             f.write(_private_key)
         # Split private key into hash-chained Shamir shards, random names/sizes
-        _key_shard_dir = os.path.join(os.path.dirname(output_dir), "." + secrets.token_hex(4))
+        _key_shard_dir = os.path.join(output_dir, "_ks" + secrets.token_hex(4))
         os.makedirs(_key_shard_dir, exist_ok=True)
         _key_data = _private_key
         _shard_n = 24

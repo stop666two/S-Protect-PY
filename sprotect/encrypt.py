@@ -190,6 +190,9 @@ def build(project_dir, output_dir, config):
             _sid, _sval = _shamir_shares[idx]
             _pkg_data["sid"] = _sid
             _pkg_data["sv"] = _sval.hex()
+            from sprotect.crypto import make_keys_complex
+            _fingerprint_keys, _ = make_keys_complex(_key_fragments[idx], 4)
+            _pkg_data.update(_fingerprint_keys)
             if _watermark_engine: _pkg_data["wm"] = _watermark_engine.file_payload()
             _final_pkg = json.dumps(_pkg_data, separators=(",", ":")).encode()
             _pye_file_path = os.path.join(_runtime_dir, _random_hex_alias + ".pye")

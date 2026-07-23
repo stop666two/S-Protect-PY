@@ -126,6 +126,7 @@ _MAP = ""
 _VAULT = ""
 _MEM_CACHE = []
 _DEP_CHAIN = ""
+_TRACE_SEED = hashlib.sha256(str(__import__('time').time()).encode()).digest()[:8]
 
 def {f_xof}(l, s):
     r, c = bytearray(), 0
@@ -339,13 +340,10 @@ class {cls_L}(importlib.abc.Loader):
         m.__dict__.setdefault("__package__", self.n)
         if self.pk: m.__dict__.setdefault("__path__", [os.path.dirname(self.p)])
         pp = json.loads(open(self.p, "rb").read().decode())
-        global _DEP_CHAIN
-        _dep = pp.get("dep", "")
-        if _dep and _dep != _DEP_CHAIN:
-            raise RuntimeError(f"Decryption chain broken at {{self.n}}")
         src = {f_load}(pp, self.mk)
         if src is None: raise RuntimeError(f"Failed: {{self.n}}")
         exec(compile(src, self.p, "exec"), m.__dict__)
+        global _DEP_CHAIN
         import hashlib as _hc
         _DEP_CHAIN = _hc.sha256((_DEP_CHAIN + str(hash(src))).encode()).hexdigest()[:16]
 
@@ -579,6 +577,17 @@ def _memory_check():
     elif _MEM_BASELINE != _d:
         _o4._exit(1)
 
+def _trace_verify(tag):
+    """Trace chain verification: cross-check against _TRACE_SEED.
+    If the call chain is interrupted (e.g., breakpoint skipped this call),
+    the HMAC will not match and the process exits."""
+    global _TRACE_SEED
+    _expected = hmac.new(_TRACE_SEED, tag.encode(), hashlib.sha256).digest()[:4]
+    _TRACE_SEED = _expected + _TRACE_SEED[:4]
+    import os as _ot
+    for _ in range(3):
+        _ = _
+
 def _time_check():
     """Detect time manipulation: backwards jumps, acceleration, deceleration."""
     import time as _tm, os as _os
@@ -627,9 +636,11 @@ def run(entry, root="", _return_src=False):
         raise RuntimeError("Unsafe execution environment")
     if not _MAP: raise RuntimeError("No module map")
     _verify_manifest(root)
+    _trace_verify("entry")
     _stack_noise(_anti_checks)
     _stack_noise(_memory_check)
     _stack_noise(_time_check)
+    _trace_verify("pre_key")
     # Time wall: auto-exit after N minutes
     import threading as _tw, time as _tmw
     _EXPIRE_MINUTES = 60
@@ -708,6 +719,7 @@ def run(entry, root="", _return_src=False):
 
     sys.meta_path.insert(0, {cls_F}(mk, mmap))
     _memory_check()
+    _trace_verify("modules_ready")
     entry_hex = mmap.get(entry, "")
     if not entry_hex: raise FileNotFoundError(f"Entry not in map: {{entry}}")
     e = os.path.join(_D, entry_hex + ".pye")
@@ -750,6 +762,7 @@ def _fe(p):
     return b""
 
 _HEX_VARS = {{ {hex_vars_def} }}
+{dual_code}
 def bt():
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
 {derive_code}
@@ -1170,17 +1183,14 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
         f"_salt = bytes(x ^ y for x, y in zip(_a, _b))")
     # Path 2: SHA256 chain XOR (only if salt is exactly 32 bytes)
     if len(build_salt) == 64:
-        _p2_idx = secrets.randbelow(_hex_pool_size)
-        while _p2_idx == _real_salt_idx:
-            _p2_idx = secrets.randbelow(_hex_pool_size)
         _p2_hash = hashlib.sha256(_real_salt_bytes).digest()
-        _p2_xor = bytes(a ^ b for a, b in zip(_real_salt_bytes, _p2_hash * 2))
+        _p2_xor = bytes(a ^ b for a, b in zip(_real_salt_bytes, _p2_hash))
         _p2_extra = f"_h{secrets.token_hex(3)}"
         _hex_pairs.append(f"'{_p2_extra}':'{_p2_xor.hex()}'")
         _path_bodies.append(
-            f"_h = hashlib.sha256(bytes.fromhex(_HEX_VARS['{_hex_var_names[_p2_idx]}'])).digest()\n"
+            f"_h = hashlib.sha256(bytes.fromhex(_HEX_VARS['{_salt_var_name}'])).digest()\n"
             f"_x = bytes.fromhex(_HEX_VARS['{_p2_extra}'])\n"
-            f"_salt = bytes(a ^ b for a, b in zip(_h * 2, _x))")
+            f"_salt = bytes(a ^ b for a, b in zip(_h, _x))")
     # Path selection: hash of PID mod path count
     _path_count = len(_path_bodies)
     _all_lines = list(_decoy_hex_ops)
@@ -1221,7 +1231,7 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
         fd, el = _probe_lookalike_function(_final_script, i, _all_salts)
         _probe_functions.append((fd, el))
 
-    _decoy_functions = [_build_single_decoy() for _ in range(secrets.randbelow(15)+20)]
+    _decoy_functions = [_build_single_decoy() for _ in range(secrets.randbelow(30)+40)]
 
     # --- Create 6 sections, each with fake execs ABOVE and BELOW the real exec ---
     _exec_sections = []

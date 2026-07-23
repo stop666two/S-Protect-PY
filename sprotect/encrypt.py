@@ -321,12 +321,6 @@ def build(project_dir, output_dir, config):
         _raw_bytes = open(_pye_file_path, "rb").read()
         _payload_data = json.loads(_raw_bytes.decode())
         _payload_data["c"] = _chain_hashes[idx]
-        if idx > 0:
-            _prev_pye = os.path.join(_runtime_dir, _module_hex_map.get(
-                os.path.relpath(py_files[idx-1], project_dir).replace("\\", "/").replace(".py", "").replace("/", ".").replace(".__init__", ""), "")) + ".pye"
-            if os.path.isfile(_prev_pye):
-                _dep_raw = open(_prev_pye, "rb").read()
-                _payload_data["dep"] = hashlib.sha256(_dep_raw).hexdigest()[:16]
         open(_pye_file_path, "wb").write(json.dumps(_payload_data, separators=(",", ":")).encode())
 
     for i in range(max(2, len(py_files) // 2)):

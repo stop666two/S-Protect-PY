@@ -48,6 +48,24 @@
   keyvault: { enabled: true, pool_size: 2048, xor_mask_hex: "A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5", pid_binding: true, pid_salt: "0xDEADBEEF" },
 
   // ===================================================================
+  // 极致压缩器 — 多算法堆叠压缩
+  // 对加密后的载荷进行 Token替换→LZMA→BZ2→Zlib(9)→Base85 多轮堆叠压缩
+  // 典型 Python 项目额外缩减 15%-40%
+  // 独立模块: sprotect/compressor.py + compressor.json5
+  // ===================================================================
+  compressor: {
+    enabled: true,                    // 总开关
+    pass_count: 3,                    // 堆叠轮数（1-5）
+    use_lzma: true,                   // 使用 LZMA
+    use_bz2: true,                    // 使用 BZ2
+    use_zlib: true,                   // 使用 Zlib(9)
+    use_base85: true,                 // 使用 Base85 编码
+    token_replace: true,              // Token 替换
+    shorten_identifiers: true,        // 标识符缩短
+    dictionary_size: 4096,            // Token 字典大小
+  },
+
+  // ===================================================================
   // 双进程架构（实验性功能）
   // ⚠️ 警告：此功能为实验版本，在生产环境中使用前请充分测试。
   //

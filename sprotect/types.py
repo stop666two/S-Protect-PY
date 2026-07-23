@@ -246,6 +246,21 @@ class OutputConfig:
     verbose: bool = False
 
 @dataclass
+class CompressorConfig:
+    """极致压缩器配置 — 多算法堆叠压缩"""
+    enabled: bool = True
+    pass_count: int = 3
+    use_lzma: bool = True
+    use_bz2: bool = True
+    use_zlib: bool = True
+    use_base85: bool = True
+    token_replace: bool = True
+    shorten_identifiers: bool = True
+    remove_dead_strings: bool = True
+    dictionary_size: int = 4096
+    max_chunk_size: int = 1048576
+
+@dataclass
 class RuntimeConfig:
     """运行时保护配置"""
     layer_count: int = 6
@@ -280,3 +295,4 @@ class Config:
     keyvault: KeyVaultConfig = field(default_factory=KeyVaultConfig)
     dual_process: DualProcessConfig = field(default_factory=DualProcessConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
+    compressor: CompressorConfig = field(default_factory=CompressorConfig)

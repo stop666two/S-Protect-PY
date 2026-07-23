@@ -132,7 +132,24 @@ def build(project_dir, output_dir, config):
         b"sprotect-loader-key-v1",
         hashlib.sha256
     ).digest()
+
+    # Compute file fingerprint key from ALL project .py files
+    # Key = SHA256(MD5(file1) + SHA224(file1) + MD5(file2) + SHA224(file2) + ...)
+    _file_digests = []
+    for _fp in sorted(py_files):
+        _raw = open(_fp, "rb").read()
+        _md5 = hashlib.md5(_raw).hexdigest()
+        _sha224 = hashlib.sha224(_raw).hexdigest()
+        _file_digests.append(_md5)
+        _file_digests.append(_sha224)
+    _file_fingerprint = hashlib.sha256("|".join(_file_digests).encode()).hexdigest()
+
     _master_cipher_key = aes_key()
+    # Bind master key to file fingerprint: SHA256(master_key || MD5+SHA224 of ALL project .py files)
+    _file_fingerprint_bytes = _file_fingerprint.encode()
+    _bound_key = hashlib.sha256(_master_cipher_key + _file_fingerprint_bytes).digest()
+    # Replace master key with bound key for all subsequent operations
+    _master_cipher_key = _bound_key
     _hybrid_wrapped_key = None
     if config.encrypt.hybrid.enabled:
         _hybrid_cfg = config.encrypt.hybrid

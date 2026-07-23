@@ -6,6 +6,7 @@ import os, json, secrets, hashlib, hmac, zlib
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from sprotect.types import Config
 from sprotect.config import merge_file_config
 from sprotect.obfuscate import Obfuscator, collect_defs
@@ -475,6 +476,27 @@ th{{background:#333;color:#fff}}
     _entry_hex_alias = _module_hex_map.get(_entry_module, "")
     _hybrid_cfg = config.encrypt.hybrid
     gen_boot(output_dir, _entry_module, _entry_hex_alias, {}, _loader_cipher_key, _loader_build_salt, _hybrid_wrapped_key, _hybrid_cfg.algorithm if _hybrid_wrapped_key else "RSA", dual_process_enabled=config.dual_process.enabled)
+
+    # Sign main.py with Ed25519
+    _main_py_path = os.path.join(output_dir, config.project.entry)
+    if os.path.isfile(_main_py_path):
+        _sign_key = Ed25519PrivateKey.generate()
+        _main_data = open(_main_py_path, "rb").read()
+        _signature = _sign_key.sign(_main_data)
+        _pk_hex = _sign_key.public_key().public_bytes_raw().hex()
+        _sig_hex = _signature.hex()
+        _verify_stub = f"""# SIG-SPROTECT-ED25519:{_sig_hex}:{_pk_hex}
+import sys as _sy1, hashlib as _hs1
+try:
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    _pk = Ed25519PublicKey.from_public_bytes(bytes.fromhex('{_pk_hex}'))
+    _sig = bytes.fromhex('{_sig_hex}')
+    _pk.verify(_sig, open(__file__,'rb').read().split(b'# SIG-SPROTECT-ED25519:')[0])
+except: sys.exit(1)
+"""
+        with open(_main_py_path, "ab") as _f:
+            _f.write(_verify_stub.encode())
+        print(f"  Signed: {_main_py_path}")
 
     # Cleanup decoy modules
     _decoy_dir_path = os.path.join(project_dir, "_decoy_modules")

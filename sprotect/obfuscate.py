@@ -640,13 +640,12 @@ class _StringDisperser(ast.NodeTransformer):
 class _OpaqueExprInjector(ast.NodeTransformer):
     """Replace simple ops with complex identities. LLMs can't algebraically simplify."""
 
+    def _is_numeric(self, n: ast.AST) -> bool:
+        return isinstance(n, ast.Constant) and isinstance(n.value, (int, float)) and not isinstance(n.value, bool)
+
     def visit_BinOp(self, node: ast.BinOp):
         self.generic_visit(node)
-        _skip = False
-        for _c in [node.left, node.right]:
-            if isinstance(_c, ast.Constant) and isinstance(_c.value, str):
-                _skip = True
-        if _skip:
+        if not self._is_numeric(node.left) or not self._is_numeric(node.right):
             return node
         if isinstance(node.op, ast.Add) and secrets.randbelow(2):
             return ast.BinOp(left=ast.BinOp(left=node.left, op=ast.BitXor(), right=node.right),
@@ -668,7 +667,9 @@ class _OpaqueExprInjector(ast.NodeTransformer):
 
     def visit_Compare(self, node: ast.Compare):
         self.generic_visit(node)
-        if len(node.ops) == 1 and isinstance(node.ops[0], ast.Eq) and secrets.randbelow(2):
+        if (len(node.ops) == 1 and isinstance(node.ops[0], ast.Eq)
+                and self._is_numeric(node.left) and self._is_numeric(node.comparators[0])
+                and secrets.randbelow(2)):
             return ast.Compare(left=ast.BinOp(left=node.left, op=ast.BitXor(), right=node.comparators[0]),
                 ops=[ast.Eq()], comparators=[ast.Constant(0)])
         return node

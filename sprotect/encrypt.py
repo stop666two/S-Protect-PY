@@ -51,6 +51,29 @@ def _generate_decoy_file() -> str:
     return src
 
 
+def _build_layers(final_source: str, master_key: bytes, layer_count: int = 4) -> bytes:
+    """Wrap source in N encrypted layers. Each layer decrypts to reveal the next.
+    Returns outermost encrypted data bytes (AES-GCM nonce + ciphertext).
+    Master key is used as the outermost layer key; inner layers use random keys."""
+    import secrets, json
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    current = final_source.encode()
+
+    for i in range(layer_count):
+        key = secrets.token_bytes(32) if i < layer_count - 1 else master_key
+        nonce = secrets.token_bytes(12)
+        ct = nonce + AESGCM(key).encrypt(nonce, current, b"")
+
+        if i < layer_count - 1:
+            layer_info = {"k": key.hex(), "d": ct.hex()}
+            current = json.dumps(layer_info, separators=(",", ":")).encode()
+        else:
+            current = ct
+
+    return current
+
+
 def build(project_dir, output_dir, config):
     """Build encrypted project: obfuscate, encrypt, generate boot loader."""
     if os.path.isdir(output_dir) and os.listdir(output_dir):
@@ -149,18 +172,21 @@ def build(project_dir, output_dir, config):
             if _file_config.virtualization.enabled and _file_config.virtualization.functions:
                 _source_code = virtualize_source(_source_code, _file_config.virtualization)
             if _watermark_engine: _source_code = _watermark_engine.code(_source_code)
+            _LAYER_COUNT = 4
+            _ml_wrapped = _build_layers(_source_code, _master_cipher_key, _LAYER_COUNT)
             _extra_layers = _file_config.encrypt.extra_layers or []
             if _extra_layers:
-                _ciphertext, _enc_header = encrypt_payload_v2(_source_code.encode(), _master_cipher_key, _extra_layers,
+                _ciphertext, _enc_header = encrypt_payload_v2(_ml_wrapped, _master_cipher_key, _extra_layers,
                                              config.encrypt.compress_level)
                 _header_json = json.dumps(_enc_header, separators=(",", ":"))
                 _serialized_payload = json.dumps({"v":2,"h":_header_json,"d":_ciphertext.hex()},
                                            separators=(",", ":")).encode()
             else:
-                _serialized_payload = encrypt_payload(_source_code.encode(), _master_cipher_key,
+                _serialized_payload = encrypt_payload(_ml_wrapped, _master_cipher_key,
                                            config.encrypt.compress_level,
                                            config.encrypt.polymorphic_padding_max)
             _pkg_data = json.loads(_serialized_payload.decode())
+            _pkg_data["ml"] = _LAYER_COUNT
             _sid, _sval = _shamir_shares[idx]
             _pkg_data["sid"] = _sid
             _pkg_data["sv"] = _sval.hex()

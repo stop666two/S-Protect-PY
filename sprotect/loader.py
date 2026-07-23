@@ -103,6 +103,7 @@ def gen_loader_source() -> str:
     f_extract = _produce_random_symbol()
     f_run = "run"
     f_extra = _produce_random_symbol()
+    f_mld = _produce_random_symbol()
     f_gf_mul = _produce_random_symbol()
     f_gf_inv = _produce_random_symbol()
     f_shamir = _produce_random_symbol()
@@ -162,7 +163,7 @@ def {f_filter}(mk, shards):
         if not p or not p.get("c"): continue
 
 def {f_load}(p, mk):
-    """Full decrypt: extra layers -> AES-GCM -> XOR -> ChaCha20 -> zlib."""
+    """Full decrypt: extra layers -> AES-GCM -> XOR -> ChaCha20 -> zlib -> multi-layer."""
     ct = bytes.fromhex(p["d"])
     hdr = p.get("h", "")
     if hdr:
@@ -175,7 +176,11 @@ def {f_load}(p, mk):
         x = ChaCha20Poly1305(mk).decrypt(x[:12], x[12:], b"")
     except Exception:
         raise RuntimeError("ChaCha20 decrypt failed - data may be corrupted")
-    return zlib.decompress(x).decode()
+    x = zlib.decompress(x)
+    ml = p.get("ml", 0)
+    if ml:
+        return {f_mld}(x.hex(), mk, ml)
+    return x.decode()
 
 def {f_extra}(ct, mk, hdr):
     import json, hashlib
@@ -204,6 +209,21 @@ def {f_extra}(ct, mk, hdr):
             p = c.decryptor().update(ct) + c.decryptor().finalize()
             ct = p[:-p[-1]]
     return ct
+
+def {f_mld}(d, k, n):
+    """Decrypt multi-layer encrypted data from outermost to innermost."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    import json
+    cd, ck = bytes.fromhex(d), k
+    for i in range(n):
+        x = AESGCM(ck).decrypt(cd[:12], cd[12:], b"")
+        if i < n - 1:
+            l = json.loads(x.decode())
+            ck = bytes.fromhex(l["k"])
+            cd = bytes.fromhex(l["d"])
+        else:
+            return x.decode()
+    return None
 
 # Decoy classes and functions
 class {_produce_random_symbol()}:

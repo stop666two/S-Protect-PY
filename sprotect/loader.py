@@ -449,8 +449,9 @@ def _anti_tamper_check(mk):
         pass
     return mk
 
-def run(entry, root=""):
-    """Run entry: decrypt map, collect shards, load modules."""
+def run(entry, root="", _return_src=False):
+    """Run entry: decrypt map, collect shards, load modules.
+    If _return_src=True, return the final source instead of exec-ing."""
     if not _check_vm():
         raise RuntimeError("Unsafe execution environment")
     if not _MAP: raise RuntimeError("No module map")
@@ -535,14 +536,13 @@ def run(entry, root=""):
     e = os.path.join(_D, entry_hex + ".pye")
     pp = json.loads(open(e, "rb").read().decode())
     src = {f_load}(pp, mk)
-    fm = os.path.join(root or os.path.dirname(_D), entry + ".py")
-    exec(compile(src, e, "exec"), {{"__name__":"__main__","__file__":fm,"__builtins__":__builtins__}})
+    return src
 '''
 
     return src
 
 
-_BOOT_TEMPLATE = '''"""Module loader."""
+_BOOT_TEMPLATE = '''"""Module loader - dual-process architecture."""
 import sys, os, json, hashlib, zlib, hmac
 sys.dont_write_bytecode = True
 a = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__file__))
@@ -585,11 +585,59 @@ def bt():
         x = ChaCha20Poly1305(rk).decrypt(x[:12], x[12:], b"")
     except Exception:
         pass
-    return zlib.decompress(x).decode()
+    _ld_src = zlib.decompress(x).decode()
+    return _ld_src
 
-ld = compile(bt(), "", "exec")
-exec(ld)
-run("{entry}", a)
+# Dual-process architecture
+if "--dual" in sys.argv:
+    _ld_src = bt()
+    ld = compile(_ld_src, "", "exec")
+    exec(ld)
+    _final_src = run("{entry}", a)
+    import multiprocessing.connection as _mpc, secrets as _sec, subprocess as _sub
+    _ipc_key = _sec.token_hex(16)
+    try:
+        _listener = _mpc.Listener(("localhost", 0), authkey=_ipc_key.encode())
+        _addr = str(_listener.address)
+        _env = os.environ.copy()
+        _env["_SP_IPC_KEY"] = _ipc_key
+        _env["_SP_IPC_ADDR"] = _addr
+        _child = _sub.Popen([sys.executable, __file__, "--child"], env=_env)
+        _conn = _listener.accept()
+        _conn.recv()
+        _conn.send(_final_src if isinstance(_final_src, str) else "")
+        _conn.close()
+        _child.wait(timeout=30)
+    except:
+        try: _child.kill()
+        except: pass
+    finally:
+        _listener.close()
+        _final_src = _ld_src = None
+        import gc; gc.collect()
+elif "--child" in sys.argv:
+    _auth_key = os.environ.get("_SP_IPC_KEY", "").encode()
+    _addr = os.environ.get("_SP_IPC_ADDR", "")
+    if _auth_key and _addr:
+        import multiprocessing.connection as _mpc
+        try:
+            _conn = _mpc.Client(_addr, authkey=_auth_key)
+            _conn.send("ready")
+            _final_src = _conn.recv()
+            if isinstance(_final_src, str) and len(_final_src) > 10:
+                exec(compile(_final_src, "", "exec"))
+            _conn.close()
+        except:
+            pass
+    sys.exit(0)
+else:
+    # Legacy mode: decrypt and exec directly
+    _ld_src = bt()
+    ld = compile(_ld_src, "", "exec")
+    exec(ld)
+    _final_src = run("{entry}", a)
+    if isinstance(_final_src, str) and len(_final_src) > 10:
+        exec(compile(_final_src, "", "exec"))
 '''
 
 

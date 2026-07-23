@@ -93,8 +93,11 @@ def _synthesize_decoy_decryptor(num: int) -> str:
 
 def gen_loader_source() -> str:
     """Generate the runtime loader source with randomized names and structure."""
-    import secrets as _sec, random as _rnd
+    import secrets as _sec, random as _rnd, ast as _ast
     _rnd.seed(_sec.randbits(32))
+    _s = _sec
+    _r = _rnd
+    _a = _ast
 
     f_xof = _produce_random_symbol()
     f_load = _produce_random_symbol()
@@ -224,8 +227,11 @@ def {f_mld}(d, k, n):
     cd, ck = bytes.fromhex(d), k
     for i in range(n):
         x = AESGCM(ck).decrypt(cd[:12], cd[12:], b"")
+        _decoded = x.decode()
         if i < n - 1:
-            _decoded = {f_poly}(x.decode())
+            # Only polymorph Python source, not JSON layer wrappers
+            if not _decoded.strip().startswith(("{{", "[", '{{"')):
+                _decoded = {f_poly}(_decoded)
             _m = _re9.search(r"'([A-Za-z0-9_=-]+)'", _decoded)
             if _m:
                 _padded = _m.group(1) + "=" * (-len(_m.group(1)) % 4)
@@ -238,54 +244,8 @@ def {f_mld}(d, k, n):
                 ck = bytes.fromhex(l["k"])
                 cd = bytes.fromhex(l["d"])
         else:
-            return {f_poly}(x.decode())
+            return {f_poly}(_decoded)
     return None
-
-def {f_poly}(src):
-    """Polymorphic mutator: renames, reorders, injects junk, swaps constants."""
-    import ast as _a, secrets as _s, random as _r, hashlib as _h
-    _r.seed(_s.randbits(32))
-    try:
-        _tree = _a.parse(src)
-        _rename_map = {{}}
-        for _node in _a.walk(_tree):
-            if isinstance(_node, (_a.FunctionDef, _a.AsyncFunctionDef, _a.ClassDef)):
-                if not _node.name.startswith("_"):
-                    _rename_map[_node.name] = f"_p{{_s.token_hex(4)}}"
-            elif isinstance(_node, _a.Name) and isinstance(_node.ctx, _a.Store):
-                if not _node.id.startswith("_"):
-                    _rename_map.setdefault(_node.id, f"_x{{_s.token_hex(4)}}")
-        class _Renamer(_a.NodeTransformer):
-            def visit_Name(self, n):
-                if n.id in _rename_map: n.id = _rename_map[n.id]
-                return n
-            def visit_FunctionDef(self, n):
-                if n.name in _rename_map: n.name = _rename_map[n.name]
-                return self.generic_visit(n)
-            def visit_ClassDef(self, n):
-                if n.name in _rename_map: n.name = _rename_map[n.name]
-                return self.generic_visit(n)
-            def visit_alias(self, n):
-                if n.asname and n.asname in _rename_map: n.asname = _rename_map[n.asname]
-                return n
-        _Renamer().visit(_tree)
-        if _r.random() < 0.3:
-            _junk_lines = _r.randint(1, 3)
-            for _ in range(_junk_lines):
-                _jn = f"_j{{_s.token_hex(3)}}"
-                _junk = _a.parse(f"{{_jn}} = {{_s.randbelow(9999)}} ^ {{_s.randbelow(999)}}").body[0]
-                _tree.body.insert(_r.randint(0, len(_tree.body)), _junk)
-        class _StrShuffler(_a.NodeTransformer):
-            def visit_Constant(self, n):
-                if isinstance(n.value, str) and len(n.value) > 3 and _r.random() < 0.2:
-                    _enc = "".join(f"\\\\x{{ord(c):02x}}" for c in n.value)
-                    return _a.Call(func=_a.Name(id="bytes"), args=[_a.Constant(n.value.encode())], keywords=[])
-                return n
-        _StrShuffler().visit(_tree)
-        _a.fix_missing_locations(_tree)
-        return _a.unparse(_tree)
-    except:
-        return src
 
 # Decoy classes and functions
 class {_produce_random_symbol()}:
@@ -294,6 +254,26 @@ class {_produce_random_symbol()}:
     def {_produce_random_symbol()}(self): return None
 
 '''
+
+    # Append polymorph mutator as separate string (avoids f-string escaping issues)
+    _poly_func_name = f_poly
+    src += f"""
+def {_poly_func_name}(src):
+    import re as _pr, secrets as _ps, random as _prnd
+    _prnd.seed(_ps.randbits(32))
+    _lines = src.split('\\n')
+    _nl = []
+    for _i, _line in enumerate(_lines):
+        if _prnd.random() < 0.25 and _line.strip().startswith(('def ', 'class ')):
+            _line = _pr.sub(r'\\b([a-zA-Z]\\w+)(?=\\s*[\\(:])', f'_m{{_ps.token_hex(3)}}', _line, count=1)
+        _nl.append(_line)
+    if _prnd.random() < 0.5:
+        _jn = f'_x{{_ps.token_hex(3)}}'
+        _nl.insert(0, f'{{_jn}} = {{_ps.randbelow(9999)}}')
+    if _prnd.random() < 0.3:
+        _nl.insert(0, f'if ({{_ps.randbelow(999)}} ^ {{_ps.randbelow(999)}}) + 1 == 1: pass')
+    return '\\n'.join(_nl)
+"""
 
     # Add random decoy functions
     for _ in range(_rnd.randint(2, 5)):
@@ -958,6 +938,36 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
 
     from sprotect.minify import minify_source
     _final_script = minify_source(_final_script, add_garbage=True)
+    # Apply polymorphic pass on the final assembled script
+    try:
+        _poly_pass = _produce_random_symbol()
+        _poly_src = f"""
+import ast as _ap, secrets as _sp, random as _rp
+_rp.seed(_sp.randbits(32))
+def {_poly_pass}(s):
+    try:
+        _t = _ap.parse(s)
+        _m = {{}}
+        for _n in _ap.walk(_t):
+            if isinstance(_n, (_ap.FunctionDef, _ap.ClassDef)):
+                if not _n.name.startswith('_'): _m[_n.name] = f'_m{{_sp.token_hex(4)}}'
+        class _R(_ap.NodeTransformer):
+            def visit_Name(self, n):
+                if n.id in _m: n.id = _m[n.id]
+                return n
+            def visit_FunctionDef(self, n):
+                if n.name in _m: n.name = _m[n.name]
+                return self.generic_visit(n)
+        _R().visit(_t)
+        _ap.fix_missing_locations(_t)
+        return _ap.unparse(_t)
+    except:
+        return s
+_final_script = {_poly_pass}(_final_script)
+"""
+        exec(_poly_src)
+    except:
+        pass
     with open(ep, "w", encoding="utf-8") as f: f.write(_final_script)
     for src, dst in per_file_configs.items():
         shutil.copy2(src, dst)

@@ -188,17 +188,6 @@ def {f_load}(p, mk):
     except Exception:
         raise RuntimeError("ChaCha20 decrypt failed - data may be corrupted")
     x = zlib.decompress(x)
-    # Register for TTL tracking
-    try:
-        _MEM_CACHE.append((x, __import__('time').time()))
-    except:
-        pass
-    # Wipe decrypted buffer from memory
-    try:
-        import array as _aw
-        _aw.array('b', [0]) * len(x)
-    except:
-        pass
     ml = p.get("ml", 0)
     if ml:
         return {f_mld}(x.hex(), mk, ml)

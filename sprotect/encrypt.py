@@ -16,6 +16,7 @@ from sprotect.loader import gen_boot, gen_loader_source
 from sprotect.backup import backup
 from sprotect.minify import minify_source
 from sprotect.keyvault import generate_vault, KeyVaultConfig, VaultData
+from sprotect.compressor import compress as _compress
 
 
 def _parse_watermark_dict(_pye_bytes: bytes) -> tuple[str, dict]:

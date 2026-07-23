@@ -244,6 +244,8 @@ class OutputConfig:
     runtime_dir_name: str = "_runtime"
     preserve_non_py: bool = True
     verbose: bool = False
+    clean_before_build: bool = False
+    backup_before_build: bool = True
 
 @dataclass
 class CompressorConfig:
@@ -269,6 +271,12 @@ class RuntimeConfig:
     time_wall_minutes: int = 60
     ttl_seconds: int = 60
     integrity_check_interval: int = 30
+    decoy_watch_interval: int = 45
+    memory_check_enabled: bool = True
+    time_anomaly_check: bool = True
+    stack_obfuscation: bool = True
+    file_decoy_enabled: bool = True
+    heap_scramble: bool = False
 
 @dataclass
 class DualProcessConfig:

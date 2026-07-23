@@ -451,21 +451,39 @@ def _check_vm():
             return True
     return True
 
-def _anti_tamper_check(mk):
-    """Detect code tampering. If detected, return WRONG key to produce garbage."""
-    try:
-        import sys as _sy0
-        if _sy0.gettrace() is not None:
-            return b"\\x00" * 32
-        _known = {"os", "sys", "json", "hashlib", "hmac", "zlib", "struct", "time", "base64"}
-        for _m in list(_sy0.modules.keys()):
-            if _m.startswith("_") or "." in _m:
-                continue
-            if _m not in _known and _m not in ("cryptography", "importlib", "__main__"):
+    _HONEY_COUNTER = 0
+    def _honey_trap(mk):
+        """Honeypot trap: return ALMOST correct key to produce plausible-but-wrong output."""
+        global _HONEY_COUNTER
+        try:
+            import sys as _sy0
+            if _sy0.gettrace() is not None:
+                _HONEY_COUNTER += 1
+                # First few times: return near-correct key (output looks real but subtly wrong)
+                if _HONEY_COUNTER < 5:
+                    _bad = bytearray(mk)
+                    _bad[0] ^= 1  # Flip one bit - output will be ~99% correct
+                    return bytes(_bad)
                 return b"\\x00" * 32
-    except:
-        pass
-    return mk
+            _known = {"os", "sys", "json", "hashlib", "hmac", "zlib", "struct", "time", "base64"}
+            for _m in list(_sy0.modules.keys()):
+                if _m.startswith("_") or "." in _m:
+                    continue
+                if _m not in _known and _m not in ("cryptography", "importlib", "__main__"):
+                    _HONEY_COUNTER += 1
+                    if _HONEY_COUNTER < 5:
+                        _bad = bytearray(mk)
+                        _bad[-1] ^= 2
+                        return bytes(_bad)
+                    return b"\\x00" * 32
+        except:
+            pass
+        # Honeypot for hash chain failures: don't crash, return wrong data
+        if hasattr(mk, '__honey__'):
+            _bad = bytearray(mk)
+            _bad[len(_bad)//2] ^= 0x80
+            return bytes(_bad)
+        return mk
 
 def run(entry, root="", _return_src=False):
     """Run entry: decrypt map, collect shards, load modules.

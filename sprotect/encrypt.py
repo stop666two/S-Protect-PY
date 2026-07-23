@@ -54,26 +54,17 @@ def _generate_decoy_file() -> str:
 
 
 def _build_layers(final_source: str | bytes, master_key: bytes, layer_count: int = 6) -> bytes:
-    """Wrap source in N encrypted layers with hash-chain verification.
-    Each layer embeds SHA256(next_layer_content)[:16] as 'h' field."""
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    import secrets, json, zlib, base64, hashlib
-
+    import secrets, json, zlib, base64
     current = final_source.encode() if isinstance(final_source, str) else final_source
-    # First pass: encrypt all layers, store content hashes
-    _hashes = []
     for i in range(layer_count):
         key = secrets.token_bytes(32) if i < layer_count - 1 else master_key
         nonce = secrets.token_bytes(12)
         ct = nonce + AESGCM(key).encrypt(nonce, current, b"")
-        if i > 0:
-            _hashes[i-1] = hashlib.sha256(current).hexdigest()[:16]
-        _hashes.append("")
         if i < layer_count - 1:
             _lk = key.hex()
             _ld = ct.hex()
-            _h = _hashes[i]
-            raw_json = json.dumps({"k": _lk, "d": _ld, "h": _h}, separators=(",", ":"))
+            raw_json = json.dumps({"k": _lk, "d": _ld}, separators=(",", ":"))
             _b64 = base64.urlsafe_b64encode(raw_json.encode()).decode().rstrip("=")
             _fake_var = "_" + secrets.token_hex(4)
             current = f"{_fake_var}='{_b64}'".encode()

@@ -93,7 +93,7 @@ def _synthesize_decoy_decryptor(num: int) -> str:
 
 def gen_loader_source() -> str:
     """Generate the runtime loader source with randomized names and structure."""
-    import secrets as _sec, random as _rnd, ast as _ast
+    import secrets as _sec, random as _rnd, ast as _ast, json as _json
     _rnd.seed(_sec.randbits(32))
     _s = _sec
     _r = _rnd
@@ -249,19 +249,11 @@ def {f_extra}(ct, mk, hdr):
     return ct
 
 def {f_mld}(d, k, n, _raw_last=False):
-    """Decrypt multi-layer encrypted data from outermost to innermost.
-    Hash chain: each layer stores SHA256(inner_content)[:16], verified after decrypt."""
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    import json, base64, re as _re9, hashlib as _hlib
+    import json, base64, re as _re9
     cd, ck = bytes.fromhex(d), k
-    _next_expected_hash = ""
     for i in range(n):
         x = AESGCM(ck).decrypt(cd[:12], cd[12:], b"")
-        # Verify hash chain (hash of THIS layer against expected from outer layer)
-        if _next_expected_hash:
-            _actual = _hlib.sha256(x).hexdigest()[:16]
-            if _actual != _next_expected_hash:
-                return b""
         if i < n - 1:
             _decoded = x.decode()
             if not _decoded.strip().startswith(("{{", "[", '{{"')):
@@ -273,12 +265,10 @@ def {f_mld}(d, k, n, _raw_last=False):
                 l = json.loads(_raw)
                 ck = bytes.fromhex(l["k"])
                 cd = bytes.fromhex(l["d"])
-                _next_expected_hash = l.get("h", "")
             else:
                 l = json.loads(_decoded)
                 ck = bytes.fromhex(l["k"])
                 cd = bytes.fromhex(l["d"])
-                _next_expected_hash = l.get("h", "")
         else:
             if _raw_last:
                 return x
@@ -977,6 +967,7 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
              build_salt: str = "",
              hybrid_key: bytes | None = None, algorithm: str = "RSA",
              dual_process_enabled: bool = False) -> str:
+    import json as _json_gen
     ep = os.path.join(output_dir, entry_module.replace(".", os.sep) + ".py")
     os.makedirs(os.path.dirname(ep), exist_ok=True)
 
@@ -1124,6 +1115,26 @@ _final_script = {_poly_pass}(_final_script)
         exec(_poly_src)
     except:
         pass
+    # Fragment the boot script by top-level def/class boundaries
+    _frag_dir = os.path.join(os.path.dirname(ep), "_bootstrap")
+    os.makedirs(_frag_dir, exist_ok=True)
+    # Generate decoy bootstrap fragments for confusion (main.py stays intact)
+    _frag_exts = [".py",".py",".py",".dat",".cfg",".bin",".tmp",".log"]
+    _decoy_frag_count = secrets.randbelow(4) + 3
+    for _fi in range(_decoy_frag_count):
+        _fname = f"f{secrets.token_hex(4)}{_rnd.choice(_frag_exts)}"
+        _fake_lines = [
+            f"import sys, os, hashlib, json, zlib, struct, hmac",
+            f"from cryptography.hazmat.primitives.ciphers.aead import AESGCM",
+            f"_d{secrets.token_hex(4)} = os.urandom({secrets.randbelow(64)+8}).hex()",
+            f"_t{secrets.token_hex(4)} = hashlib.sha256(os.urandom(32)).hexdigest()",
+            f"def _x{secrets.token_hex(3)}(s):\n    return bytes(a^b for a,b in zip(s,os.urandom(len(s))))",
+            f"if ({secrets.randbelow(999)} ^ {secrets.randbelow(999)}) + 1 == 1: pass",
+            f"# {secrets.token_hex(32)}",
+        ]
+        _data = "\n".join(_fake_lines)
+        with open(os.path.join(_frag_dir, _fname), "w", encoding="utf-8") as _ff:
+            _ff.write(_data)
     with open(ep, "w", encoding="utf-8") as f: f.write(_final_script)
     for src, dst in per_file_configs.items():
         shutil.copy2(src, dst)

@@ -1099,7 +1099,7 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
              build_salt: str = "",
              hybrid_key: bytes | None = None, algorithm: str = "RSA",
              dual_process_enabled: bool = False) -> str:
-    import json as _json_gen
+    import json as _json_gen, zlib as _zlib
     ep = os.path.join(output_dir, entry_module.replace(".", os.sep) + ".py")
     os.makedirs(os.path.dirname(ep), exist_ok=True)
 
@@ -1110,7 +1110,6 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
     _hex_keys[_real_salt_idx] = build_salt
     _hex_var_names = [f"_h{secrets.token_hex(3)}" for _ in range(_hex_pool_size)]
     _hex_pairs = [f"'{_hex_var_names[i]}':'{_hex_keys[i]}'" for i in range(_hex_pool_size)]
-    _hex_vars_def = ", ".join(_hex_pairs)
 
     # Build derivation code: XOR a subset of entries to derive the actual HMAC key
     _deriv_count = secrets.randbelow(3) + 3
@@ -1135,19 +1134,87 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
         _op_type = _rnd_inst.randint(0, 2)
         if _op_type == 0:
             _decoy_hex_ops.append(
-                f"{_id4}_t{secrets.token_hex(2)} = hashlib.sha256(bytes.fromhex(_HEX_VARS['{_hex_var_names[_vn]}'])).hexdigest()")
+                f"_t{secrets.token_hex(2)} = hashlib.sha256(bytes.fromhex(_HEX_VARS['{_hex_var_names[_vn]}'])).hexdigest()")
         elif _op_type == 1:
             _decoy_hex_ops.append(
-                f"{_id4}_t{secrets.token_hex(2)} = zlib.crc32(bytes.fromhex(_HEX_VARS['{_hex_var_names[_vn]}']))")
+                f"_t{secrets.token_hex(2)} = zlib.crc32(bytes.fromhex(_HEX_VARS['{_hex_var_names[_vn]}']))")
         else:
             _decoy_hex_ops.append(
-                f"{_id4}_t{secrets.token_hex(2)} = len(_HEX_VARS['{_hex_var_names[_vn]}'])")
+                f"_t{secrets.token_hex(2)} = len(_HEX_VARS['{_hex_var_names[_vn]}'])")
 
-    # Build derive_code: use ONLY the build_salt (no XOR mixing for now)
+    # Build polymorphic derive_code: 4 independent paths, each produces _salt directly
     _salt_var_name = _hex_var_names[_real_salt_idx]
-    _derive_parts = [f"{_id4}_salt = bytes.fromhex(_HEX_VARS['{_salt_var_name}'])"]
-    _derive_parts.append(f"{_id4}k = hmac.new(_salt, b\"sprotect-loader-key-v1\", hashlib.sha256).digest()")
-    _derive_code = "\n".join(_decoy_hex_ops + _derive_parts)
+    _real_salt_bytes = bytes.fromhex(build_salt)
+    _poly_paths = []
+    # Path 0: Direct hex read (original, always works)
+    _poly_paths.append(f"{_salt_var_name}")
+    # Path 1: XOR of two hex vars that cancel to produce same salt
+    _p1_idx = secrets.randbelow(_hex_pool_size)
+    while _p1_idx == _real_salt_idx:
+        _p1_idx = secrets.randbelow(_hex_pool_size)
+    _p1_name = _hex_var_names[_p1_idx]
+    _p1_key = bytes.fromhex(_hex_keys[_p1_idx])
+    _p1_cancel_raw = bytes(a ^ b for a, b in zip(_real_salt_bytes, _p1_key))
+    _p1_hex = _p1_cancel_raw.hex()
+    _p1_extra = f"_h{secrets.token_hex(3)}"
+    _hex_pairs.append(f"'{_p1_extra}':'{_p1_hex}'")
+    _poly_paths.append(f"{_p1_name},{_p1_extra}")
+    # Path 2: CRC32 mask XOR
+    _p2_idx = secrets.randbelow(_hex_pool_size)
+    while _p2_idx == _real_salt_idx:
+        _p2_idx = secrets.randbelow(_hex_pool_size)
+    _p2_crc_val = _zlib.crc32(_real_salt_bytes) & 0xFFFFFFFF
+    _p2_mask = (_p2_crc_val.to_bytes(4, 'little') * 8)[:len(_real_salt_bytes)]
+    _p2_xor_raw = bytes(a ^ b for a, b in zip(_real_salt_bytes, _p2_mask))
+    _p2_extra = f"_h{secrets.token_hex(3)}"
+    _hex_pairs.append(f"'{_p2_extra}':'{_p2_xor_raw.hex()}'")
+    _poly_paths.append(f"{_hex_var_names[_p2_idx]},{_p2_extra},{_p2_crc_val}")
+    # Path 3: SHA256 chain → truncate → XOR
+    _p3_idx = secrets.randbelow(_hex_pool_size)
+    while _p3_idx == _real_salt_idx:
+        _p3_idx = secrets.randbelow(_hex_pool_size)
+    _p3_hash = hashlib.sha256(_real_salt_bytes).digest()
+    _p3_xor = bytes(a ^ b for a, b in zip(_real_salt_bytes, _p3_hash[:len(_real_salt_bytes)]))
+    _p3_extra = f"_h{secrets.token_hex(3)}"
+    _hex_pairs.append(f"'{_p3_extra}':'{_p3_xor.hex()}'")
+    _poly_paths.append(f"{_hex_var_names[_p3_idx]},{_p3_extra}")
+    # Build self-contained path bodies
+    _path_bodies = []
+    # Path 0 body: direct read
+    _path_bodies.append(
+        f"_salt = bytes.fromhex(_HEX_VARS['{_poly_paths[0]}'])")
+    # Path 1 body: XOR of two vars
+    _p1_a, _p1_b = _poly_paths[1].split(',')
+    _path_bodies.append(
+        f"_a = bytes.fromhex(_HEX_VARS['{_p1_a}'])\n"
+        f"_b = bytes.fromhex(_HEX_VARS['{_p1_b}'])\n"
+        f"_salt = bytes(x ^ y for x, y in zip(_a, _b))")
+    # Path 2 body: CRC32 mask XOR
+    _p2_a, _p2_b, _p2_c = _poly_paths[2].split(',')
+    _path_bodies.append(
+        f"_c = {_p2_c} & 0xFFFFFFFF\n"
+        f"_m = (_c.to_bytes(4, 'little') * 8)[:32]\n"
+        f"_p = bytes.fromhex(_HEX_VARS['{_p2_b}'])\n"
+        f"_salt = bytes(x ^ y for x, y in zip(_p, _m))")
+    # Path 3 body: SHA256 chain XOR
+    _p3_a, _p3_b = _poly_paths[3].split(',')
+    _path_bodies.append(
+        f"_h = hashlib.sha256(bytes.fromhex(_HEX_VARS['{_p3_a}'])).digest()\n"
+        f"_x = bytes.fromhex(_HEX_VARS['{_p3_b}'])\n"
+        f"_salt = bytes(a ^ b for a, b in zip(_h, _x))")
+    # Path selection: hash of PID
+    _path_count = len(_path_bodies)
+    _all_lines = list(_decoy_hex_ops)
+    _all_lines.append(f"_pid = __import__('os').getpid()")
+    _all_lines.append(f"_sel = hashlib.sha256(str(_pid).encode()).digest()[0] % {_path_count}")
+    for _pi in range(_path_count):
+        _kw = "if" if _pi == 0 else "elif"
+        _all_lines.append(f"{_kw} _sel == {_pi}:")
+        for _bl in _path_bodies[_pi].split('\n'):
+            _all_lines.append(f"    {_bl}")
+    _all_lines.append("k = hmac.new(_salt, b\"sprotect-loader-key-v1\", hashlib.sha256).digest()")
+    _derive_code = "\n".join(f"{_id4}{l}" for l in _all_lines)
+    _hex_vars_def = ", ".join(_hex_pairs)
 
     _dual_code = _DUAL_CODE.format(entry=entry_module) if dual_process_enabled else ""
     _final_script = _BOOT_TEMPLATE.format(

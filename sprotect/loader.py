@@ -125,6 +125,7 @@ _D = os.path.join(_SD, "_runtime") if os.path.isdir(os.path.join(_SD, "_runtime"
 _MAP = ""
 _VAULT = ""
 _MEM_CACHE = []
+_DEP_CHAIN = ""
 
 def {f_xof}(l, s):
     r, c = bytearray(), 0
@@ -338,9 +339,15 @@ class {cls_L}(importlib.abc.Loader):
         m.__dict__.setdefault("__package__", self.n)
         if self.pk: m.__dict__.setdefault("__path__", [os.path.dirname(self.p)])
         pp = json.loads(open(self.p, "rb").read().decode())
+        global _DEP_CHAIN
+        _dep = pp.get("dep", "")
+        if _dep and _dep != _DEP_CHAIN:
+            raise RuntimeError(f"Decryption chain broken at {{self.n}}")
         src = {f_load}(pp, self.mk)
         if src is None: raise RuntimeError(f"Failed: {{self.n}}")
         exec(compile(src, self.p, "exec"), m.__dict__)
+        import hashlib as _hc
+        _DEP_CHAIN = _hc.sha256((_DEP_CHAIN + str(hash(src))).encode()).hexdigest()[:16]
 
 class {cls_F}(importlib.abc.MetaPathFinder):
     def __init__(self, mk, mmap): self.mk, self.mmap = mk, mmap
@@ -1099,7 +1106,7 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
              build_salt: str = "",
              hybrid_key: bytes | None = None, algorithm: str = "RSA",
              dual_process_enabled: bool = False) -> str:
-    import json as _json_gen, zlib as _zlib
+    import json as _json_gen
     ep = os.path.join(output_dir, entry_module.replace(".", os.sep) + ".py")
     os.makedirs(os.path.dirname(ep), exist_ok=True)
 
@@ -1142,67 +1149,39 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
             _decoy_hex_ops.append(
                 f"_t{secrets.token_hex(2)} = len(_HEX_VARS['{_hex_var_names[_vn]}'])")
 
-    # Build polymorphic derive_code: 4 independent paths, each produces _salt directly
+    # Build polymorphic derive_code: 2-3 safe paths producing the SAME salt
     _salt_var_name = _hex_var_names[_real_salt_idx]
     _real_salt_bytes = bytes.fromhex(build_salt)
-    _poly_paths = []
-    # Path 0: Direct hex read (original, always works)
-    _poly_paths.append(f"{_salt_var_name}")
-    # Path 1: XOR of two hex vars that cancel to produce same salt
+    _path_bodies = []
+    # Path 0: Direct hex read (original)
+    _path_bodies.append(f"_salt = bytes.fromhex(_HEX_VARS['{_salt_var_name}'])")
+    # Path 1: XOR of two vars that cancel to produce same salt
     _p1_idx = secrets.randbelow(_hex_pool_size)
     while _p1_idx == _real_salt_idx:
         _p1_idx = secrets.randbelow(_hex_pool_size)
     _p1_name = _hex_var_names[_p1_idx]
     _p1_key = bytes.fromhex(_hex_keys[_p1_idx])
-    _p1_cancel_raw = bytes(a ^ b for a, b in zip(_real_salt_bytes, _p1_key))
-    _p1_hex = _p1_cancel_raw.hex()
+    _p1_cancel = bytes(a ^ b for a, b in zip(_real_salt_bytes, _p1_key))
     _p1_extra = f"_h{secrets.token_hex(3)}"
-    _hex_pairs.append(f"'{_p1_extra}':'{_p1_hex}'")
-    _poly_paths.append(f"{_p1_name},{_p1_extra}")
-    # Path 2: CRC32 mask XOR
-    _p2_idx = secrets.randbelow(_hex_pool_size)
-    while _p2_idx == _real_salt_idx:
-        _p2_idx = secrets.randbelow(_hex_pool_size)
-    _p2_crc_val = _zlib.crc32(_real_salt_bytes) & 0xFFFFFFFF
-    _p2_mask = (_p2_crc_val.to_bytes(4, 'little') * 8)[:len(_real_salt_bytes)]
-    _p2_xor_raw = bytes(a ^ b for a, b in zip(_real_salt_bytes, _p2_mask))
-    _p2_extra = f"_h{secrets.token_hex(3)}"
-    _hex_pairs.append(f"'{_p2_extra}':'{_p2_xor_raw.hex()}'")
-    _poly_paths.append(f"{_hex_var_names[_p2_idx]},{_p2_extra},{_p2_crc_val}")
-    # Path 3: SHA256 chain → truncate → XOR
-    _p3_idx = secrets.randbelow(_hex_pool_size)
-    while _p3_idx == _real_salt_idx:
-        _p3_idx = secrets.randbelow(_hex_pool_size)
-    _p3_hash = hashlib.sha256(_real_salt_bytes).digest()
-    _p3_xor = bytes(a ^ b for a, b in zip(_real_salt_bytes, _p3_hash[:len(_real_salt_bytes)]))
-    _p3_extra = f"_h{secrets.token_hex(3)}"
-    _hex_pairs.append(f"'{_p3_extra}':'{_p3_xor.hex()}'")
-    _poly_paths.append(f"{_hex_var_names[_p3_idx]},{_p3_extra}")
-    # Build self-contained path bodies
-    _path_bodies = []
-    # Path 0 body: direct read
+    _hex_pairs.append(f"'{_p1_extra}':'{_p1_cancel.hex()}'")
     _path_bodies.append(
-        f"_salt = bytes.fromhex(_HEX_VARS['{_poly_paths[0]}'])")
-    # Path 1 body: XOR of two vars
-    _p1_a, _p1_b = _poly_paths[1].split(',')
-    _path_bodies.append(
-        f"_a = bytes.fromhex(_HEX_VARS['{_p1_a}'])\n"
-        f"_b = bytes.fromhex(_HEX_VARS['{_p1_b}'])\n"
+        f"_a = bytes.fromhex(_HEX_VARS['{_p1_name}'])\n"
+        f"_b = bytes.fromhex(_HEX_VARS['{_p1_extra}'])\n"
         f"_salt = bytes(x ^ y for x, y in zip(_a, _b))")
-    # Path 2 body: CRC32 mask XOR
-    _p2_a, _p2_b, _p2_c = _poly_paths[2].split(',')
-    _path_bodies.append(
-        f"_c = {_p2_c} & 0xFFFFFFFF\n"
-        f"_m = (_c.to_bytes(4, 'little') * 8)[:32]\n"
-        f"_p = bytes.fromhex(_HEX_VARS['{_p2_b}'])\n"
-        f"_salt = bytes(x ^ y for x, y in zip(_p, _m))")
-    # Path 3 body: SHA256 chain XOR
-    _p3_a, _p3_b = _poly_paths[3].split(',')
-    _path_bodies.append(
-        f"_h = hashlib.sha256(bytes.fromhex(_HEX_VARS['{_p3_a}'])).digest()\n"
-        f"_x = bytes.fromhex(_HEX_VARS['{_p3_b}'])\n"
-        f"_salt = bytes(a ^ b for a, b in zip(_h, _x))")
-    # Path selection: hash of PID
+    # Path 2: SHA256 chain XOR (only if salt is exactly 32 bytes)
+    if len(build_salt) == 64:
+        _p2_idx = secrets.randbelow(_hex_pool_size)
+        while _p2_idx == _real_salt_idx:
+            _p2_idx = secrets.randbelow(_hex_pool_size)
+        _p2_hash = hashlib.sha256(_real_salt_bytes).digest()
+        _p2_xor = bytes(a ^ b for a, b in zip(_real_salt_bytes, _p2_hash * 2))
+        _p2_extra = f"_h{secrets.token_hex(3)}"
+        _hex_pairs.append(f"'{_p2_extra}':'{_p2_xor.hex()}'")
+        _path_bodies.append(
+            f"_h = hashlib.sha256(bytes.fromhex(_HEX_VARS['{_hex_var_names[_p2_idx]}'])).digest()\n"
+            f"_x = bytes.fromhex(_HEX_VARS['{_p2_extra}'])\n"
+            f"_salt = bytes(a ^ b for a, b in zip(_h * 2, _x))")
+    # Path selection: hash of PID mod path count
     _path_count = len(_path_bodies)
     _all_lines = list(_decoy_hex_ops)
     _all_lines.append(f"_pid = __import__('os').getpid()")

@@ -426,7 +426,7 @@ def _check_vm():
     import os as _os9, sys as _sy9
     _vm_indicators = [
         '/sys/class/dmi/id/product_name', '/proc/1/cgroup',
-        '/.dockerenv', 'C:\\Windows\\Hyper-V',
+        '/.dockerenv', 'C:/Windows/Hyper-V',
     ]
     for _ind in _vm_indicators:
         if _os9.path.exists(_ind):

@@ -133,7 +133,10 @@ class Obfuscator(ast.NodeTransformer):
         if self.cfg.obfuscate_calls:
             tree = _CallObfuscator().visit(tree)
         if self.cfg.control_flow_flattening:
-            tree = _ControlFlowFlattener().visit(tree)
+            if secrets.randbelow(2):
+                tree = _MatchCaseFlattener().visit(tree)
+            else:
+                tree = _ControlFlowFlattener().visit(tree)
         if self.cfg.dead_code_injection:
             self._seed_dead_blocks(tree)
             tree = _HoneypotInjector(self.map).visit(tree)
@@ -422,6 +425,44 @@ class _ControlFlowFlattener(ast.NodeTransformer):
                     orelse=if_chain if isinstance(if_chain, list) else [if_chain])
         dispatch = ast.While(test=ast.Constant(True), body=[if_chain], orelse=[])
         node.body = [ast.Assign(targets=[_state_store], value=ast.Constant(0)), dispatch]
+        return node
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
+        return node
+
+
+class _MatchCaseFlattener(ast.NodeTransformer):
+    """Flatten control flow using match/case dispatch instead of if/elif.
+    LLMs struggle to statically analyze match/case with computed subject values."""
+
+    def _has_yield(self, node: ast.AST) -> bool:
+        for n in ast.walk(node):
+            if isinstance(n, (ast.Yield, ast.YieldFrom, ast.GeneratorExp,
+                              ast.ListComp, ast.SetComp, ast.DictComp,
+                              ast.AsyncFunctionDef)):
+                return True
+        return False
+
+    def visit_FunctionDef(self, node: ast.FunctionDef):
+        self.generic_visit(node)
+        if len(node.body) < 3 or self._has_yield(node):
+            return node
+        _sv = f"_m{secrets.token_hex(2)}"
+        _store = ast.Name(id=_sv, ctx=ast.Store())
+        _load = ast.Name(id=_sv, ctx=ast.Load())
+        blocks = list(enumerate(node.body))
+        if len(blocks) < 3:
+            return node
+        cases = []
+        for i, (_, stmt) in blocks:
+            if i == len(blocks) - 1:
+                body = [stmt] if isinstance(stmt, ast.Return) else [stmt, ast.Break()]
+            else:
+                body = [stmt, ast.Assign(targets=[_store], value=ast.BinOp(left=_load, op=ast.Add(), right=ast.Constant(1)))]
+            cases.append(ast.match_case(pattern=ast.MatchValue(value=ast.Constant(i)), guard=None, body=body))
+        dispatch = ast.Match(subject=_load, cases=cases)
+        loop = ast.While(test=ast.Constant(True), body=[dispatch], orelse=[])
+        node.body = [ast.Assign(targets=[_store], value=ast.Constant(0)), loop]
         return node
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):

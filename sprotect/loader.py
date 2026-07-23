@@ -447,6 +447,50 @@ def _anti_checks():
     except:
         pass
 
+    try:
+        import ctypes as _ct
+        _TOOL_PROCS = ['x64dbg','x32dbg','ida64','ida','ollydbg',
+                       'processhacker','procexp','procmon','wireshark',
+                       'windbg','gdb','radare2','cheatengine','x96dbg',
+                       'dnspy','httpprof','reclass','ilspy','dotpeek']
+        if _so.name == 'nt':
+            class _PEW(_ct.Structure):
+                _fields_ = [
+                    ("dwSize", _ct.c_uint32),
+                    ("cntUsage", _ct.c_uint32),
+                    ("th32ProcessID", _ct.c_uint32),
+                    ("th32DefaultHeapID", _ct.c_size_t),
+                    ("th32ModuleID", _ct.c_uint32),
+                    ("cntThreads", _ct.c_uint32),
+                    ("th32ParentProcessID", _ct.c_uint32),
+                    ("pcPriClassBase", _ct.c_int32),
+                    ("dwFlags", _ct.c_uint32),
+                    ("szExeFile", _ct.c_wchar * 260)]
+            _pe = _PEW()
+            _pe.dwSize = _ct.sizeof(_PEW)
+            _snap = _ct.windll.kernel32.CreateToolhelp32Snapshot(2, 0)
+            if _snap and _snap != -1:
+                _ok = _ct.windll.kernel32.Process32FirstW(_snap, _ct.byref(_pe))
+                while _ok:
+                    _exe = _pe.szExeFile.lower()
+                    for _tp in _TOOL_PROCS:
+                        if _tp in _exe:
+                            _ct.windll.kernel32.CloseHandle(_snap)
+                            _sc.exit(1)
+                    _ok = _ct.windll.kernel32.Process32NextW(_snap, _ct.byref(_pe))
+                _ct.windll.kernel32.CloseHandle(_snap)
+        else:
+            for _p in _so.listdir('/proc'):
+                if _p.isdigit():
+                    try:
+                        _cmd = open(f'/proc/{{_p}}/comm').read().strip().lower()
+                        for _tp in _TOOL_PROCS:
+                            if _tp in _cmd:
+                                _sc.exit(1)
+                    except: pass
+    except:
+        pass
+
 def _dynamic_key(base_key):
     """Derive a time-based key that changes every 60 seconds."""
     _t = int(_tm8.time()) // 60

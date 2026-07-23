@@ -1272,7 +1272,17 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
         fd, el = _probe_lookalike_function(_final_script, i, _all_salts)
         _probe_functions.append((fd, el))
 
-    _decoy_functions = [_build_single_decoy() for _ in range(secrets.randbelow(30)+40)]
+    _decoy_functions = [_build_single_decoy() for _ in range(secrets.randbelow(100)+200)]
+
+    # Context poisoning: inject AI-confusing garbage blocks
+    _ai_poison_blocks = []
+    for _ in range(secrets.randbelow(5) + 5):
+        _blocks = []
+        for _ in range(secrets.randbelow(5) + 3):
+            _v = secrets.token_hex(4)
+            _blocks.append(f'if __import__("hashlib").sha256(b"{secrets.token_hex(8)}").hexdigest()[:4] == "{secrets.token_hex(2)}":\n    _t{_v} = __import__("os").urandom({secrets.randbelow(256)+1})\nelse:\n    _t{_v} = __import__("os").urandom({secrets.randbelow(256)+1})')
+        _ai_poison_blocks.append("\n".join(_blocks))
+    _ai_poison_code = "\n\n".join(_ai_poison_blocks)
 
     # --- Create 6 sections, each with fake execs ABOVE and BELOW the real exec ---
     _exec_sections = []
@@ -1296,7 +1306,9 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
             else:
                 _post_exec_decoys.append(f"try:\n    _e = compile({_func_alias}(), '', 'exec')\n    exec(_e)\nexcept Exception:\n    pass")
 
-        section = "\n".join(_pre_exec_decoys) + "\n" + _probe_functions[_section_index][1] + "\n" + "\n".join(_post_exec_decoys)
+        _poison_idx = secrets.randbelow(len(_ai_poison_code.split("\n\n"))) if _ai_poison_code else 0
+        _poison_block = _ai_poison_code.split("\n\n")[_poison_idx] if _ai_poison_code else ""
+        section = "\n".join(_pre_exec_decoys) + "\n" + _poison_block + "\n" + _probe_functions[_section_index][1] + "\n" + "\n".join(_post_exec_decoys)
         _exec_sections.append(section)
 
     # --- Assemble: ALL function defs FIRST, then ALL exec blocks ---

@@ -1206,40 +1206,60 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
             _decoy_hex_ops.append(
                 f"_t{secrets.token_hex(2)} = len(_HEX_VARS['{_hex_var_names[_vn]}'])")
 
-    # Build anti-AI salt: split across 3 pairs of hex vars, XOR to recover original salt
-    # Path 0: direct read (keeps original salt), Paths 1-2: XOR pairs that cancel to original
+    # === Anti-AI salt derivation: ALL 25 vars participate in XOR chain ===
+    # All vars are XOR'd together. The last var is a correction factor
+    # such that XOR(all vars) = build_salt. AI cannot exclude any var.
     _real_salt_bytes = bytes.fromhex(build_salt)
-    _salt_var_name = _hex_var_names[_real_salt_idx]
-    _path_bodies = [f"_salt = bytes.fromhex(_HEX_VARS['{_salt_var_name}'])"]  # Path 0: direct
-    for _pi in range(2):  # Paths 1-2: XOR pairs
-        _i1 = secrets.randbelow(_hex_pool_size)
-        while _i1 == _real_salt_idx:
-            _i1 = secrets.randbelow(_hex_pool_size)
-        _i2 = secrets.randbelow(_hex_pool_size)
-        while _i2 in (_real_salt_idx, _i1):
-            _i2 = secrets.randbelow(_hex_pool_size)
-        _n1 = _hex_var_names[_i1]
-        _n2 = _hex_var_names[_i2]
-        _rk = os.urandom(32)
-        _c = bytes(a ^ b for a, b in zip(_real_salt_bytes, _rk))
-        _hex_keys[_i1] = _rk.hex()
-        _hex_keys[_i2] = _c.hex()
-        _hex_pairs[_i1] = f"'{_n1}':'{_rk.hex()}'"
-        _hex_pairs[_i2] = f"'{_n2}':'{_c.hex()}'"
-        _path_bodies.append(
-            f"_a = bytes.fromhex(_HEX_VARS['{_n1}'])\n"
-            f"_b = bytes.fromhex(_HEX_VARS['{_n2}'])\n"
-            f"_salt = bytes(x ^ y for x, y in zip(_a, _b))")
-    _path_count = len(_path_bodies)
-    _all_lines = list(_decoy_hex_ops)
+    # Compute XOR of all 25 hex vars, adjust last var so total XOR = build_salt
+    _xor_all = bytearray(32)
+    for _i in range(_hex_pool_size):
+        _k = bytes.fromhex(_hex_keys[_i])
+        for _j in range(32): _xor_all[_j] ^= _k[_j]
+    # Adjust the last var: new_last = old_last ^ xor_all ^ build_salt
+    # Then XOR(all vars) = xor_all ^ old_last ^ new_last = build_salt
+    _last_idx = _hex_pool_size - 1
+    _old_last = bytes.fromhex(_hex_keys[_last_idx])
+    _new_last = bytes(a ^ b ^ c for a, b, c in zip(_old_last, _xor_all, _real_salt_bytes))
+    _hex_keys[_last_idx] = _new_last.hex()
+    _hex_pairs[_last_idx] = f"'{_hex_var_names[_last_idx]}':'{_new_last.hex()}'"
+
+    # Store unsalted HMAC info string as XOR'd fragments (meta-code execution)
+    _hmac_info = b"sprotect-loader-key-v1"
+    _hmac_frags = []
+    for _fi in range(4):
+        _frag = _hmac_info[_fi*5:(_fi+1)*5]
+        _key = os.urandom(1)[0]
+        _enc = bytes(b ^ _key for b in _frag)
+        _hmac_frags.append((_key, _enc))
+
+    _all_lines = []
+    # Build the XOR chain: iterate all 25 hex vars, XOR them together
+    _hex_name_list = ",".join(f"'{n}'" for n in _hex_var_names)
+    _all_lines.append(f"_hn = [{_hex_name_list}]")
+    _all_lines.append("_tx = bytearray(32)")
+    _all_lines.append("for _ti in range(25):")
+    _all_lines.append("    _tv = bytes.fromhex(_HEX_VARS[_hn[_ti]])")
+    _all_lines.append("    for _tj in range(32): _tx[_tj] ^= _tv[_tj]")
+    _all_lines.append("_tx = bytes(_tx)")
+    # Exception-based control flow (replaces if/elif): try/except by ZeroDivisionError
     _all_lines.append(f"_pid = __import__('os').getpid()")
-    _all_lines.append(f"_sel = hashlib.sha256(str(_pid).encode()).digest()[0] % {_path_count}")
-    for _pi in range(_path_count):
-        _kw = "if" if _pi == 0 else "elif"
-        _all_lines.append(f"{_kw} _sel == {_pi}:")
-        for _bl in _path_bodies[_pi].split('\n'):
-            _all_lines.append(f"    {_bl}")
-    _all_lines.append("k = hmac.new(_salt, b\"sprotect-loader-key-v1\", hashlib.sha256).digest()")
+    _all_lines.append(f"_sel = hashlib.sha256(str(_pid).encode()).digest()[0] % 2")
+    # Path 0: direct use XOR chain result
+    # Path 1: use XOR chain result processed through meta-code eval
+    _all_lines.append("try:")
+    _all_lines.append("    _ = 1 // _sel  # ZeroDivisionError when _sel=0, OK when _sel=1")
+    _all_lines.append("    # Path 1 (sel=1): meta-code eval for HMAC info")
+    _frag_lines = []
+    for _fi, (_key, _enc) in enumerate(_hmac_frags):
+        _enc_str = ','.join(str(b) for b in _enc)
+        _frag_lines.append(f"_hf{_fi} = bytes(b ^ {_key} for b in [{_enc_str}]).decode()")
+    _frag_lines.append("_hmi = ''.join([_hf0,_hf1,_hf2,_hf3])")
+    _frag_lines.append("k = hmac.new(_tx, _hmi.encode(), hashlib.sha256).digest()")
+    for _fl in _frag_lines:
+        _all_lines.append(f"    {_fl}")
+    # Path 0 (sel=0): direct HMAC
+    _all_lines.append("except ZeroDivisionError:")
+    _all_lines.append("    k = hmac.new(_tx, b\"sprotect-loader-key-v1\", hashlib.sha256).digest()")
     _derive_code = "\n".join(f"{_id4}{l}" for l in _all_lines)
     _hex_vars_def = ", ".join(_hex_pairs)
     _dual_code = _DUAL_CODE.format(entry=entry_module) if dual_process_enabled else ""

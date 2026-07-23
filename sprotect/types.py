@@ -73,6 +73,8 @@ class ObfuscateConfig:
     obfuscate_calls: bool = True                      # 函数调用混淆
     obfuscate_arithmetic: bool = True                 # 算术表达式混淆
     obfuscate_booleans: bool = True                   # True/False 混淆
+    opaque_expr: bool = True                          # 不透明表达式注入 (a+b → (a^b)+2*(a&b))
+    match_dispatch: bool = True                       # match/case 调度 (50% 概率替代 if/elif)
 
 @dataclass
 class HybridEncryptConfig:

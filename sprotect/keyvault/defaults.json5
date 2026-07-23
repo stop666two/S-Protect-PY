@@ -1,9 +1,10 @@
 {
-  enabled: false,
-  pool_size: 1024,
+  // KeyVault 默认配置 — 密钥池地雷阵
+  enabled: false,                    // 总开关（默认关闭）
+  pool_size: 1024,                   // 密钥池大小（N-1 个诱饵 + 1 个真密钥）
   xor_mask_hex: "A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5",
-  pid_binding: true,
-  pid_salt: "0xDEADBEEF",
-  decoy_min_size: 64,
-  decoy_max_size: 256,
+  pid_binding: true,                 // 绑定 PID（不同 PID 推导出不同密钥）
+  pid_salt: "0xDEADBEEF",            // PID 绑定盐值
+  decoy_min_size: 64,                // 诱饵数据最小长度
+  decoy_max_size: 256,               // 诱饵数据最大长度
 }

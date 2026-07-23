@@ -29,10 +29,10 @@
   token_replace: true,               // 启用 Token 替换（重复模式压缩）
   shorten_identifiers: true,         // 缩短标识符名
   remove_dead_strings: true,         // 移除无效字符串
-  dictionary_size: 4096,             // Token 字典大小（字节）
+  dictionary_size: 4096,             // Token 字典大小（字节，默认 4096）
   max_chunk_size: 1048576,           // 最大分块大小（1MB，超过则分块压缩）
-  pre_filter: false,                 // 预过滤：移除注释和空行（适用于纯文本）
-  entropy_analysis: false,           // 熵分析：跳过已接近随机的数据（如已加密段）
-  parallel: true,                    // 多线程压缩（多分块时加速）
-  memory_limit_mb: 512,              // 压缩内存上限，超限降级
+  pre_filter: false,                 // 预过滤：移除注释和空行（适用于纯文本，默认关闭）
+  entropy_analysis: false,           // 熵分析：跳过已接近随机的数据（如已加密段，默认关闭）
+  parallel: true,                    // 多线程压缩（多分块时加速，默认开启）
+  memory_limit_mb: 512,              // 压缩内存上限(MB)，超限降级以防 OOM
 }

@@ -4,14 +4,20 @@
   files: { include: ["**/*.py"], exclude: [], exclude_dirs: ["_runtime","_backup","__pycache__",".git"] },
 
   obfuscate: {
-    level: 5,
+    level: 5,                          // 混淆等级 (1-5)
     rename_variables: true, rename_functions: true, rename_classes: true,
     rename_rules: { style: "hex", reserved: ["__init__", "main", "validate_chain", "cross_verify", "hash_file", "sha256_file", "sha256_data", "b64encode", "b64decode", "xor_data", "interleave", "deinterleave", "is_prime", "fibonacci", "factorial", "gcd", "lcm", "power_mod", "digit_sum", "reverse_number", "collatz_steps", "rot13", "leet_speak", "reverse_str", "is_palindrome", "count_vowels", "caesar_shift", "atbash", "run_all", "print_summary", "check_integrity", "CHAIN_REGISTRY", "FILE_REGISTRY", "CHAIN_MAP", "SEED_POOL", "_run"], prefix: "_0x", suffix: "", min_length: 12, blacklist: [] },
     encrypt_strings: true, encrypt_numbers: true, string_min_length: 1, string_encrypt_ratio: 1.0,
-    control_flow_flattening: true, dead_code_injection: true, dead_code_density: 0.5, opaque_predicate_count: 5,
+    control_flow_flattening: true,     // 控制流平坦化（if/elif 状态机）
+    dead_code_injection: true,          // 死代码注入 + 隐式数据流
+    dead_code_density: 0.5, opaque_predicate_count: 5,
     remove_docstrings: true, remove_comments: true, strip_blank_lines: true, max_line_length: 0,
-    string_split: true, string_cipher: "mixed",
-    obfuscate_imports: true, obfuscate_calls: true, obfuscate_arithmetic: true, obfuscate_booleans: true,
+    string_split: true,                // 字符串分散（切碎散落运行时重组）
+    string_cipher: "mixed",
+    obfuscate_imports: true, obfuscate_calls: true, obfuscate_arithmetic: true,
+    obfuscate_booleans: true,
+    opaque_expr: true,                 // 不透明表达式注入（a+b → (a^b)+2*(a&b)）
+    match_dispatch: true,              // match/case 调度（50% 概率替代 if/elif）
   },
 
   encrypt: {

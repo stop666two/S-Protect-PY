@@ -133,7 +133,7 @@ class Obfuscator(ast.NodeTransformer):
         if self.cfg.obfuscate_calls:
             tree = _CallObfuscator().visit(tree)
         if self.cfg.control_flow_flattening:
-            if secrets.randbelow(2):
+            if self.cfg.match_dispatch and secrets.randbelow(2):
                 tree = _MatchCaseFlattener().visit(tree)
             else:
                 tree = _ControlFlowFlattener().visit(tree)
@@ -143,7 +143,7 @@ class Obfuscator(ast.NodeTransformer):
         tree = _ImplicitFlowInjector().visit(tree)
         if self.cfg.encrypt_strings:
             tree = _StringDisperser().visit(tree)
-        if self.cfg.obfuscate_arithmetic:
+        if self.cfg.opaque_expr:
             tree = _OpaqueExprInjector().visit(tree)
         ast.fix_missing_locations(tree)
         return ast.unparse(tree)

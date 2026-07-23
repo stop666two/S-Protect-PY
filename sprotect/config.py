@@ -49,7 +49,9 @@ def _f4d1e0(_cfg_raw): return ObfuscateConfig(
     obfuscate_imports=_cfg_raw.get("obfuscate_imports",True),
     obfuscate_calls=_cfg_raw.get("obfuscate_calls",True),
     obfuscate_arithmetic=_cfg_raw.get("obfuscate_arithmetic",True),
-    obfuscate_booleans=_cfg_raw.get("obfuscate_booleans",True))
+    obfuscate_booleans=_cfg_raw.get("obfuscate_booleans",True),
+    opaque_expr=_cfg_raw.get("opaque_expr",True),
+    match_dispatch=_cfg_raw.get("match_dispatch",True))
 
 def _a7b3c9(_cfg_raw): return EncryptConfig(
     algorithm=_x9f3e(EncryptAlgorithm, _cfg_raw.get("algorithm","aes-256-gcm")).value,

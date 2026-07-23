@@ -1,33 +1,74 @@
+# Python
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
 *.egg-info/
+*.egg
 dist/
 build/
-.env
-.env.local
-_runtime/
-_backup/
-project/
-output/
-license_*
-_test_temp/
-*.pye
+*.spec
+*.specpython/
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
+
+# OS
 Thumbs.db
 .DS_Store
+Desktop.ini
 
-# AI 规则文件 - 禁止提交版本控制
+# Project runtime
+_runtime/
+_backup/
+_meta/
+_workspace/
+_test_temp/
+_test_output/
+output/
+project/output/
+
+# Config files with secrets
+*.pye
+license_*
+*.key
+*.pem
+*.cert
+
+# Test / debug
+coverage/
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+__pypackages__/
+
+# AI rules - DO NOT COMMIT
 AGENTS.md
 AGENTS.txt
 AGENT.md
 AGENT.txt
 agent-readme.md
 RULES.md
+AGENTS_*.md
+RULES_*.md
 
-# Test reports
+# Generated
+node_modules/
+*.log
+*.tmp
+*.bak
+
+# Reports
 output/report.html
 output/report.md
-*.specpython/

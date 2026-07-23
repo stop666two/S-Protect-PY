@@ -1131,7 +1131,7 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
     os.makedirs(os.path.dirname(ep), exist_ok=True)
 
     # Generate interwoven hex variables: 15 entries, build_salt hidden at random position
-    _hex_pool_size = 15
+    _hex_pool_size = 25
     _hex_keys = [secrets.token_hex(32) for _ in range(_hex_pool_size)]
     _real_salt_idx = secrets.randbelow(_hex_pool_size)
     _hex_keys[_real_salt_idx] = build_salt

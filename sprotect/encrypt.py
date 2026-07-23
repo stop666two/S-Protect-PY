@@ -216,12 +216,18 @@ def build(project_dir, output_dir, config):
         _fingerprint = "|".join(fp_entries) + "|" + config.project.name
         _vault = generate_vault(_master_cipher_key, config.keyvault, _fingerprint)
         _master_cipher_key = _vault.key_pool[_vault.real_position]
-    _local_share_max = len(py_files) // 2 + 1
-    _threshold = _local_share_max + 2
-    _total_shares = _local_share_max * 3
     _key_fragments = split_key(_master_cipher_key, len(py_files))
-    _shamir_shares = shamir_split(_master_cipher_key, _total_shares, _threshold)
-    _local_share_count = _local_share_max
+    if len(py_files) >= 6:
+        _local_share_max = len(py_files) // 2 + 1
+        _threshold = _local_share_max + 2
+        _total_shares = _local_share_max * 3
+        _shamir_shares = shamir_split(_master_cipher_key, _total_shares, _threshold)
+        _local_share_count = _local_share_max
+    else:
+        _threshold = max(2, len(py_files) // 3 + 1)
+        _total_shares = len(py_files)
+        _shamir_shares = shamir_split(_master_cipher_key, _total_shares, _threshold)
+        _local_share_count = len(py_files)
 
     _module_hex_map: dict[str, str] = {}
     _encrypted_blobs: list[bytes] = []
@@ -327,13 +333,14 @@ def build(project_dir, output_dir, config):
         _payload_data["c"] = _chain_hashes[idx]
         open(_pye_file_path, "wb").write(json.dumps(_payload_data, separators=(",", ":")).encode())
 
-    # Write remote key store (shares NOT embedded in .pye)
+    # Write remote key store if shares exist beyond .pye files
     _key_store = [(sid, sval.hex())
                   for i, (sid, sval) in enumerate(_shamir_shares)
                   if i >= len(py_files)]
-    _key_store_path = os.path.join(_runtime_dir, "_key_store.json")
-    with open(_key_store_path, "w", encoding="utf-8") as _ksf:
-        _ksf.write(json.dumps(_key_store, separators=(",", ":")))
+    if _key_store:
+        _key_store_path = os.path.join(_runtime_dir, "_key_store.json")
+        with open(_key_store_path, "w", encoding="utf-8") as _ksf:
+            _ksf.write(json.dumps(_key_store, separators=(",", ":")))
 
     for i in range(max(2, len(py_files) // 2)):
         _garbage_payload = generate_decoy_payload()

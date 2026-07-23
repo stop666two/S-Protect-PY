@@ -588,56 +588,16 @@ def bt():
     _ld_src = zlib.decompress(x).decode()
     return _ld_src
 
-# Dual-process architecture
-if "--dual" in sys.argv:
-    _ld_src = bt()
-    ld = compile(_ld_src, "", "exec")
-    exec(ld)
-    _final_src = run("{entry}", a)
-    import multiprocessing.connection as _mpc, secrets as _sec, subprocess as _sub
-    _ipc_key = _sec.token_hex(16)
-    try:
-        _listener = _mpc.Listener(("localhost", 0), authkey=_ipc_key.encode())
-        _addr = str(_listener.address)
-        _env = os.environ.copy()
-        _env["_SP_IPC_KEY"] = _ipc_key
-        _env["_SP_IPC_ADDR"] = _addr
-        _child = _sub.Popen([sys.executable, __file__, "--child"], env=_env)
-        _conn = _listener.accept()
-        _conn.recv()
-        _conn.send(_final_src if isinstance(_final_src, str) else "")
-        _conn.close()
-        _child.wait(timeout=30)
-    except:
-        try: _child.kill()
-        except: pass
-    finally:
-        _listener.close()
-        _final_src = _ld_src = None
-        import gc; gc.collect()
-elif "--child" in sys.argv:
-    _auth_key = os.environ.get("_SP_IPC_KEY", "").encode()
-    _addr = os.environ.get("_SP_IPC_ADDR", "")
-    if _auth_key and _addr:
-        import multiprocessing.connection as _mpc
-        try:
-            _conn = _mpc.Client(_addr, authkey=_auth_key)
-            _conn.send("ready")
-            _final_src = _conn.recv()
-            if isinstance(_final_src, str) and len(_final_src) > 10:
-                exec(compile(_final_src, "", "exec"))
-            _conn.close()
-        except:
-            pass
-    sys.exit(0)
-else:
-    # Legacy mode: decrypt and exec directly
-    _ld_src = bt()
-    ld = compile(_ld_src, "", "exec")
-    exec(ld)
-    _final_src = run("{entry}", a)
-    if isinstance(_final_src, str) and len(_final_src) > 10:
-        exec(compile(_final_src, "", "exec"))
+if True:
+{dual_code}
+    pass
+# Legacy mode: decrypt and exec directly
+_ld_src = bt()
+ld = compile(_ld_src, "", "exec")
+exec(ld)
+_final_src = run("{entry}", a)
+if isinstance(_final_src, str) and len(_final_src) > 10:
+    exec(compile(_final_src, "", "exec"))
 '''
 
 
@@ -908,10 +868,55 @@ except Exception:
     return _fun_definition, _exec_statement
 
 
+_DUAL_CODE = """
+    if "--dual" in sys.argv:
+        _ld_src = bt()
+        ld = compile(_ld_src, "", "exec")
+        exec(ld)
+        _final_src = run("{entry}", a)
+        import multiprocessing.connection as _mpc, secrets as _sec, subprocess as _sub
+        _ipc_key = _sec.token_hex(16)
+        try:
+            _listener = _mpc.Listener(("localhost", 0), authkey=_ipc_key.encode())
+            _addr = str(_listener.address)
+            _env = os.environ.copy()
+            _env["_SP_IPC_KEY"] = _ipc_key
+            _env["_SP_IPC_ADDR"] = _addr
+            _child = _sub.Popen([sys.executable, __file__, "--child"], env=_env)
+            _conn = _listener.accept()
+            _conn.recv()
+            _conn.send(_final_src if isinstance(_final_src, str) else "")
+            _conn.close()
+            _child.wait(timeout=30)
+        except:
+            try: _child.kill()
+            except: pass
+        finally:
+            _listener.close()
+            _final_src = _ld_src = None
+            import gc; gc.collect()
+    elif "--child" in sys.argv:
+        _auth_key = os.environ.get("_SP_IPC_KEY", "").encode()
+        _addr = os.environ.get("_SP_IPC_ADDR", "")
+        if _auth_key and _addr:
+            import multiprocessing.connection as _mpc
+            try:
+                _conn = _mpc.Client(_addr, authkey=_auth_key)
+                _conn.send("ready")
+                _final_src = _conn.recv()
+                if isinstance(_final_src, str) and len(_final_src) > 10:
+                    exec(compile(_final_src, "", "exec"))
+                _conn.close()
+            except:
+                pass
+        sys.exit(0)
+"""
+
 def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
              per_file_configs: dict[str, str], loader_key: bytes,
              build_salt: str = "",
-             hybrid_key: bytes | None = None, algorithm: str = "RSA") -> str:
+             hybrid_key: bytes | None = None, algorithm: str = "RSA",
+             dual_process_enabled: bool = False) -> str:
     ep = os.path.join(output_dir, entry_module.replace(".", os.sep) + ".py")
     os.makedirs(os.path.dirname(ep), exist_ok=True)
 
@@ -961,9 +966,11 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
     _derive_parts.append(f"{_id4}k = hmac.new(_salt, b\"sprotect-loader-key-v1\", hashlib.sha256).digest()")
     _derive_code = "\n".join(_decoy_hex_ops + _derive_parts)
 
+    _dual_code = _DUAL_CODE.format(entry=entry_module) if dual_process_enabled else ""
     _final_script = _BOOT_TEMPLATE.format(
         hex_vars_def=_hex_vars_def,
         derive_code=_derive_code,
+        dual_code=_dual_code,
         rd="_runtime", entry=entry_module)
 
     # Decoy salts for fake probe functions (use different subset)

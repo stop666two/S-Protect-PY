@@ -215,7 +215,10 @@ def main(argv: list[str] | None = None) -> int:
         import subprocess
         if "PYTHONIOENCODING" not in env:
             env["PYTHONIOENCODING"] = "utf-8"
-        r = subprocess.run([sys.executable, entry], cwd=run_dir, env=env)
+        _run_args = [sys.executable, entry]
+        if cfg.dual_process.enabled:
+            _run_args.append("--dual")
+        r = subprocess.run(_run_args, cwd=run_dir, env=env)
         return r.returncode
 
     if _args.cmd == "encrypt":

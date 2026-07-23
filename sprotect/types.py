@@ -241,9 +241,15 @@ class OutputConfig:
     """输出配置"""
     dir: str = "./output"
     keep_source_map: bool = False
-    runtime_dir_name: str = "_runtime"               # runtime 目录名
-    preserve_non_py: bool = True                     # 保留非 py 文件
-    verbose: bool = False                            # 详细输出
+    runtime_dir_name: str = "_runtime"
+    preserve_non_py: bool = True
+    verbose: bool = False
+
+@dataclass
+class DualProcessConfig:
+    """双进程架构配置 — 实验性功能"""
+    enabled: bool = False                              # 是否启用双进程模式
+    child_timeout: int = 30                            # 子进程超时时间（秒）
 
 @dataclass
 class Config:
@@ -262,3 +268,4 @@ class Config:
     project: ProjectConfig = field(default_factory=ProjectConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     keyvault: KeyVaultConfig = field(default_factory=KeyVaultConfig)
+    dual_process: DualProcessConfig = field(default_factory=DualProcessConfig)

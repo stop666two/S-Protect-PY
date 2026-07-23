@@ -408,7 +408,7 @@ th{{background:#333;color:#fff}}
     _entry_module = config.project.entry.replace(".py", "")
     _entry_hex_alias = _module_hex_map.get(_entry_module, "")
     _hybrid_cfg = config.encrypt.hybrid
-    gen_boot(output_dir, _entry_module, _entry_hex_alias, {}, _loader_cipher_key, _loader_build_salt, _hybrid_wrapped_key, _hybrid_cfg.algorithm if _hybrid_wrapped_key else "RSA")
+    gen_boot(output_dir, _entry_module, _entry_hex_alias, {}, _loader_cipher_key, _loader_build_salt, _hybrid_wrapped_key, _hybrid_cfg.algorithm if _hybrid_wrapped_key else "RSA", dual_process_enabled=config.dual_process.enabled)
 
     # Cleanup decoy modules
     _decoy_dir_path = os.path.join(project_dir, "_decoy_modules")

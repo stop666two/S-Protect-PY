@@ -167,7 +167,10 @@ def _c1e5f8(_cfg_raw):
         pack=_x1f7e3(_cfg_raw.get("pack",{})),
         project=_y5e2c8(_cfg_raw.get("project",{})),
         output=_z9f6e1(_cfg_raw.get("output",{})),
-        keyvault=load_keyvault_config())
+        keyvault=load_keyvault_config(),
+        dual_process=DualProcessConfig(
+            enabled=_cfg_raw.get("dual_process", {}).get("enabled", False),
+            child_timeout=_cfg_raw.get("dual_process", {}).get("child_timeout", 30)))
 
 def find_config(path: Optional[str] = None) -> Optional[Path]:
     if path: _cfg_path = Path(path); return _cfg_path if _cfg_path.exists() else None

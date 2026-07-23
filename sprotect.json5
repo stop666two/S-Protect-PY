@@ -1,7 +1,7 @@
 {
   project: { name: "myapp", version: "1.0.0", entry: "main.py", description: "", author: "" },
 
-  files: { include: ["**/*.py"], exclude: [], exclude_dirs: ["_runtime","_backup","__pycache__",".git"] },
+  files: { include: ["**/*.py"], exclude: [], exclude_dirs: ["_runtime","_backup","__pycache__",".git","_decoy","_scratch","1","node_modules","venv",".venv","env",".env","dist","build","output","project/output","_meta","_ks*"] },
 
   obfuscate: {
     level: 5,                          // 混淆等级 (1-5)

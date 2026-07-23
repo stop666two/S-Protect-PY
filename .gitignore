@@ -1,4 +1,8 @@
-# Python
+# ============================================================================
+# S-Protect-PY .gitignore — 排除规则
+# ============================================================================
+
+# ---- Python ----
 __pycache__/
 *.py[cod]
 *.pyo
@@ -8,44 +12,59 @@ __pycache__/
 dist/
 build/
 *.spec
-*.specpython/
 
-# Virtual environments
+# ---- Virtual environments ----
 venv/
 .venv/
 env/
 .env/
 
-# IDE
+# ---- IDE ----
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
 
-# OS
+# ---- OS ----
 Thumbs.db
 .DS_Store
 Desktop.ini
 
-# Project runtime
+# ---- Build output ----
+output/
+project/output/
 _runtime/
 _backup/
 _meta/
 _workspace/
 _test_temp/
 _test_output/
-output/
-project/output/
 
-# Config files with secrets
+# ---- Generated files ----
 *.pye
+*.log
+*.tmp
+*.bak
+_ks*/
+_ks*.json
+_key_store.json
+_decoy_meta.json
+
+# ---- Debug / temp ----
+_debug_*.py
+__debug_*.py
+1/
+_scratch/
+
+# ---- Config / secrets ----
 license_*
 *.key
 *.pem
 *.cert
+.env
 
-# Test / debug
+# ---- Test coverage ----
 coverage/
 .coverage
 .pytest_cache/
@@ -53,7 +72,7 @@ coverage/
 .ruff_cache/
 __pypackages__/
 
-# AI rules - DO NOT COMMIT
+# ---- AI rules - DO NOT COMMIT ----
 AGENTS.md
 AGENTS.txt
 AGENT.md
@@ -63,15 +82,9 @@ RULES.md
 AGENTS_*.md
 RULES_*.md
 
-# Generated
+# ---- Misc ----
 node_modules/
-*.log
-*.tmp
-*.bak
-_ks*/
 .[!g]*/
 !/.github/
-
-# Reports
 output/report.html
 output/report.md

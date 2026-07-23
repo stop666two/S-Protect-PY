@@ -1,11 +1,25 @@
-# Force LF line endings for all source files
+# Force LF line endings for source files
 *.py text eol=lf
 *.json5 text eol=lf
 *.json text eol=lf
-*.bat text eol=crlf
 *.md text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
 *.txt text eol=lf
+*.toml text eol=lf
 .gitignore text eol=lf
 .gitattributes text eol=lf
+
+# CRLF for Windows scripts
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files - no line ending conversion
+*.pye binary
+*.key binary
+*.pem binary
+*.cert binary
+*.pyc binary
+*.png binary
+*.jpg binary
+*.ico binary

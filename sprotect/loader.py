@@ -250,9 +250,15 @@ def {f_extra}(ct, mk, hdr):
 
 def {f_mld}(d, k, n, _raw_last=False):
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+    from cryptography.hazmat.primitives import hashes
     import json, base64, re as _re9
-    cd, ck = bytes.fromhex(d), k
+    cd = bytes.fromhex(d)
     for i in range(n):
+        ck = HKDF(
+            algorithm=hashes.SHA256(), length=32, salt=None,
+            info=b"sprotect:layer:" + str(i).encode(),
+        ).derive(k)
         x = AESGCM(ck).decrypt(cd[:12], cd[12:], b"")
         if i < n - 1:
             _decoded = x.decode()
@@ -263,15 +269,13 @@ def {f_mld}(d, k, n, _raw_last=False):
                 _padded = _m.group(1) + "=" * (-len(_m.group(1)) % 4)
                 _raw = base64.urlsafe_b64decode(_padded).decode()
                 l = json.loads(_raw)
-                ck = bytes.fromhex(l["k"])
                 cd = bytes.fromhex(l["d"])
             else:
                 l = json.loads(_decoded)
-                ck = bytes.fromhex(l["k"])
                 cd = bytes.fromhex(l["d"])
+        elif _raw_last:
+            return x
         else:
-            if _raw_last:
-                return x
             return {f_poly}(x.decode())
     return None
 

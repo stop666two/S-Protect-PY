@@ -55,8 +55,9 @@ def _generate_decoy_file() -> str:
 
 def _build_layers(final_source: str | bytes, master_key: bytes, layer_count: int = 6) -> bytes:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    import secrets, json, zlib, base64, marshal
-    # Compile source to bytecode for harder reverse engineering
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+    from cryptography.hazmat.primitives import hashes
+    import secrets, json, base64, marshal
     if isinstance(final_source, str):
         try:
             _code = compile(final_source, "<encrypted>", "exec")
@@ -66,13 +67,14 @@ def _build_layers(final_source: str | bytes, master_key: bytes, layer_count: int
     else:
         current = final_source
     for i in range(layer_count):
-        key = secrets.token_bytes(32) if i < layer_count - 1 else master_key
+        lk = HKDF(
+            algorithm=hashes.SHA256(), length=32, salt=None,
+            info=b"sprotect:layer:" + str(layer_count - 1 - i).encode(),
+        ).derive(master_key)
         nonce = secrets.token_bytes(12)
-        ct = nonce + AESGCM(key).encrypt(nonce, current, b"")
+        ct = nonce + AESGCM(lk).encrypt(nonce, current, b"")
         if i < layer_count - 1:
-            _lk = key.hex()
-            _ld = ct.hex()
-            raw_json = json.dumps({"k": _lk, "d": _ld}, separators=(",", ":"))
+            raw_json = json.dumps({"d": ct.hex()}, separators=(",", ":"))
             _b64 = base64.urlsafe_b64encode(raw_json.encode()).decode().rstrip("=")
             _fake_var = "_" + secrets.token_hex(4)
             current = f"{_fake_var}='{_b64}'".encode()

@@ -705,16 +705,6 @@ def run(entry, root="", _return_src=False):
                 for _entry in _ks:
                     shares.append((_entry[0], bytes.fromhex(_entry[1])))
             except: pass
-        import os as _oks
-        _ks_url = _oks.environ.get("SP_KEY_SERVER", "")
-        if _ks_url:
-            try:
-                import urllib.request as _urq
-                _resp = _urq.urlopen(_ks_url, timeout=5)
-                _remote = json.loads(_resp.read().decode())
-                for _entry in _remote:
-                    shares.append((_entry[0], bytes.fromhex(_entry[1])))
-            except: pass
         if len(shares) >= 2:
             mk = {f_shamir}(shares)
         else:
@@ -1135,7 +1125,8 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
              per_file_configs: dict[str, str], loader_key: bytes,
              build_salt: str = "",
              hybrid_key: bytes | None = None, algorithm: str = "RSA",
-             dual_process_enabled: bool = False) -> str:
+             dual_process_enabled: bool = False,
+             key_server: str = "") -> str:
     import json as _json_gen
     ep = os.path.join(output_dir, entry_module.replace(".", os.sep) + ".py")
     os.makedirs(os.path.dirname(ep), exist_ok=True)
@@ -1225,9 +1216,14 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
 
     _final_script = _BOOT_TEMPLATE.format(
         hex_vars_def=_hex_vars_def,
-        derive_code=_derive_code,
+        derive_code="{derive_code}",
         dual_code=_dual_code,
         rd="_runtime", entry=entry_module)
+    if key_server:
+        _ks_line = f"_KS_URL = {json.dumps(key_server)}\n"
+        _final_script = _final_script.replace("{derive_code}", _ks_line + _derive_code)
+    else:
+        _final_script = _final_script.replace("{derive_code}", _derive_code)
 
     # Generate white-box key fragments: scatter master_key pieces as decoy hex vars
     _wb_key_fragments = []

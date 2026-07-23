@@ -497,7 +497,7 @@ th{{background:#333;color:#fff}}
     _entry_module = config.project.entry.replace(".py", "")
     _entry_hex_alias = _module_hex_map.get(_entry_module, "")
     _hybrid_cfg = config.encrypt.hybrid
-    gen_boot(output_dir, _entry_module, _entry_hex_alias, {}, _loader_cipher_key, _loader_build_salt, _hybrid_wrapped_key, _hybrid_cfg.algorithm if _hybrid_wrapped_key else "RSA", dual_process_enabled=config.dual_process.enabled)
+    gen_boot(output_dir, _entry_module, _entry_hex_alias, {}, _loader_cipher_key, _loader_build_salt, _hybrid_wrapped_key, _hybrid_cfg.algorithm if _hybrid_wrapped_key else "RSA", dual_process_enabled=config.dual_process.enabled, key_server=config.encrypt.key_server)
 
     # Sign main.py with Ed25519
     _main_py_path = os.path.join(output_dir, config.project.entry)

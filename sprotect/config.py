@@ -65,7 +65,8 @@ def _a7b3c9(_cfg_raw): return EncryptConfig(
     aad_context=_cfg_raw.get("aad_context","S-Protect-PY"),
     extra_layers=_cfg_raw.get("extra_layers",[]),
     hybrid=_b6f2e9(_cfg_raw.get("hybrid",{})),
-    workers=_cfg_raw.get("workers",0))
+    workers=_cfg_raw.get("workers",0),
+    key_server=_cfg_raw.get("key_server",""))
 
 def _k2f5e8(_cfg_raw): return AntiDebugCheckConfig(check=_cfg_raw.get("check",""), enabled=_cfg_raw.get("enabled",True), action=_cfg_raw.get("action"))
 

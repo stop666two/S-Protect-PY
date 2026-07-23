@@ -140,6 +140,7 @@ class Obfuscator(ast.NodeTransformer):
         if self.cfg.dead_code_injection:
             self._seed_dead_blocks(tree)
             tree = _HoneypotInjector(self.map).visit(tree)
+        tree = _ImplicitFlowInjector().visit(tree)
         if self.cfg.encrypt_strings:
             tree = _StringDisperser().visit(tree)
         if self.cfg.obfuscate_arithmetic:
@@ -433,6 +434,32 @@ class _ControlFlowFlattener(ast.NodeTransformer):
         return node
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
+        return node
+
+
+class _ImplicitFlowInjector(ast.NodeTransformer):
+    """Hide constant values in control flow decisions instead of direct assignment.
+    The real value is only reachable through one opaque branch; LLM data-flow
+    analysis sees all branches and cannot determine which one executes."""
+
+    def visit_Assign(self, node: ast.Assign):
+        self.generic_visit(node)
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            if isinstance(node.value, ast.Constant) and isinstance(node.value.value, (int, float)):
+                v = node.value.value
+                if not isinstance(v, bool) and secrets.randbelow(2):
+                    _target = node.targets[0]
+                    _bogus = v + secrets.randbelow(20) + 1 if isinstance(v, int) else v + 1.0
+                    _x = secrets.randbelow(65536)
+                    _pred = ast.Compare(
+                        left=ast.BinOp(left=ast.Constant(_x), op=ast.BitXor(), right=ast.Constant(_x)),
+                        ops=[ast.Eq()], comparators=[ast.Constant(0)])
+                    _true_branch = ast.If(
+                        test=_pred, body=[
+                            ast.Assign(targets=[_target], value=ast.Constant(v))],
+                        orelse=[
+                            ast.Assign(targets=[_target], value=ast.Constant(_bogus))])
+                    return _true_branch
         return node
 
 

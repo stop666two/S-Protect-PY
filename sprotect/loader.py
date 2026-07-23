@@ -542,6 +542,25 @@ def _check_vm():
             return bytes(_bad)
         return mk
 
+_MEM_BASELINE = None
+
+def _memory_check():
+    """Verify code segment integrity against baseline. Call periodically."""
+    import hashlib as _h4, sys as _s4, os as _o4
+    global _MEM_BASELINE
+    _h = _h4.sha256()
+    for _mod in list(_s4.modules.values()):
+        try:
+            _co = getattr(_mod, '__code__', None)
+            if _co is not None:
+                _h.update(_co.co_code)
+        except: pass
+    _d = _h.hexdigest()[:16]
+    if _MEM_BASELINE is None:
+        _MEM_BASELINE = _d
+    elif _MEM_BASELINE != _d:
+        _o4._exit(1)
+
 def _time_check():
     """Detect time manipulation: backwards jumps, acceleration, deceleration."""
     import time as _tm, os as _os
@@ -568,6 +587,7 @@ def run(entry, root="", _return_src=False):
     if not _MAP: raise RuntimeError("No module map")
     _verify_manifest(root)
     _anti_checks()
+    _memory_check()
     _time_check()
     # Time wall: auto-exit after N minutes
     import threading as _tw, time as _tmw
@@ -581,6 +601,7 @@ def run(entry, root="", _return_src=False):
     def _integrity_watch():
         while True:
             _tmw.sleep(30)
+            _memory_check()
             try:
                 import hashlib as _hw
                 _exe = _hw.sha256()
@@ -643,6 +664,7 @@ def run(entry, root="", _return_src=False):
             mk = bytes(mk)
 
     sys.meta_path.insert(0, {cls_F}(mk, mmap))
+    _memory_check()
     entry_hex = mmap.get(entry, "")
     if not entry_hex: raise FileNotFoundError(f"Entry not in map: {{entry}}")
     e = os.path.join(_D, entry_hex + ".pye")

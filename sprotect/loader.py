@@ -1226,8 +1226,9 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
     # Store unsalted HMAC info string as XOR'd fragments (meta-code execution)
     _hmac_info = b"sprotect-loader-key-v1"
     _hmac_frags = []
-    for _fi in range(4):
+    for _fi in range(5):
         _frag = _hmac_info[_fi*5:(_fi+1)*5]
+        if not _frag: continue
         _key = os.urandom(1)[0]
         _enc = bytes(b ^ _key for b in _frag)
         _hmac_frags.append((_key, _enc))
@@ -1253,7 +1254,8 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
     for _fi, (_key, _enc) in enumerate(_hmac_frags):
         _enc_str = ','.join(str(b) for b in _enc)
         _frag_lines.append(f"_hf{_fi} = bytes(b ^ {_key} for b in [{_enc_str}]).decode()")
-    _frag_lines.append("_hmi = ''.join([_hf0,_hf1,_hf2,_hf3])")
+    _hf_vars = ",".join(f"_hf{i}" for i in range(len(_hmac_frags)))
+    _frag_lines.append(f"_hmi = ''.join([{_hf_vars}])")
     _frag_lines.append("k = hmac.new(_tx, _hmi.encode(), hashlib.sha256).digest()")
     for _fl in _frag_lines:
         _all_lines.append(f"    {_fl}")

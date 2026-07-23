@@ -267,7 +267,7 @@ class _AttrObfuscator(ast.NodeTransformer):
                 and node.value.id in self._rename_table):
             if node.value.id in self._param_set:
                 return node
-            if node.value.id in self._import_set:
+            if node.value.id in self._import_set and node.attr not in self._rename_table:
                 return node
             node.attr = self._rename_table[node.attr]
         return node

@@ -615,6 +615,7 @@ ld = compile(_ld_src, "", "exec")
 exec(ld)
 _final_src = run("{entry}", a)
 if isinstance(_final_src, str) and len(_final_src) > 10:
+    sys.path.insert(0, a)
     exec(compile(_final_src, "", "exec"))
 '''
 

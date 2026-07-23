@@ -75,6 +75,7 @@ def _build_layers(final_source: str | bytes, master_key: bytes, layer_count: int
         ct = nonce + AESGCM(lk).encrypt(nonce, current, b"")
         if i < layer_count - 1:
             raw_json = json.dumps({"d": ct.hex()}, separators=(",", ":"))
+            raw_json = json.dumps({"d": ct.hex()}, separators=(",", ":"))
             _b64 = base64.urlsafe_b64encode(raw_json.encode()).decode().rstrip("=")
             _fake_var = "_" + secrets.token_hex(4)
             current = f"{_fake_var}='{_b64}'".encode()

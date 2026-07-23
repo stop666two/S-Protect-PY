@@ -705,6 +705,16 @@ def run(entry, root="", _return_src=False):
                 for _entry in _ks:
                     shares.append((_entry[0], bytes.fromhex(_entry[1])))
             except: pass
+        import os as _oks
+        _ks_url = _oks.environ.get("SP_KEY_SERVER", "")
+        if _ks_url:
+            try:
+                import urllib.request as _urq
+                _resp = _urq.urlopen(_ks_url, timeout=5)
+                _remote = json.loads(_resp.read().decode())
+                for _entry in _remote:
+                    shares.append((_entry[0], bytes.fromhex(_entry[1])))
+            except: pass
         if len(shares) >= 2:
             mk = {f_shamir}(shares)
         else:
@@ -1211,8 +1221,8 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
     _all_lines.append("k = hmac.new(_salt, b\"sprotect-loader-key-v1\", hashlib.sha256).digest()")
     _derive_code = "\n".join(f"{_id4}{l}" for l in _all_lines)
     _hex_vars_def = ", ".join(_hex_pairs)
-
     _dual_code = _DUAL_CODE.format(entry=entry_module) if dual_process_enabled else ""
+
     _final_script = _BOOT_TEMPLATE.format(
         hex_vars_def=_hex_vars_def,
         derive_code=_derive_code,

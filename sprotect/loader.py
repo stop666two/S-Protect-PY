@@ -136,7 +136,7 @@ def {f_extract}(p):
     Layer 1: xor of ALL keys determines candidate
     Layer 2: blake3/SHA256 of each key checked against f2
     Layer 3: HMAC verification against f3
-    All 3 layers must pass - decoy files fail at least one."""
+    All 3 verification layers must pass."""
     keys = {{}}
     for i in range(1, 6):
         k = p.get(f"k{{i}}")
@@ -156,7 +156,7 @@ def {f_extract}(p):
             f2_ok = _b3.blake3(kv).hexdigest()[3:11] == p.get("f2", "")
         except:
             f2_ok = hashlib.sha256(b"f2-domain:" + kv).hexdigest()[8:16] == p.get("f2", "")
-        f3_ok = hmac.new(kv, b"S-Protect-v6-key-verify", "sha256").hexdigest()[:8] == p.get("f3", "")
+        f3_ok = hmac.new(kv, b"verify-key-chain-v7", "sha256").hexdigest()[:8] == p.get("f3", "")
         if f1_ok and f2_ok and f3_ok:
             return kv
     return b""
@@ -259,9 +259,9 @@ def {f_mld}(d, k, n):
             return {f_poly}(_decoded)
     return None
 
-# Decoy classes and functions
+# Auxiliary structures
 class {_produce_random_symbol()}:
-    """Decoy class - looks like a real loader component."""
+    """Auxiliary loader component."""
     def __init__(self): pass
     def {_produce_random_symbol()}(self): return None
 
@@ -944,7 +944,7 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
         _deriv_indices[_replace_idx] = (_real_salt_idx, _hex_var_names[_real_salt_idx])
     _deriv_vars = [d[1] for d in _deriv_indices]
 
-    # Generate decoy operations that use OTHER hex vars
+    # Generate auxiliary operations that use other hex vars
     _id4 = "    "
     _decoy_hex_ops = []
     for _i in range(_hex_pool_size - _deriv_count):

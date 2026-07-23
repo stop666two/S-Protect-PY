@@ -85,5 +85,17 @@
     child_timeout: 30,                 // 子进程超时秒数
   },
 
+  // ===================================================================
+  // 运行时保护配置
+  // ===================================================================
+  runtime: {
+    layer_count: 6,                          // 加密层数（当前代码硬编码，后续需改为动态读取）
+    min_decoy_modules: 10,                   // 最小诱饵模块数
+    hex_pool_size: 15,                       // HMAC盐值交织池大小
+    time_wall_minutes: 60,                   // 执行时间墙（分钟后自动退出）
+    ttl_seconds: 60,                         // 内存解密TTL（秒后回收）
+    integrity_check_interval: 30,            // 完整性自检间隔（秒）
+  },
+
   output: { dir: "./output", keep_source_map: false, runtime_dir_name: "_runtime", preserve_non_py: true, verbose: false },
 }

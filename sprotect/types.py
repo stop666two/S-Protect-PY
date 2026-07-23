@@ -246,6 +246,16 @@ class OutputConfig:
     verbose: bool = False
 
 @dataclass
+class RuntimeConfig:
+    """运行时保护配置"""
+    layer_count: int = 6
+    min_decoy_modules: int = 10
+    hex_pool_size: int = 15
+    time_wall_minutes: int = 60
+    ttl_seconds: int = 60
+    integrity_check_interval: int = 30
+
+@dataclass
 class DualProcessConfig:
     """双进程架构配置 — 实验性功能"""
     enabled: bool = False                              # 是否启用双进程模式
@@ -269,3 +279,4 @@ class Config:
     output: OutputConfig = field(default_factory=OutputConfig)
     keyvault: KeyVaultConfig = field(default_factory=KeyVaultConfig)
     dual_process: DualProcessConfig = field(default_factory=DualProcessConfig)
+    runtime: RuntimeConfig = field(default_factory=RuntimeConfig)

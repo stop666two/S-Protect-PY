@@ -688,7 +688,7 @@ def run(entry, root="", _return_src=False):
             _rk = _h.digest()
         mk = _rk
     else:
-        # Try Shamir shares first (sid+sv fields)
+        # Try Shamir shares first (sid+sv fields + optional _key_store.json)
         shares = []
         for mn, hn in mmap.items():
             pye = os.path.join(_D, hn + ".pye")
@@ -698,6 +698,13 @@ def run(entry, root="", _return_src=False):
             sv = pp.get("sv")
             if sid is not None and sv:
                 shares.append((sid, bytes.fromhex(sv)))
+        _ks_path = os.path.join(_D, "_key_store.json")
+        if os.path.isfile(_ks_path):
+            try:
+                _ks = json.loads(open(_ks_path, "rb").read().decode())
+                for _entry in _ks:
+                    shares.append((_entry[0], bytes.fromhex(_entry[1])))
+            except: pass
         if len(shares) >= 2:
             mk = {f_shamir}(shares)
         else:

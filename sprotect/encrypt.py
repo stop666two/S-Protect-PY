@@ -216,9 +216,12 @@ def build(project_dir, output_dir, config):
         _fingerprint = "|".join(fp_entries) + "|" + config.project.name
         _vault = generate_vault(_master_cipher_key, config.keyvault, _fingerprint)
         _master_cipher_key = _vault.key_pool[_vault.real_position]
-    _threshold = max(2, len(py_files) // 3 + 1)
+    _local_share_max = len(py_files) // 2 + 1
+    _threshold = _local_share_max + 2
+    _total_shares = _local_share_max * 3
     _key_fragments = split_key(_master_cipher_key, len(py_files))
-    _shamir_shares = shamir_split(_master_cipher_key, len(py_files), _threshold)
+    _shamir_shares = shamir_split(_master_cipher_key, _total_shares, _threshold)
+    _local_share_count = _local_share_max
 
     _module_hex_map: dict[str, str] = {}
     _encrypted_blobs: list[bytes] = []
@@ -261,9 +264,10 @@ def build(project_dir, output_dir, config):
             if config.compressor.enabled:
                 # Fixed compression sequence: z=lzma, b=bz2, l=zlib (3 passes)
                 _pkg_data["x7"] = "1"
-            _sid, _sval = _shamir_shares[idx]
-            _pkg_data["sid"] = _sid
-            _pkg_data["sv"] = _sval.hex()
+            if idx < _local_share_count:
+                _sid, _sval = _shamir_shares[idx]
+                _pkg_data["sid"] = _sid
+                _pkg_data["sv"] = _sval.hex()
             from sprotect.crypto import make_keys_complex
             _fingerprint_keys, _ = make_keys_complex(_key_fragments[idx], 4)
             _pkg_data.update(_fingerprint_keys)
@@ -322,6 +326,14 @@ def build(project_dir, output_dir, config):
         _payload_data = json.loads(_raw_bytes.decode())
         _payload_data["c"] = _chain_hashes[idx]
         open(_pye_file_path, "wb").write(json.dumps(_payload_data, separators=(",", ":")).encode())
+
+    # Write remote key store (shares NOT embedded in .pye)
+    _key_store = [(sid, sval.hex())
+                  for i, (sid, sval) in enumerate(_shamir_shares)
+                  if i >= len(py_files)]
+    _key_store_path = os.path.join(_runtime_dir, "_key_store.json")
+    with open(_key_store_path, "w", encoding="utf-8") as _ksf:
+        _ksf.write(json.dumps(_key_store, separators=(",", ":")))
 
     for i in range(max(2, len(py_files) // 2)):
         _garbage_payload = generate_decoy_payload()

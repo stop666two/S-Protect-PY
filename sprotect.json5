@@ -764,7 +764,7 @@
     // --- 总开关 ---
     // 可用: true | false
     // 注意: 开启后 build 自动生成密钥雷区，Loader 走雷区取钥路径
-    enabled: false,
+    enabled: true,
 
     // --- 密钥池大小 ---
     // 可用: 512 | 1024 | 2048

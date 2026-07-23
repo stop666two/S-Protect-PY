@@ -317,16 +317,36 @@ def {f_shamir}(shares):
         result[bi] = v
     return bytes(result)
 
+def _anti_checks():
+    import sys as _sc, os as _so, time as _st
+    try:
+        if _sc.gettrace() is not None:
+            _sc.exit(1)
+    except:
+        pass
+    try:
+        _t0 = _st.time()
+        _x = 0
+        for _ in range(5000000):
+            _x ^= _
+        if _st.time() - _t0 > 1.0:
+            _sc.exit(1)
+    except:
+        pass
+    try:
+        for _ind in ['/proc/1/cgroup', '/sys/class/dmi/id/product_name',
+                     '/.dockerenv', '/tmp/cuckoo', '/tmp/analysis',
+                     'C:/cuckoo', 'C:/analysis', 'C:/sandbox']:
+            if _so.path.isfile(_ind) or _so.path.isdir(_ind):
+                _sc.exit(1)
+    except:
+        pass
+
 def run(entry, root=""):
     """Run entry: decrypt map, collect shards, load modules."""
     if not _MAP: raise RuntimeError("No module map")
     _verify_manifest(root)
-    try:
-        import sys as _sy2
-        if _sy2.gettrace() is not None:
-            _sy2.exit(1)
-    except:
-        pass
+    _anti_checks()
     mmap = json.loads(_MAP)
     if _VAULT:
         import struct as _st9

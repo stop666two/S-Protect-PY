@@ -1,118 +1,75 @@
 # 保护功能说明
 
-## AST 混淆（L1-L5，全部模块全开）
+## 一、AST 混淆 (8 道传递)
 
-所有 22 个模块的 `.sprotect.json5` 配置均使用 **L5 全开**。
+| 传递 | 说明 | 配置项 |
+|------|------|--------|
+| 命名重命名 | 变量/函数/类名改为随机 hex | `rename_variables/functions/classes` |
+| 字符串加密 | Base64/XOR 编码 + 分散碎片化 | `encrypt_strings`, `string_split` |
+| 数字加密 | struct.pack 运行时解码 | `encrypt_numbers` |
+| 不透明表达式 | a+b → (a^b)+2*(a&b) 等恒等式 | `opaque_expr` |
+| 控制流平坦化 | while+if/elif 状态机 或 match/case 调度 | `control_flow_flattening`, `match_dispatch` |
+| 死代码注入 | 恒真不透明谓词 + 无效分支 | `dead_code_injection` |
+| Import/Call 混淆 | import→__import__()、调用→lambda 包装 | `obfuscate_imports/calls` |
+| 隐式数据流 | 常量化身 if-else 分支，LLM 无法静态判定 | `dead_code_injection` |
 
-| 变换 | 说明 |
+## 二、多层加密
+
+```
+源码 → marshal → 6层 HKDF/AES-GCM → 层间哈希链验证
+  → zlib(9) → ChaCha20-Poly1305 → XOR 流 → AES-256-GCM
+  → [可选 extra_layers: Serpent/Twofish/Camellia/Salsa20]
+  → [可选 x7 堆叠压缩: LZMA→BZ2→Zlib→Base85]
+```
+
+每层加密存储链式哈希 `h`，运行时验证。单独提取任意一层都会被检测。
+
+## 三、反 AI 逆向
+
+| 防御 | 原理 | 效果 |
+|------|------|------|
+| 语义噪声 5x | 200-300 诱饵函数淹没 6 个真实执行段 | ⭐⭐⭐⭐⭐ |
+| 上下文污染 | hashlib/os.urandom 垃圾块填充 AI 注意力窗口 | ⭐⭐⭐⭐ |
+| 假加密导入 | from cryptography.hazmat... 导入误导 AI 判断 | ⭐⭐⭐ |
+| 不透明表达式 | 数学恒等式替换，AI 不擅长代数简化 | ⭐⭐⭐ |
+| 隐式数据流 | 数据编码在控制流分支中，AI 数据/控制流独立分析 | ⭐⭐⭐⭐ |
+
+## 四、反调试/反分析
+
+| 检测项 | 触发条件 | 响应 |
+|--------|---------|------|
+| pdb/ptrace | 调试器附着 | exit(1) |
+| VM/沙箱 | Docker/Cuckoo/Sandboxie | exit(1) |
+| 进程枚举 | x64dbg/IDA/Windbg 等 20+ 工具 | exit(1) |
+| 时间戳反演 | time.time() vs time.monotonic() 偏差 >2s | exit(1) |
+| 内存校验和 | 模块代码哈希与基线不匹配 | exit(1) |
+| 模拟器 | QEMU/VMware/KVM/VirtualBox 检测 | exit(1) |
+| 调用链验证 | _trace_verify HMAC 令牌不匹配 | exit(1) |
+| 文件系统陷阱 | 误触诱饵 .pye | exit(1) |
+
+## 五、密钥保护
+
+| 机制 | 说明 |
 |------|------|
-| 变量/函数/类重命名 | `user_count` → `_0xa1b2c3` |
-| 属性访问重命名 | `mymodule.CONST` → `mymodule._0x...`（仅对象名也在 rename map 中时） |
-| 字符串加密 | `"secret"` → `base64.b64decode(...)` 或 `(lambda k,d: ...)(KEY, bytes)` |
-| 数字加密 | `4096` → `struct.unpack('i', b64decode('...'))` |
-| 控制流平坦化 | 函数体转为 `while + if-elif` 链式状态机（跳过含 yield/async 的函数） |
-| 死代码注入 + 蜜罐函数 | 注入永不执行的分支 + 虚假解密/验证函数（含死循环/`os._exit` 陷阱） |
-| import 混淆 | `from X import Y` → `Y = __import__("X").Y`（fromlist 保持原名） |
-| 调用混淆 | `func(a)` → `(lambda _a0,_a1: _a0(_a1))(func, a)`（跳过 `*args` 解包） |
-| 算术混淆 | `a+b` → `a-(-b)`，`a*2^n` → `a<<n`（仅数值类型） |
-| 布尔混淆 | `True/False` → `1==1` / `1!=0` |
+| Shamir 分片 | master_key 切分为 N 片，需 T 片恢复(GF(256)) |
+| 本地密钥分片 | 部分分片嵌入 .pye，部分写入 _key_store.json |
+| 远程密钥分片 | 支持 HTTPS 直连远程服务器获取额外分片 |
+| 多态密钥路径 | 4 种不同 salt 推导方式，运行时由 PID 随机选择 |
+| 白盒混淆 | 25 个 HEX_VARS 中仅 1 个真 salt |
+| 层无密钥化 | 每层不存储密钥，全部由 HKDF(master_key) 派生 |
 
-## 多层加密管道
+## 六、运行时保护
 
-```
-源码 → zlib → ChaCha20-Poly1305 → XOR → AES-256-GCM → [额外层] → .pye
-```
-
-额外层统一使用 AES-256-CBC（cryptography 库），每层通过 HKDF-SHA256 域分离派生独立密钥。
-
-## 密钥系统
-
-- master_key XOR 分片为 N 份，每份一个 .pye 文件
-- 每个文件含 5 个密钥槽（1 真 + 4 诱饵）
-- 三层指纹验证：f1=XOR+SHA256, f2=blake3/SHA256, f3=HMAC
-
-## 反调试
-
-10 项检测：pdb、ptrace（Win/Linux）、debugger、vm、sandbox、timing、cuckoo、ida、procmon、**gpu**
-
-GPU 检测：CUDA 环境变量（11 个）、GPU 调试工具进程（nsight/cuda-gdb 等 8 个）、Linux CUDA 工具包文件。
-
-## 反篡改
-
-- 链式哈希校验
-- **integrity\_manifest.json**（`output/_meta/`）— 所有 .pye 的 SHA256，运行时检测缺失/篡改/新增
-- **secure\_zero** — ctypes 方式清零敏感 bytearray
-- **wipe\_sensitive** — GC 遍历清零缓存对象
-- 周期自检 + 反 Hook + 反 Dump
-
-## 水印溯源
-
-三层 + 热补丁：
-
-```python
-from sprotect.watermark import patch_watermark_batch
-patch_watermark_batch("output/_runtime/", "CUSTOMER-ABC", "mysecret", append=True)
-```
-
-## 代码虚拟化
-
-自定义栈式 VM，20+ 指令：
-
-| 类别 | 指令 |
+| 保护 | 说明 |
 |------|------|
-| 数据 | LOAD\_CONST, LOAD\_NAME, STORE\_NAME |
-| 运算 | ADD, SUB, MUL, DIV, MOD, POW, AND, OR, XOR, LSHIFT, RSHIFT |
-| 比较 | EQ, NE, LT, GT, LE, GE |
-| 控制 | JUMP\_FORWARD, JUMP\_IF\_FALSE, JUMP\_ABSOLUTE |
-| 复合 | BUILD\_LIST/TUPLE/SET/DICT, FOR\_ITER, SETUP\_EXCEPT |
-| 调用 | CALL\_FUNCTION, YIELD\_VALUE, LOAD\_ATTR, LOAD\_SUBSCR |
+| 执行时间墙 | 启动后 N 分钟自动退出 |
+| 内存 TTL | 解密缓存超过 N 秒后回收 |
+| 完整性自检 | 定时验证 .pye 哈希和模块内存 |
+| 诱饵文件监控 | 45 秒间隔检查 _decoy/ 文件完整性 |
+| 内存自删除 | 模块加载后 .pye 文件立即删除 |
+| 栈混淆 | 关键函数通过 6 层深 lambda 调用 |
 
-## 字节码保护
+## 七、双进程架构(实验性)
 
-marshal + zlib + AES-GCM 加密代码对象，`SecureImporter` import hook 透明解密：
-
-```python
-from sprotect.bytecode_protect import SecureImporter
-sys.meta_path.insert(0, SecureImporter(runtime_dir, key))
-```
-
-## 数字指纹
-
-```python
-from sprotect.fingerprint import compute_fingerprint, report_fingerprint, check_integrity
-fp = compute_fingerprint("output/_runtime/")
-report_fingerprint("https://your-server.com/api", batch_id, "output/_runtime/")
-```
-
-## 自定义打包
-
-```python
-from sprotect.pack_custom import pack_to_single_file, pack_to_onefile
-pack_to_single_file("./output", "./bundle.py", loader_key)
-```
-
-## 输出结构
-
-```
-output/
-├── main.py                    ← 自举启动器
-├── .env                       ← 环境变量（可选）
-├── key.pem                    ← 私钥（hybrid 模式）
-├── requirements.txt
-├── _runtime/                  ← 加密模块
-│   ├── loader.pye
-│   ├── a1b2c3.pye
-│   └── ...
-└── _meta/                     ← 元数据（构建信息）
-    ├── integrity_manifest.json
-    ├── build.spec
-    ├── protection_report.html
-    └── watermark_report.json
-```
-
-## 已知限制
-
-- `importlib.reload()` 对加密模块不兼容（AST 混淆的固有局限）
-- `sys._getframe()` / `inspect.getsource()` 在加密模块中不可用（无源码）
-- 控制流平坦化跳过含 `yield`/`yield from`/推导式的函数
-- `CallObfuscator` 跳过 `*args` 解包参数
+父进程持有全部解密密钥，子进程执行业务代码。子进程被 dump 也拿不到密钥。
+启动增加 0.5-2秒，内存翻倍。适用于高安全场景。

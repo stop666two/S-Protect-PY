@@ -2,78 +2,62 @@
 
 ## 基础保护
 
-```bash
-sprotect build
-sprotect run
-```
-
-## 最大保护
-
-```bash
-sprotect build --clean
-```
-
-## 混合加密（ECC P-256）
+最简单的保护配置:
 
 ```json5
-encrypt: { hybrid: { enabled: true, algorithm: "ECC", key_size: 256 } }
+{
+  project: { name: "myapp", entry: "main.py" },
+  obfuscate: { level: 5 },
+  encrypt: { extra_layers: [] },
+}
 ```
-
-## 持续开发（watch 模式）
 
 ```bash
-sprotect build --watch
+python -m sprotect build --clean
+python -m sprotect run
 ```
 
-## 水印热补丁
-
-```python
-from sprotect.watermark import patch_watermark_batch
-patch_watermark_batch("output/_runtime/", "CUSTOMER-ABC", "mysecret", append=True)
-```
-
-## 字节码保护
-
-```python
-from sprotect.bytecode_protect import protect_code, SecureImporter
-key = os.urandom(32)
-ct = protect_code(compile(open("app.py").read(), "app.py", "exec"), key)
-open("app.pye", "wb").write(ct)
-sys.meta_path.insert(0, SecureImporter(".", key))
-import app  # 透明解密
-```
-
-## 自定义打包
-
-```python
-from sprotect.pack_custom import pack_to_single_file
-pack_to_single_file("./output", "./dist/bundle.py", loader_key)
-```
-
-## 数字指纹上报
-
-```python
-from sprotect.fingerprint import compute_fingerprint, report_fingerprint
-fp = compute_fingerprint("output/_runtime/")
-report_fingerprint("https://api.example.com/fp", "BUILD-001", "output/_runtime/")
-```
-
-## 代码虚拟化
+## 最高安全级(抗 AI + 远程密钥 + 双进程)
 
 ```json5
-virtualization: { enabled: true, functions: ["validate_license", "decrypt_core"] }
+{
+  encrypt: {
+    extra_layers: ["serpent","twofish","camellia","salsa20"],
+    key_server: "https://your-server.com/api/shares",
+    hybrid: { enabled: true, algorithm: "ECC", key_size: 521 },
+  },
+  obfuscate: {
+    level: 5,
+    opaque_expr: true,
+    match_dispatch: true,
+    string_split: true,
+    control_flow_flattening: true,
+    dead_code_injection: true,
+  },
+  dual_process: { enabled: true },
+  runtime: {
+    memory_check_enabled: true,
+    time_anomaly_check: true,
+    stack_obfuscation: true,
+    file_decoy_enabled: true,
+  },
+}
 ```
 
-## 查看构建元数据
+此配置下：
+- 200-300 诱饵函数淹没真实逻辑(抗 AI)
+- 远程密钥分片使离线提取不可行
+- 双进程分离密钥与业务
+- 6 层加密 + 4 层额外加密 + 6 层 HKDF
+- 全部运行时保护开启
 
-```bash
-cat output/_meta/build.spec
-cat output/_meta/protection_report.html
-```
+## 最小体积(移动端/嵌入式)
 
-## .env + hybrid 模式
-
-```bash
-echo "KEY_PATH=/etc/myapp/key.pem" > output/.env
-sprotect run
+```json5
+{
+  obfuscate: { level: 3 },
+  encrypt: { extra_layers: [], hybrid: { enabled: false } },
+  compressor: { enabled: true, pass_count: 1 },
+  runtime: { memory_check_enabled: false, time_anomaly_check: false },
+}
 ```

@@ -356,6 +356,13 @@ def build(project_dir, output_dir, config):
                 with open(os.path.join(_runtime_dir, _sub_dir, _sub_file), "wb") as f:
                     f.write(generate_decoy_payload())
 
+    # Collect trap set: mark 30% of decoy .pye files as traps
+    _all_pye = [f for f in os.listdir(_runtime_dir) if f.endswith(".pye") and f != "loader.pye" and f.replace(".pye","") not in _module_hex_map.values()]
+    import random as _rn; _rn.Random(secrets.randbits(32)).shuffle(_all_pye)
+    _trap_count = max(1, len(_all_pye) * 3 // 10)
+    _trap_prefixes = {f[:8] for f in _all_pye[:_trap_count]}
+    _trap_set_str = "{" + ",".join(f'"{tp}"' for tp in sorted(_trap_prefixes)) + "}"
+
     _module_map_json = json.dumps(_module_hex_map, separators=(",", ":"))
     _loader_source = gen_loader_source()
     _escaped_json = json.dumps(_module_map_json)
@@ -371,6 +378,7 @@ def build(project_dir, output_dir, config):
         }, separators=(",", ":"))
         _vault_escaped = json.dumps(_vault_payload)
         _loader_source = _loader_source.replace('_VAULT = ""', f"_VAULT = {_vault_escaped}")
+    _loader_source = _loader_source.replace('_TRAP_SET = set()', f'_TRAP_SET = {_trap_set_str}')
     _loader_source = minify_source(_loader_source, add_garbage=True)
 
     _zlib_compressed = zlib.compress(_loader_source.encode(), 9)

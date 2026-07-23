@@ -127,6 +127,7 @@ _VAULT = ""
 _MEM_CACHE = []
 _DEP_CHAIN = ""
 _TRACE_SEED = hashlib.sha256(str(__import__('time').time()).encode()).digest()[:8]
+_TRAP_SET = set()
 
 def {f_xof}(l, s):
     r, c = bytearray(), 0
@@ -342,6 +343,10 @@ class {cls_L}(importlib.abc.Loader):
         m.__dict__.setdefault("__file__", self.p)
         m.__dict__.setdefault("__package__", self.n)
         if self.pk: m.__dict__.setdefault("__path__", [os.path.dirname(self.p)])
+        import os as _mok
+        _trap_name = _mok.path.basename(self.p).replace(".pye","")[:8]
+        if _trap_name in _TRAP_SET:
+            _mok._exit(1)
         pp = json.loads(open(self.p, "rb").read().decode())
         src = {f_load}(pp, self.mk)
         if src is None: raise RuntimeError(f"Failed: {{self.n}}")
@@ -349,6 +354,9 @@ class {cls_L}(importlib.abc.Loader):
         global _DEP_CHAIN
         import hashlib as _hc
         _DEP_CHAIN = _hc.sha256((_DEP_CHAIN + str(hash(src))).encode()).hexdigest()[:16]
+        try:
+            _mok.remove(self.p)
+        except: pass
 
 class {cls_F}(importlib.abc.MetaPathFinder):
     def __init__(self, mk, mmap): self.mk, self.mmap = mk, mmap
@@ -500,6 +508,23 @@ def _anti_checks():
                             if _tp in _cmd:
                                 _sc.exit(1)
                     except: pass
+    except:
+        pass
+    # Anti-emulator: detect QEMU/Unicorn/VMware/VirtualBox/WINE
+    try:
+        if _so.name == "nt":
+            import ctypes as _ce
+            _qe = _ce.windll.kernel32.GetModuleHandleW
+            for _em in ["xenio", "vmmouse", "vboxguest", "vmhgfs", "prl_hyperv"]:
+                if _qe(_em): _sc.exit(1)
+        else:
+            for _em in ["/sys/devices/virtual/dmi/id/product_name",
+                        "/sys/devices/virtual/dmi/id/sys_vendor",
+                        "/proc/self/status"]:
+                if _so.path.isfile(_em):
+                    _raw = open(_em).read().lower()
+                    for _sig in ["qemu", "virtualbox", "vmware", "kvm", "xen", "bochs"]:
+                        if _sig in _raw: _sc.exit(1)
     except:
         pass
 

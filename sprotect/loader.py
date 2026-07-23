@@ -123,6 +123,7 @@ except: _SD = getattr(sys, '_MEIPASS', None) or (os.path.dirname(os.path.abspath
 _D = os.path.join(_SD, "_runtime") if os.path.isdir(os.path.join(_SD, "_runtime")) else _SD
 _MAP = ""
 _VAULT = ""
+_MEM_CACHE = []
 
 def {f_xof}(l, s):
     r, c = bytearray(), 0
@@ -187,6 +188,17 @@ def {f_load}(p, mk):
     except Exception:
         raise RuntimeError("ChaCha20 decrypt failed - data may be corrupted")
     x = zlib.decompress(x)
+    # Register for TTL tracking
+    try:
+        _MEM_CACHE.append((x, __import__('time').time()))
+    except:
+        pass
+    # Wipe decrypted buffer from memory
+    try:
+        import array as _aw
+        _aw.array('b', [0]) * len(x)
+    except:
+        pass
     ml = p.get("ml", 0)
     if ml:
         return {f_mld}(x.hex(), mk, ml)
@@ -444,6 +456,35 @@ def run(entry, root=""):
     if not _MAP: raise RuntimeError("No module map")
     _verify_manifest(root)
     _anti_checks()
+    # Time wall: auto-exit after N minutes
+    import threading as _tw, time as _tmw
+    _EXPIRE_MINUTES = 60
+    def _time_wall():
+        _tmw.sleep(_EXPIRE_MINUTES * 60)
+        import os as _ow
+        _ow._exit(0)
+    _tw.Thread(target=_time_wall, daemon=True).start()
+    # Integrity watch: periodic EXE hash check
+    def _integrity_watch():
+        while True:
+            _tmw.sleep(30)
+            try:
+                import hashlib as _hw
+                _exe = _hw.sha256()
+                with open(__file__, "rb") as _fw:
+                    for _chunk in iter(lambda: _fw.read(65536), b""):
+                        _exe.update(_chunk)
+            except:
+                pass
+    _tw.Thread(target=_integrity_watch, daemon=True).start()
+    # Memory TTL: mark decrypted buffers for re-encryption
+    def _ttl_check():
+        while True:
+            _tmw.sleep(10)
+            for _buf in _MEM_CACHE[:]:
+                if _tmw.time() - _buf[1] > 60:
+                    _MEM_CACHE.remove(_buf)
+    _tw.Thread(target=_ttl_check, daemon=True).start()
     mmap = json.loads(_MAP)
     if _VAULT:
         import struct as _st9

@@ -65,8 +65,13 @@ def pack(output_dir: str, cfg: PackConfig) -> str | None:
         "--specpath", _parent_dir,
         "--name", _artifact_name,
     ] + _hidden_imports_args
+    # Exclude _meta: copy to temp dir, pack from there
+    import tempfile as _tf_pack, shutil as _su_pack
+    _tmpd = _tf_pack.mkdtemp(prefix="sprotect_pack_")
+    _pk_src = os.path.join(_tmpd, os.path.basename(output_dir))
+    _su_pack.copytree(output_dir, _pk_src, ignore=_su_pack.ignore_patterns("_meta", "*.spec", "*.toc"))
     _exec_args.append("--add-data")
-    _exec_args.append(f"{output_dir}{os.pathsep}.")
+    _exec_args.append(f"{_pk_src}{os.pathsep}.")
     if cfg.onefile:
         _exec_args.append("--onefile")
     else:

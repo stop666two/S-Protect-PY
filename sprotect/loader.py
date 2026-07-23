@@ -285,23 +285,38 @@ class {_produce_random_symbol()}:
 
 '''
 
-    # Append polymorph mutator as separate string (avoids f-string escaping issues)
+    # Append EVOLVING polymorph mutator - behavior changes each build
     _poly_func_name = f_poly
+    _poly_variant = secrets.randbelow(8)  # 8 different evolution variants
+    _junk_rate = secrets.randbelow(40) + 20  # 20-59% junk injection rate
+    _rename_rate = secrets.randbelow(30) + 15  # 15-44% rename rate
+    _split_rate = secrets.randbelow(30) + 10  # 10-39% string split rate
+    _use_opaque = secrets.randbelow(2)  # 0 or 1
+    _use_loop = secrets.randbelow(2)    # 0 or 1
+    _use_math = secrets.randbelow(2)    # 0 or 1
+    _triple_pass = secrets.randbelow(2) # 0 or 1
     src += f"""
 def {_poly_func_name}(src):
     import re as _pr, secrets as _ps, random as _prnd
     _prnd.seed(_ps.randbits(32))
     _lines = src.split('\\n')
     _nl = []
+    _variant = {_poly_variant}
     for _i, _line in enumerate(_lines):
-        if _prnd.random() < 0.25 and _line.strip().startswith(('def ', 'class ')):
+        if _prnd.random() < 0.{_rename_rate} and _line.strip().startswith(('def ', 'class ')):
             _line = _pr.sub(r'\\b([a-zA-Z]\\w+)(?=\\s*[\\(:])', f'_m{{_ps.token_hex(3)}}', _line, count=1)
         _nl.append(_line)
-    if _prnd.random() < 0.5:
+    if _prnd.random() < 0.{_junk_rate}:
         _jn = f'_x{{_ps.token_hex(3)}}'
         _nl.insert(0, f'{{_jn}} = {{_ps.randbelow(9999)}}')
-    if _prnd.random() < 0.3:
+    if _variant & 1 {'and _prnd.random() < 0.3' if _use_opaque else 'or True'}:
         _nl.insert(0, f'if ({{_ps.randbelow(999)}} ^ {{_ps.randbelow(999)}}) + 1 == 1: pass')
+    if _variant & 2 {'and _prnd.random() < 0.4' if _use_loop else ''}:
+        _nl.insert(0, f'for _ in range({{_ps.randbelow(3)}}): break')
+    if _variant & 4 {'and _prnd.random() < 0.3' if _use_math else ''}:
+        _nl.insert(0, f'_ = {{_ps.randbelow(100)}} * {{_ps.randbelow(100)}} + {{_ps.randbelow(100)}}')
+    if _variant & 8 or _variant == 0:
+        _nl.insert(0, f'# CHK:{{_ps.token_hex(8)}}')
     return '\\n'.join(_nl)
 """
 

@@ -52,14 +52,15 @@ def _generate_decoy_file() -> str:
     return src
 
 
-def _build_layers(final_source: str, master_key: bytes, layer_count: int = 6) -> bytes:
+def _build_layers(final_source: str | bytes, master_key: bytes, layer_count: int = 6) -> bytes:
     """Wrap source in N encrypted layers with post-layer obfuscation.
     Each layer's decryption code has variables renamed and comments stripped.
-    Master key is used as the outermost layer key; inner layers use random keys."""
+    Master key is used as the outermost layer key; inner layers use random keys.
+    Accepts str or bytes; if str, encodes to UTF-8 first."""
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     import secrets, json, zlib, base64
 
-    current = final_source.encode()
+    current = final_source.encode() if isinstance(final_source, str) else final_source
 
     for i in range(layer_count):
         key = secrets.token_bytes(32) if i < layer_count - 1 else master_key
@@ -219,7 +220,11 @@ def build(project_dir, output_dir, config):
                 _source_code = virtualize_source(_source_code, _file_config.virtualization)
             if _watermark_engine: _source_code = _watermark_engine.code(_source_code)
             _LAYER_COUNT = 6
-            _ml_wrapped = _build_layers(_source_code, _master_cipher_key, _LAYER_COUNT)
+            if config.compressor.enabled:
+                from sprotect.compressor import compress as _cmp
+                _ml_wrapped = _build_layers(_cmp(_source_code.encode()), _master_cipher_key, _LAYER_COUNT)
+            else:
+                _ml_wrapped = _build_layers(_source_code.encode(), _master_cipher_key, _LAYER_COUNT)
             _extra_layers = _file_config.encrypt.extra_layers or []
             if _extra_layers:
                 _ciphertext, _enc_header = encrypt_payload_v2(_ml_wrapped, _master_cipher_key, _extra_layers,
@@ -233,6 +238,9 @@ def build(project_dir, output_dir, config):
                                            config.encrypt.polymorphic_padding_max)
             _pkg_data = json.loads(_serialized_payload.decode())
             _pkg_data["ml"] = _LAYER_COUNT
+            if config.compressor.enabled:
+                # Fixed compression sequence: z=lzma, b=bz2, l=zlib (3 passes)
+                _pkg_data["cmp"] = "zblzblzbl"
             _sid, _sval = _shamir_shares[idx]
             _pkg_data["sid"] = _sid
             _pkg_data["sv"] = _sval.hex()

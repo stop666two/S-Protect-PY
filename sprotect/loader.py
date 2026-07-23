@@ -111,6 +111,7 @@ def gen_loader_source() -> str:
     f_gf_inv = _produce_random_symbol()
     f_shamir = _produce_random_symbol()
     f_poly = _produce_random_symbol()
+    f_decmp = _produce_random_symbol()
     cls_L = _produce_random_symbol()
     cls_F = _produce_random_symbol()
 
@@ -190,8 +191,34 @@ def {f_load}(p, mk):
     x = zlib.decompress(x)
     ml = p.get("ml", 0)
     if ml:
-        return {f_mld}(x.hex(), mk, ml)
+        _cmp = p.get("cmp", "")
+        _result = {f_mld}(x.hex(), mk, ml, bool(_cmp))
+        if _cmp and isinstance(_result, bytes):
+            _result = {f_decmp}(_result).decode()
+        return _result
     return x.decode()
+
+def {f_decmp}(data):
+    """Decompress multi-algorithm compressed data (seq stored in header)."""
+    import bz2 as _bz, lzma as _lz, zlib as _zl, json as _js
+    if b"\\n\\n" not in data:
+        return data
+    _h, _d = data.split(b"\\n\\n", 1)
+    try:
+        _m = _js.loads(_h.decode())
+    except:
+        return data
+    if _m.get("b85"):
+        import base64 as _b64
+        try: _d = _b64.a85decode(_d)
+        except: pass
+    for _c in reversed(_m.get("seq", [])):
+        try:
+            if _c == "l": _d = _zl.decompress(_d)
+            elif _c == "b": _d = _bz.decompress(_d)
+            elif _c == "z": _d = _lz.decompress(_d)
+        except: break
+    return _d
 
 def {f_extra}(ct, mk, hdr):
     import json, hashlib
@@ -221,16 +248,16 @@ def {f_extra}(ct, mk, hdr):
             ct = p[:-p[-1]]
     return ct
 
-def {f_mld}(d, k, n):
-    """Decrypt multi-layer encrypted data from outermost to innermost."""
+def {f_mld}(d, k, n, _raw_last=False):
+    """Decrypt multi-layer encrypted data from outermost to innermost.
+    If _raw_last=True, return raw bytes for the innermost layer (for decompression)."""
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     import json, base64, re as _re9
     cd, ck = bytes.fromhex(d), k
     for i in range(n):
         x = AESGCM(ck).decrypt(cd[:12], cd[12:], b"")
-        _decoded = x.decode()
         if i < n - 1:
-            # Only polymorph Python source, not JSON layer wrappers
+            _decoded = x.decode()
             if not _decoded.strip().startswith(("{{", "[", '{{"')):
                 _decoded = {f_poly}(_decoded)
             _m = _re9.search(r"'([A-Za-z0-9_=-]+)'", _decoded)
@@ -245,7 +272,9 @@ def {f_mld}(d, k, n):
                 ck = bytes.fromhex(l["k"])
                 cd = bytes.fromhex(l["d"])
         else:
-            return {f_poly}(_decoded)
+            if _raw_last:
+                return x
+            return {f_poly}(x.decode())
     return None
 
 # Auxiliary structures

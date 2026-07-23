@@ -137,6 +137,8 @@ class Obfuscator(ast.NodeTransformer):
         if self.cfg.dead_code_injection:
             self._seed_dead_blocks(tree)
             tree = _HoneypotInjector(self.map).visit(tree)
+        if self.cfg.obfuscate_arithmetic:
+            tree = _OpaqueExprInjector().visit(tree)
         ast.fix_missing_locations(tree)
         return ast.unparse(tree)
 
@@ -517,4 +519,41 @@ class _LiteralEncryptor(ast.NodeTransformer):
                 attr="unpack"), args=[ast.Constant(fmt), ast.Call(func=ast.Attribute(
                 value=ast.Call(func=ast.Name(id="__import__"), args=[ast.Constant("base64")], keywords=[]),
                 attr="b64decode"), args=[ast.Constant(e)], keywords=[])], keywords=[]), slice=ast.Constant(0), ctx=ast.Load())
+        return node
+
+
+class _OpaqueExprInjector(ast.NodeTransformer):
+    """Replace simple ops with complex identities. LLMs can't algebraically simplify."""
+
+    def visit_BinOp(self, node: ast.BinOp):
+        self.generic_visit(node)
+        _skip = False
+        for _c in [node.left, node.right]:
+            if isinstance(_c, ast.Constant) and isinstance(_c.value, str):
+                _skip = True
+        if _skip:
+            return node
+        if isinstance(node.op, ast.Add) and secrets.randbelow(2):
+            return ast.BinOp(left=ast.BinOp(left=node.left, op=ast.BitXor(), right=node.right),
+                op=ast.Add(), right=ast.BinOp(left=ast.BinOp(left=node.left, op=ast.BitAnd(), right=node.right),
+                op=ast.Mult(), right=ast.Constant(2)))
+        if isinstance(node.op, ast.Sub) and secrets.randbelow(2):
+            return ast.BinOp(left=ast.BinOp(left=node.left, op=ast.Add(), right=ast.Constant(1)),
+                op=ast.Sub(), right=ast.BinOp(left=node.right, op=ast.Add(), right=ast.Constant(1)))
+        if isinstance(node.op, ast.Mult) and secrets.randbelow(2):
+            return ast.BinOp(left=ast.BinOp(left=ast.BinOp(left=ast.BinOp(left=node.left, op=ast.Add(), right=node.right),
+                op=ast.Pow(), right=ast.Constant(2)), op=ast.Sub(), right=ast.BinOp(
+                left=ast.BinOp(left=node.left, op=ast.Sub(), right=node.right), op=ast.Pow(),
+                right=ast.Constant(2))), op=ast.FloorDiv(), right=ast.Constant(4))
+        if isinstance(node.op, ast.BitXor) and secrets.randbelow(2):
+            return ast.BinOp(left=ast.BinOp(left=ast.BinOp(left=node.left, op=ast.BitOr(), right=node.right),
+                op=ast.Sub(), right=ast.BinOp(left=node.left, op=ast.BitAnd(), right=node.right)),
+                op=ast.BitXor(), right=ast.Constant(0))
+        return node
+
+    def visit_Compare(self, node: ast.Compare):
+        self.generic_visit(node)
+        if len(node.ops) == 1 and isinstance(node.ops[0], ast.Eq) and secrets.randbelow(2):
+            return ast.Compare(left=ast.BinOp(left=node.left, op=ast.BitXor(), right=node.comparators[0]),
+                ops=[ast.Eq()], comparators=[ast.Constant(0)])
         return node

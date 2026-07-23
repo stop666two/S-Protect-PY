@@ -136,6 +136,10 @@
         "load_config", "merge_file_config", "gen_default",
         "find_config", "load_per_file", "deep_merge",
       ],
+      prefix: "_0x",
+      suffix: "",
+      min_length: 6,
+      blacklist: [],
     },
 
     // --- encrypt_strings: 字符串加密开关 ---
@@ -171,6 +175,19 @@
     //   场景中会显著拖慢启动速度。
     encrypt_numbers: false,
 
+    // --- string_min_length: 字符串加密最小长度 ---
+    // 可用值: 0-100
+    // 推荐值: 3
+    // 原因: 小于此长度的字符串不加密，避免短字符串加密后
+    //   成为攻击者的搜索特征。
+    string_min_length: 3,
+
+    // --- string_encrypt_ratio: 字符串加密比例 ---
+    // 可用值: 0.0 - 1.0
+    // 推荐值: 1.0
+    // 原因: 1.0 表示所有符合条件的字符串都加密。
+    string_encrypt_ratio: 1.0,
+
     // --- control_flow_flattening: 控制流平坦化 ---
     // 可用值: true | false
     // ❗ 此模块必须为 false
@@ -186,6 +203,7 @@
     //   → 配置解析错误 → 所有模块的配置都无法加载
     //   → 整个程序的保护体系崩溃。
     //   配置模块的稳定性优先级高于混淆强度。
+    control_flow_flattening: false,
 
     // --- dead_code_injection: 死代码注入开关 ---
     // 可用值: true | false
@@ -199,11 +217,54 @@
     //   与 control_flow_flattening 相同的原因——配置模块
     //   对行为正确性的要求压倒一切。任何死代码注入可能
     //   引入的非常规控制流，在配置模块中都是不可接受的。
+    dead_code_injection: false,
+
+    // --- dead_code_density: 死代码密度 ---
+    // 可用值: 0.0 - 1.0
+    // 推荐值: 0.3
+    // 原因: 因 dead_code_injection=false 不生效，保留默认值。
+    dead_code_density: 0.3,
+
+    // --- opaque_predicate_count: 不透明谓词数量 ---
+    // 可用值: 0-10
+    // 推荐值: 2
+    // 原因: 配置模块不需要此保护，保留默认值供参考。
+    opaque_predicate_count: 2,
+
+    // --- remove_docstrings: 移除文档字符串 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // 原因: 移除所有函数/类的 docstring，减少可阅读信息。
+    remove_docstrings: true,
+
+    // --- remove_comments: 移除注释 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // 原因: 混淆产物中不应保留源码注释。
+    remove_comments: true,
+
+    // --- strip_blank_lines: 移除空行 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // 原因: 压缩代码体积，减少可读性。
+    strip_blank_lines: true,
+
+    // --- max_line_length: 最大行长度 ---
+    // 可用值: 0-9999（0=不限制）
+    // 推荐值: 0
+    // 原因: 0 表示不限制行长度。
+    max_line_length: 0,
 
     // --- string_split: 字符串分割 ---
     // 可用: true | false
     // 注意: 字符串分割为多个碎片运行时拼接，增加搜索难度
     string_split: true,
+
+    // --- string_cipher: 字符串加密算法 ---
+    // 可用值: "aes" | "xor" | "mixed" | "base64"
+    // 推荐值: "mixed"
+    // 原因: 混合多种加密算法，增加破解难度。
+    string_cipher: "mixed",
 
     // --- obfuscate_imports: import 混淆 ---
     // 可用: true | false
@@ -215,6 +276,18 @@
     // 注意: func(a, b) -> (lambda _a0, _a1: func(_a0, _a1))(a, b)
     //       跳过属性调用和多参调用（>2个参数）以避免兼容性问题
     obfuscate_calls: true,
+
+    // --- obfuscate_arithmetic: 算术运算混淆 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // 原因: 将简单算术表达式替换为复杂等价形式，增加逆向难度。
+    obfuscate_arithmetic: true,
+
+    // --- obfuscate_booleans: 布尔表达式混淆 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // 原因: 将 True/False 替换为复杂布尔表达式，增加阅读难度。
+    obfuscate_booleans: true,
   },
 
   // ===================================================================
@@ -255,5 +328,47 @@
     //   误报（如开发者开着 Process Hacker、VM 等）。
     //   pdb 检测是最无害的——大部分开发场景不会触发。
     checks: ["pdb"],
+
+    // --- per_check_actions: 逐项检测自定义行为 ---
+    // 可用值: [["check","action"], ...] | []
+    // 推荐值: []
+    // 原因: 空数组表示所有检测项统一使用 action 字段。
+    per_check_actions: [],
+
+    // --- process_whitelist: 进程白名单 ---
+    // 可用值: ["process", ...] | []
+    // 推荐值: []
+    // 原因: 白名单中的进程不被反调试检测。
+    process_whitelist: [],
+
+    // --- block_tracing: 阻止系统追踪 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // 原因: 阻止 ptrace 等系统追踪机制。
+    block_tracing: true,
+
+    // --- timing_threshold: 时序检测阈值（秒）---
+    // 可用值: 0.1 - 60.0
+    // 推荐值: 2.0
+    // 原因: 检测代码执行耗时是否异常。
+    timing_threshold: 2.0,
+
+    // --- exit_code: 反调试触发时的退出码 ---
+    // 可用值: 0-255
+    // 推荐值: 1
+    // 原因: 标准退出码 1 表示一般性错误。
+    exit_code: 1,
+
+    // --- wipe_memory: 退出时擦除敏感内存 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // 原因: 退出前用零填充敏感内存区域。
+    wipe_memory: true,
+
+    // --- corrupt_on_exit: 退出时损坏数据 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // 原因: 可能造成不可逆的数据损坏，保持 false。
+    corrupt_on_exit: false,
   },
 }

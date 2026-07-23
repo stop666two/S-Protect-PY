@@ -1,9 +1,11 @@
+# RUNTIME LOADER v7: self-decrypting module resolver
+# WARNING: auto-generated content, do not modify
 """Bootloader + runtime loader v7: random names, external crypto, PyArmor integration."""
 
 from __future__ import annotations
 import os, shutil, secrets, hashlib
 
-def _rand_name() -> str:
+def _produce_random_symbol() -> str:
     """Generate a random meaningless identifier."""
     styles = [
         lambda: f"_0x{secrets.token_hex(5)}",
@@ -30,64 +32,63 @@ def _rand_name() -> str:
     return secrets.choice(styles)()
 
 
-def _randomized_source(source: str) -> str:
+def _scramble_identifiers(source: str) -> str:
     """Replace all meaningful identifiers in the source with random names.
     Scans for Python identifiers and replaces them."""
     import re
     # Find all function def names, class names, and global variable assignments
-    replacements = {}
+    _rename_table = {}
     # Function defs
     for m in re.finditer(r'^def (\w+)\(', source, re.MULTILINE):
         name = m.group(1)
-        if name not in replacements and not name.startswith("__"):
-            replacements[name] = _rand_name()
+        if name not in _rename_table and not name.startswith("__"):
+            _rename_table[name] = _produce_random_symbol()
     # Class defs
     for m in re.finditer(r'^class (\w+)', source, re.MULTILINE):
         name = m.group(1)
-        if name not in replacements and not name.startswith("__"):
-            replacements[name] = _rand_name()
+        if name not in _rename_table and not name.startswith("__"):
+            _rename_table[name] = _produce_random_symbol()
     # Apply replacements (longest first to avoid partial matches)
-    for old, new in sorted(replacements.items(), key=lambda x: -len(x[0])):
+    for old, new in sorted(_rename_table.items(), key=lambda x: -len(x[0])):
         source = re.sub(r'\b' + re.escape(old) + r'\b', new, source)
     return source
 
 
-def _gen_decrypt_func(num: int) -> str:
+def _synthesize_decoy_decryptor(num: int) -> str:
     """Generate a random-looking decryption function.
     Each call produces different code structure."""
     import random
     r = random.Random(secrets.randbits(32))
-    fname = _rand_name()
-    body = []
-    body.append(f"    import json, hashlib, zlib")
-    body.append(f"    from cryptography.hazmat.primitives.ciphers.aead import AESGCM")
-    body.append(f"    p = json.loads(open(path, 'rb').read().decode())")
-    body.append(f"    ct = bytes.fromhex(p['d'])")
-    body.append(f"    k = bytes.fromhex(p['k{r.randint(1,3)}'])")
+    _func_alias = _produce_random_symbol()
+    _func_body_lines = []
+    _func_body_lines.append(f"    import json, hashlib, zlib")
+    _func_body_lines.append(f"    from cryptography.hazmat.primitives.ciphers.aead import AESGCM")
+    _func_body_lines.append(f"    p = json.loads(open(path, 'rb').read().decode())")
+    _func_body_lines.append(f"    ct = bytes.fromhex(p['d'])")
+    _func_body_lines.append(f"    k = bytes.fromhex(p['k{r.randint(1,3)}'])")
     # Insert random decoy operations
     for _ in range(r.randint(1, 3)):
-        vn = _rand_name()
-        body.append(f"    {vn} = hashlib.sha256(k).hexdigest()[:{r.randint(4,12)}]")
+        _var_alias = _produce_random_symbol()
+        _func_body_lines.append(f"    {_var_alias} = hashlib.sha256(k).hexdigest()[:{r.randint(4,12)}]")
     # Varying decrypt approaches
     approaches = [
         f"    x = AESGCM(k).decrypt(ct[:12], ct[12:], b'')",
         f"    nonce = ct[:12]\n    tag_ct = ct[12:]\n    x = AESGCM(k).decrypt(nonce, tag_ct, b'')",
     ]
-    body.append(secrets.choice(approaches))
-    # Optional ChaCha20 layer
+    _func_body_lines.append(secrets.choice(approaches))
     if r.random() < 0.4:
-        body.append(f"    from Cryptodome.Cipher import ChaCha20_Poly1305")
-        body.append(f"    c20 = ChaCha20_Poly1305.new(key=k, nonce=x[:12])")
-        body.append(f"    x = c20.decrypt(x[12:28], x[28:])")
+        _func_body_lines.append(f"    from Cryptodome.Cipher import ChaCha20_Poly1305")
+        _func_body_lines.append(f"    c20 = ChaCha20_Poly1305.new(key=k, nonce=x[:12])")
+        _func_body_lines.append(f"    x = c20.decrypt(x[12:28], x[28:])")
     # XOR step with varying implementations
     xor_variants = [
         f"    return zlib.decompress(bytes(a^b for a,b in zip(x,_xof(len(x),k)))).decode()",
         f"    ks = _xof(len(x), k)\n    return zlib.decompress(bytes(i^j for i,j in zip(x,ks))).decode()",
         f"    r = bytearray()\n    for i in range(len(x)):\n        r.append(x[i] ^ _xof(1, k + i.to_bytes(4,'big'))[0])\n    return zlib.decompress(bytes(r)).decode()",
     ]
-    body.append(secrets.choice(xor_variants))
+    _func_body_lines.append(secrets.choice(xor_variants))
 
-    return f"def {fname}(path):\n" + "\n".join(body) + "\n\n"
+    return f"def {_func_alias}(path):\n" + "\n".join(_func_body_lines) + "\n\n"
 
 
 def gen_loader_source() -> str:
@@ -95,15 +96,18 @@ def gen_loader_source() -> str:
     import secrets as _sec, random as _rnd
     _rnd.seed(_sec.randbits(32))
 
-    f_xof = _rand_name()
-    f_load = _rand_name()
-    f_find = _rand_name()
-    f_filter = _rand_name()
-    f_extract = _rand_name()
+    f_xof = _produce_random_symbol()
+    f_load = _produce_random_symbol()
+    f_find = _produce_random_symbol()
+    f_filter = _produce_random_symbol()
+    f_extract = _produce_random_symbol()
     f_run = "run"
-    f_extra = _rand_name()
-    cls_L = _rand_name()
-    cls_F = _rand_name()
+    f_extra = _produce_random_symbol()
+    f_gf_mul = _produce_random_symbol()
+    f_gf_inv = _produce_random_symbol()
+    f_shamir = _produce_random_symbol()
+    cls_L = _produce_random_symbol()
+    cls_F = _produce_random_symbol()
 
     # Build the loader source with random names
     src = f'''"""Runtime v7 - auto-generated, randomized structure."""
@@ -113,6 +117,7 @@ try: _SD = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__f
 except: _SD = getattr(sys, '_MEIPASS', None) or (os.path.dirname(os.path.abspath(sys.argv[0])) if sys.argv else ".")
 _D = os.path.join(_SD, "_runtime") if os.path.isdir(os.path.join(_SD, "_runtime")) else _SD
 _MAP = ""
+_VAULT = ""
 
 def {f_xof}(l, s):
     r, c = bytearray(), 0
@@ -157,7 +162,7 @@ def {f_filter}(mk, shards):
         if not p or not p.get("c"): continue
 
 def {f_load}(p, mk):
-    """Full decrypt: extra layers → AES-GCM → XOR → ChaCha20 → zlib."""
+    """Full decrypt: extra layers -> AES-GCM -> XOR -> ChaCha20 -> zlib."""
     ct = bytes.fromhex(p["d"])
     hdr = p.get("h", "")
     if hdr:
@@ -201,19 +206,19 @@ def {f_extra}(ct, mk, hdr):
     return ct
 
 # Decoy classes and functions
-class {_rand_name()}:
+class {_produce_random_symbol()}:
     """Decoy class - looks like a real loader component."""
     def __init__(self): pass
-    def {_rand_name()}(self): return None
+    def {_produce_random_symbol()}(self): return None
 
 '''
 
     # Add random decoy functions
     for _ in range(_rnd.randint(2, 5)):
-        src += _gen_decrypt_func(_)
+        src += _synthesize_decoy_decryptor(_)
 
     # Add the real loader class
-    load_func = _rand_name()
+    load_func = _produce_random_symbol()
     src += f'''
 class {cls_L}(importlib.abc.Loader):
     def __init__(self, n, p, mk, pk=False):
@@ -270,25 +275,101 @@ def _verify_manifest(root):
     if extra:
         raise RuntimeError("Integrity: extra files " + str(extra))
 
+def {f_gf_mul}(a, b):
+    p = 0
+    for _ in range(8):
+        if b & 1: p ^= a
+        hi = a & 0x80
+        a = (a << 1) & 0xFF
+        if hi: a ^= 27
+        b >>= 1
+    return p & 0xFF
+
+def {f_gf_inv}(x):
+    if x == 0: return 0
+    r, e = 1, 254
+    b = x
+    while e:
+        if e & 1: r = {f_gf_mul}(r, b)
+        b = {f_gf_mul}(b, b)
+        e >>= 1
+    return r
+
+def {f_shamir}(shares):
+    """Reconstruct master key from Shamir shares via Lagrange."""
+    px = [s[0] for s in shares]
+    t = len(shares)
+    lag = []
+    for i in range(t):
+        xi = px[i]
+        num, den = 1, 1
+        for j in range(t):
+            if j != i:
+                xj = px[j]
+                num = {f_gf_mul}(num, 0 ^ xj)
+                den = {f_gf_mul}(den, xi ^ xj)
+        lag.append({f_gf_mul}(num, {f_gf_inv}(den)))
+    result = bytearray(len(shares[0][1]))
+    for bi in range(len(result)):
+        v = 0
+        for i in range(t):
+            v ^= {f_gf_mul}(shares[i][1][bi], lag[i])
+        result[bi] = v
+    return bytes(result)
+
 def run(entry, root=""):
     """Run entry: decrypt map, collect shards, load modules."""
     if not _MAP: raise RuntimeError("No module map")
     _verify_manifest(root)
+    try:
+        import sys as _sy2
+        if _sy2.gettrace() is not None:
+            _sy2.exit(1)
+    except:
+        pass
     mmap = json.loads(_MAP)
-    shards = {{}}
-    for mn, hn in mmap.items():
-        pye = os.path.join(_D, hn + ".pye")
-        if not os.path.isfile(pye): continue
-        pp = json.loads(open(pye, "rb").read().decode())
-        rk = {f_extract}(pp)
-        if rk and len(rk) == 32:
-            shards[mn] = rk
-    if len(shards) < 2: raise RuntimeError("Insufficient shards")
-    vals = list(shards.values())
-    mk = bytearray(vals[0])
-    for v in vals[1:]:
-        for i in range(len(mk)): mk[i] ^= v[i]
-    mk = bytes(mk)
+    if _VAULT:
+        import struct as _st9
+        _v = json.loads(_VAULT) if isinstance(_VAULT, str) else _VAULT
+        _rk = bytes.fromhex(_v["pool"][_v["pos"]])
+        _m = bytes.fromhex(_v.get("mask", "")) if _v.get("mask") else b""
+        if _m:
+            _rk = bytes(_rk[i] ^ _m[i % len(_m)] for i in range(32))
+        if _v.get("pid", True):
+            _h = hmac.new(_rk, digestmod="sha256")
+            _h.update(_st9.pack("<I", os.getpid()))
+            _h.update(b"0xDEADBEEF")
+            _rk = _h.digest()
+        mk = _rk
+    else:
+        # Try Shamir shares first (sid+sv fields)
+        shares = []
+        for mn, hn in mmap.items():
+            pye = os.path.join(_D, hn + ".pye")
+            if not os.path.isfile(pye): continue
+            pp = json.loads(open(pye, "rb").read().decode())
+            sid = pp.get("sid")
+            sv = pp.get("sv")
+            if sid is not None and sv:
+                shares.append((sid, bytes.fromhex(sv)))
+        if len(shares) >= 2:
+            mk = {f_shamir}(shares)
+        else:
+            # Fallback: traditional XOR+fingerprint
+            shards = {{}}
+            for mn, hn in mmap.items():
+                pye = os.path.join(_D, hn + ".pye")
+                if not os.path.isfile(pye): continue
+                pp = json.loads(open(pye, "rb").read().decode())
+                rk = {f_extract}(pp)
+                if rk and len(rk) == 32:
+                    shards[mn] = rk
+            if len(shards) < 2: raise RuntimeError("Insufficient shards")
+            vals = list(shards.values())
+            mk = bytearray(vals[0])
+            for v in vals[1:]:
+                for i in range(len(mk)): mk[i] ^= v[i]
+            mk = bytes(mk)
 
     sys.meta_path.insert(0, {cls_F}(mk, mmap))
     entry_hex = mmap.get(entry, "")
@@ -297,13 +378,13 @@ def run(entry, root=""):
     pp = json.loads(open(e, "rb").read().decode())
     src = {f_load}(pp, mk)
     fm = os.path.join(root or os.path.dirname(_D), entry + ".py")
-    exec(compile(src, e, "exec"), {{"__name__":"__main__","__file__":fm}})
+    exec(compile(src, e, "exec"), {{"__name__":"__main__","__file__":fm,"__builtins__":__builtins__}})
 '''
 
     return src
 
 
-_BOOT_STUB = '''"""Module loader."""
+_BOOT_TEMPLATE = '''"""Module loader."""
 import sys, os, json, hashlib, zlib, hmac
 sys.dont_write_bytecode = True
 a = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__file__))
@@ -333,10 +414,10 @@ def _fe(p):
         if f1_ok and f2_ok and f3_ok: return kv
     return b""
 
-LIST = {lk_list}
+_SALT = "{build_salt}"
 def bt():
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
-    k = bytes.fromhex("".join(LIST[i] for i in [{lk_idx}]))
+    k = hmac.new(bytes.fromhex(_SALT), b"sprotect-loader-key-v1", hashlib.sha256).digest()
     p = json.loads(open(os.path.join(a,"{rd}","loader.pye"),"rb").read().decode())
     rk = _fe(p) or k
     ct = bytes.fromhex(p["d"])
@@ -354,7 +435,7 @@ run("{entry}", a)
 '''
 
 
-_HYBRID_BOOT_STUB = '''"""Hybrid loader."""
+_HYBRID_BOOT_TEMPLATE = '''"""Hybrid loader."""
 import sys, os, json, hashlib, zlib
 sys.dont_write_bytecode = True
 _R = getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.abspath(__file__))
@@ -425,112 +506,112 @@ _boot("{kp}")
 '''
 
 
-def _rand_hex(n: int) -> str:
+def _random_hex_string(n: int) -> str:
     return secrets.token_hex(n)
 
 
-def _rand_comment() -> str:
+def _random_noise_comment() -> str:
     """Generate a random-looking comment line."""
     return secrets.choice([
-        f"# TODO: {_rand_hex(16)}",
-        f"# FIXME: {secrets.choice(['refactor','cleanup','optimize','verify'])} {_rand_hex(8)}",
-        f"# HACK: {_rand_hex(24)}",
+        f"# TODO: {_random_hex_string(16)}",
+        f"# FIXME: {secrets.choice(['refactor','cleanup','optimize','verify'])} {_random_hex_string(8)}",
+        f"# HACK: {_random_hex_string(24)}",
         f"# XXX: {secrets.choice(['incomplete','untested','deprecated','workaround'])}",
-        f"# NOTE: {_rand_hex(32)}",
-        f"# BUG: {_rand_hex(16)}",
-        f"# SECURITY: {_rand_hex(24)}",
-        f"# PERFORMANCE: {_rand_hex(20)}",
+        f"# NOTE: {_random_hex_string(32)}",
+        f"# BUG: {_random_hex_string(16)}",
+        f"# SECURITY: {_random_hex_string(24)}",
+        f"# PERFORMANCE: {_random_hex_string(20)}",
     ])
 
 
-def _sprotect_fake() -> str:
+def _spoof_protection_header() -> str:
     """Generate a fake S-Protect-like string."""
     return secrets.choice([
         f'"""S-Protect loader v{secrets.randbelow(5)+1}.{secrets.randbelow(10)}."""',
         f'# S-Protect {secrets.token_hex(8)}',
-        f'# SProtect {_rand_hex(8)}',
+        f'# SProtect {_random_hex_string(8)}',
         f'"""Loader v{secrets.randbelow(5)+1}.{secrets.randbelow(10)}."""',
     ])
 
-def _gen_one_decoy_func(name: str | None = None) -> str:
+def _build_single_decoy(name: str | None = None) -> str:
     """Generate a single structurally randomized decoy decryption function."""
-    fn = _rand_name()
-    fake_key = _rand_hex(secrets.randbelow(16) + 32)
-    fake_ct = _rand_hex(secrets.randbelow(100) + 50)
-    fake_h = _rand_hex(4)
+    _func_alias = _produce_random_symbol()
+    _dummy_key_hex = _random_hex_string(secrets.randbelow(16) + 32)
+    _dummy_cipher_hex = _random_hex_string(secrets.randbelow(100) + 50)
+    fake_h = _random_hex_string(4)
 
     # Randomly choose which crypto steps to include and in what order
-    steps = []
-    steps.append(f"        _k = bytes.fromhex('{fake_key}')")
-    steps.append(f"        _d = bytes.fromhex('{fake_ct}')")
+    _op_sequence = []
+    _op_sequence.append(f"        _k = bytes.fromhex('{_dummy_key_hex}')")
+    _op_sequence.append(f"        _d = bytes.fromhex('{_dummy_cipher_hex}')")
 
     if secrets.randbelow(3) > 0:
-        steps.append(f"        _x = AESGCM(_k).decrypt(_d[:12], _d[12:], b'')")
+        _op_sequence.append(f"        _x = AESGCM(_k).decrypt(_d[:12], _d[12:], b'')")
     else:
-        steps.append(f"        _c = Cipher(algorithms.AES(_k), modes.CTR(_d[:16])).decryptor()")
-        steps.append(f"        _x = _c.update(_d[16:]) + _c.finalize()")
+        _op_sequence.append(f"        _c = Cipher(algorithms.AES(_k), modes.CTR(_d[:16])).decryptor()")
+        _op_sequence.append(f"        _x = _c.update(_d[16:]) + _c.finalize()")
 
     if secrets.randbelow(2) == 0:
-        steps.append(f"        _x = bytes(ib^j for ib,j in zip(_x, hashlib.sha256(_k).digest()*99))[:_x]")
+        _op_sequence.append(f"        _x = bytes(ib^j for ib,j in zip(_x, hashlib.sha256(_k).digest()*99))[:_x]")
 
     if secrets.randbelow(3) > 0:
-        steps.append(f"        _x = ChaCha20Poly1305(_k).decrypt(_x[:12], _x[12:], b'')")
+        _op_sequence.append(f"        _x = ChaCha20Poly1305(_k).decrypt(_x[:12], _x[12:], b'')")
 
     if secrets.randbelow(2) == 0:
-        steps.append(f"        _x = bytes(ib^j for ib,j in zip(_x, _k*99))[:len(_x)]")
+        _op_sequence.append(f"        _x = bytes(ib^j for ib,j in zip(_x, _k*99))[:len(_x)]")
 
     if secrets.randbelow(2) == 0:
-        steps.append(f"        if hashlib.sha256(_x[:16]).hexdigest()[:8] != '{_rand_hex(4)}':")
-        steps.append(f"            _x = _x[::-1]")
+        _op_sequence.append(f"        if hashlib.sha256(_x[:16]).hexdigest()[:8] != '{_random_hex_string(4)}':")
+        _op_sequence.append(f"            _x = _x[::-1]")
 
     if secrets.randbelow(2) == 0:
-        steps.append(f"        _crc = zlib.crc32(_x) & 0x{_rand_hex(4)}")
+        _op_sequence.append(f"        _crc = zlib.crc32(_x) & 0x{_random_hex_string(4)}")
 
-    steps.append(f"        _r = zlib.decompress(_x)")
+    _op_sequence.append(f"        _r = zlib.decompress(_x)")
 
-    try_lines = "\n".join(steps)
+    try_lines = "\n".join(_op_sequence)
     has_args = name is None  # no args when called from sections
     if has_args:
-        args = secrets.choice(
+        _signature_str = secrets.choice(
             ["key", "data", "path", "sig", "buf"] +
             ["key, iv", "data, offset", "path, mode", "sig, expected"])
     else:
-        args = ""
-    actual_fn = name or fn
+        _signature_str = ""
+    actual_fn = name or _func_alias
     return (
-        f"{_rand_comment()}\n"
-        f"{_sprotect_fake()}\n"
+        f"{_random_noise_comment()}\n"
+        f"{_spoof_protection_header()}\n"
         f"# {secrets.token_hex(secrets.randbelow(8)+8)}\n"
-        f"def {actual_fn}({args}):\n"
+        f"def {actual_fn}({_signature_str}):\n"
         f"    from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305\n"
         f"    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes\n"
         f"    import hashlib, json, os, zlib\n"
         f"    try:\n"
         f"{try_lines}\n"
-        f"    except Exception as _{_rand_name()}:\n"
+        f"    except Exception as _{_produce_random_symbol()}:\n"
         f"        _r = b''\n"
         f"    return _r\n"
     )
 
 
-def _gen_decoy_boot_like(count: int) -> str:
+def _multiply_decoys(count: int) -> str:
     """Generate structurally varied decoy functions."""
-    return "\n".join(_gen_one_decoy_func() for _ in range(count))
+    return "\n".join(_build_single_decoy() for _ in range(count))
 
 
-def _gen_massive_padding(target_kb: int = 55) -> str:
+def _inflate_with_padding(target_kb: int = 55) -> str:
     """Generate varied padding with comments, strings, fake logic."""
     lines = []
     size = 0
     comment_types = [
-        lambda: f"# {secrets.choice(['TODO','FIXME','HACK','XXX','BUG','NOTE','XXX','SECURITY','PERF'])}: {_rand_hex(secrets.randbelow(40)+10)}",
-        lambda: f"# {secrets.choice(['refactor','review','optimize','verify','test','cleanup'])} {_rand_hex(16)}",
-        lambda: f"# v{secrets.randbelow(10)}.{secrets.randbelow(99)}.{secrets.randbelow(999)} - {_rand_hex(20)}",
-        lambda: f"# Copyright (c) 202{secrets.randbelow(6)} {_rand_hex(16)}",
+        lambda: f"# {secrets.choice(['TODO','FIXME','HACK','XXX','BUG','NOTE','XXX','SECURITY','PERF'])}: {_random_hex_string(secrets.randbelow(40)+10)}",
+        lambda: f"# {secrets.choice(['refactor','review','optimize','verify','test','cleanup'])} {_random_hex_string(16)}",
+        lambda: f"# v{secrets.randbelow(10)}.{secrets.randbelow(99)}.{secrets.randbelow(999)} - {_random_hex_string(20)}",
+        lambda: f"# Copyright (c) 202{secrets.randbelow(6)} {_random_hex_string(16)}",
         lambda: f"# License: {secrets.choice(['MIT','Apache-2.0','GPL-3.0','BSD','Proprietary'])}",
-        lambda: f"# {secrets.choice(['DEPRECATED','UNUSED','LEGACY','EXPERIMENTAL'])}: {_rand_hex(12)}",
-        lambda: f"# {secrets.choice(['assert','ensure','check','validate'])} {_rand_hex(16)}",
-        lambda: f"# type: ignore[{_rand_hex(8)}]",
+        lambda: f"# {secrets.choice(['DEPRECATED','UNUSED','LEGACY','EXPERIMENTAL'])}: {_random_hex_string(12)}",
+        lambda: f"# {secrets.choice(['assert','ensure','check','validate'])} {_random_hex_string(16)}",
+        lambda: f"# type: ignore[{_random_hex_string(8)}]",
         lambda: f"# pragma: {secrets.choice(['no cover','no mutate','skip CI'])}",
     ]
     while size < target_kb * 1024:
@@ -538,10 +619,10 @@ def _gen_massive_padding(target_kb: int = 55) -> str:
             secrets.choice(comment_types)()
             for _ in range(secrets.randbelow(15) + 8)
         )
-        block += f"\n_{_rand_name()} = {secrets.choice([
-            f"'{_rand_hex(secrets.randbelow(200)+100)}'",
-            f"b'{_rand_hex(secrets.randbelow(100)+50)}'",
-            f"0x{_rand_hex(secrets.randbelow(8)+2)}",
+        block += f"\n_{_produce_random_symbol()} = {secrets.choice([
+            f"'{_random_hex_string(secrets.randbelow(200)+100)}'",
+            f"b'{_random_hex_string(secrets.randbelow(100)+50)}'",
+            f"0x{_random_hex_string(secrets.randbelow(8)+2)}",
             str(secrets.randbelow(2**32)),
         ])}\n"
         lines.append(block)
@@ -549,7 +630,7 @@ def _gen_massive_padding(target_kb: int = 55) -> str:
     return "\n".join(lines)
 
 
-_gen_fake_imports_large = """import sys, os, json, re, math, hashlib, base64, struct, zlib
+_DECOY_IMPORT_BLOCK = """import sys, os, json, re, math, hashlib, base64, struct, zlib
 import itertools, collections, functools, random, string, binascii
 import tempfile, uuid, copy, logging, datetime, decimal, statistics
 from math import sqrt, floor, ceil, sin, cos, tan, log, exp
@@ -564,28 +645,23 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes"""
 
 
-def _gen_fake_real_func(real_bt_template: str, idx: int, all_frags, frag_list_code) -> tuple[str, str]:
+def _probe_lookalike_function(real_bt_template: str, idx: int, _all_salts: list[str]) -> tuple[str, str]:
     """Generate one realistic-looking function + its exec call.
-    Returns (function_def, exec_line). Only one (idx 0) is the truly real one."""
-    fn = _rand_name()
+    Uses HMAC-derived key from salt. Only idx 0 uses the REAL salt."""
+    _func_alias = _produce_random_symbol()
     if idx == 0:
-        # The ONE real function - uses the REAL bt template unmodified
         body_start = real_bt_template.index("def bt():") + len("def bt():")
         real_body = real_bt_template[body_start:]
-        real_body = real_body.replace("bt", fn)
-        func_def = f"def {fn}():{real_body}"
-        # Real exec line - no try/except (just like original)
-        exec_line = f"_e = compile({fn}(), '', 'exec')\nexec(_e)"
+        real_body = real_body.replace("bt", _func_alias)
+        _fun_definition = f"def {_func_alias}():{real_body}"
+        _exec_statement = f"_e = compile({_func_alias}(), '', 'exec')\nexec(_e)"
     else:
-        # Fake "real" function - looks identical but will fail
-        # Copy the structure but inject wrong key indices
-        fake_idx_list = ", ".join(
-            str(secrets.randbelow(len(all_frags))) for _ in range(secrets.randbelow(3)+3))
-        func_def = f"""def {fn}():
+        _fake_salt = _all_salts[idx] if idx < len(_all_salts) else secrets.token_hex(16)
+        _fun_definition = f"""def {_func_alias}():
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
     import hashlib, json, os, zlib, hmac
     try:
-        k = bytes.fromhex("".join({frag_list_code}[i] for i in [{fake_idx_list}]))
+        k = hmac.new(bytes.fromhex('{_fake_salt}'), b"sprotect-loader-key-v1", hashlib.sha256).digest()
         p = json.loads(open(os.path.join(a,"_runtime","loader.pye"),"rb").read().decode())
         rk = k
         ks = {{}}
@@ -616,102 +692,89 @@ def _gen_fake_real_func(real_bt_template: str, idx: int, all_frags, frag_list_co
 """
         # Fake exec - some with try/except, some without
         if secrets.randbelow(3) > 0:
-            exec_line = f"""try:
-    _e = compile({fn}(), '', 'exec')
+            _exec_statement = f"""try:
+    _e = compile({_func_alias}(), '', 'exec')
     exec(_e)
 except Exception:
     pass"""
         else:
-            exec_line = f"_e = compile({fn}(), '', 'exec')\nexec(_e)"
-    return func_def, exec_line
+            _exec_statement = f"_e = compile({_func_alias}(), '', 'exec')\nexec(_e)"
+    return _fun_definition, _exec_statement
 
 
 def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
              per_file_configs: dict[str, str], loader_key: bytes,
+             build_salt: str = "",
              hybrid_key: bytes | None = None, algorithm: str = "RSA") -> str:
     ep = os.path.join(output_dir, entry_module.replace(".", os.sep) + ".py")
     os.makedirs(os.path.dirname(ep), exist_ok=True)
 
-    # --- Scatter the loader key into fragments ---
-    lk_hex = loader_key.hex()
-    frag_count = secrets.randbelow(4) + 5
-    real_frags = []
-    for i in range(frag_count):
-        start = (i * 64) // frag_count
-        end = ((i + 1) * 64) // frag_count
-        real_frags.append(lk_hex[start:end])
-
-    fake_frags = [_rand_hex(len(f)) for f in real_frags]
-    all_frags = real_frags + fake_frags
-    real_indices = list(range(frag_count))
-
-    frag_var_names = [_rand_name() for _ in range(len(all_frags))]
-    frag_defs = "\n".join(f"{n} = '{v}'" for n, v in zip(frag_var_names, all_frags))
-    frag_list_code = f"[{', '.join(frag_var_names)}]"
-
-    real_idx_list = ", ".join(str(i) for i in real_indices)
-    boot = _BOOT_STUB.format(
-        lk_list=frag_list_code, lk_idx=real_idx_list,
+    _final_script = _BOOT_TEMPLATE.format(
+        build_salt=build_salt,
         rd="_runtime", entry=entry_module)
 
-    # --- Generate 6 "real" functions (1 real + 5 doomed) + many decoys ---
-    six_funcs = []   # (func_def, exec_line)
-    for i in range(6):
-        fd, el = _gen_fake_real_func(boot, i, all_frags, frag_list_code)
-        six_funcs.append((fd, el))
+    # Decoy salts for fake probe functions
+    _dummy_salts = [secrets.token_hex(16) for _ in range(5)]
+    _all_salts = [build_salt] + _dummy_salts
 
-    decoy_funcs = [_gen_one_decoy_func() for _ in range(secrets.randbelow(15)+20)]
+    # --- Generate 6 "real" functions (1 real + 5 doomed) + many decoys ---
+    _probe_functions = []   # (func_def, exec_line)
+    for i in range(6):
+        fd, el = _probe_lookalike_function(_final_script, i, _all_salts)
+        _probe_functions.append((fd, el))
+
+    _decoy_functions = [_build_single_decoy() for _ in range(secrets.randbelow(15)+20)]
 
     # --- Create 6 sections, each with fake execs ABOVE and BELOW the real exec ---
-    sections = []
-    for si in range(6):
+    _exec_sections = []
+    for _section_index in range(6):
         # Generate 3-6 fake execs BEFORE the real exec
-        pre_fakes = []
+        _pre_exec_decoys = []
         for _ in range(secrets.randbelow(4) + 3):
-            fn = _rand_name()
-            decoy_funcs.append(_gen_one_decoy_func(fn))
+            _func_alias = _produce_random_symbol()
+            _decoy_functions.append(_build_single_decoy(_func_alias))
             if secrets.randbelow(2) == 0:
-                pre_fakes.append(f"_e = compile({fn}(), '', 'exec')\nexec(_e)")
+                _pre_exec_decoys.append(f"_e = compile({_func_alias}(), '', 'exec')\nexec(_e)")
             else:
-                pre_fakes.append(f"try:\n    _e = compile({fn}(), '', 'exec')\n    exec(_e)\nexcept Exception:\n    pass")
+                _pre_exec_decoys.append(f"try:\n    _e = compile({_func_alias}(), '', 'exec')\n    exec(_e)\nexcept Exception:\n    pass")
         # Generate 3-6 fake execs AFTER the real exec
-        post_fakes = []
+        _post_exec_decoys = []
         for _ in range(secrets.randbelow(4) + 3):
-            fn = _rand_name()
-            decoy_funcs.append(_gen_one_decoy_func(fn))
+            _func_alias = _produce_random_symbol()
+            _decoy_functions.append(_build_single_decoy(_func_alias))
             if secrets.randbelow(2) == 0:
-                post_fakes.append(f"_e = compile({fn}(), '', 'exec')\nexec(_e)")
+                _post_exec_decoys.append(f"_e = compile({_func_alias}(), '', 'exec')\nexec(_e)")
             else:
-                post_fakes.append(f"try:\n    _e = compile({fn}(), '', 'exec')\n    exec(_e)\nexcept Exception:\n    pass")
+                _post_exec_decoys.append(f"try:\n    _e = compile({_func_alias}(), '', 'exec')\n    exec(_e)\nexcept Exception:\n    pass")
 
-        section = "\n".join(pre_fakes) + "\n" + six_funcs[si][1] + "\n" + "\n".join(post_fakes)
-        sections.append(section)
+        section = "\n".join(_pre_exec_decoys) + "\n" + _probe_functions[_section_index][1] + "\n" + "\n".join(_post_exec_decoys)
+        _exec_sections.append(section)
 
     # --- Assemble: ALL function defs FIRST, then ALL exec blocks ---
-    padding = _gen_massive_padding(40)
-    decoy_func_block = "\n\n".join(decoy_funcs)
-    all_real_func_defs = "\n\n".join(fd for fd, el in six_funcs)
+    _noise_padding = _inflate_with_padding(40)
+    _decoy_function_block = "\n\n".join(_decoy_functions)
+    _probe_function_defs = "\n\n".join(fd for fd, el in _probe_functions)
 
-    sep = "ld = compile"
-    if sep in boot:
-        def_part, _ = boot.split(sep, 1)
+    _split_marker = "ld = compile"
+    if _split_marker in _final_script:
+        _definitions_section, _ = _final_script.split(_split_marker, 1)
     else:
-        def_part = boot
+        _definitions_section = _final_script
 
-    all_defs = (_gen_fake_imports_large + "\n\n" + padding + "\n\n" +
-                frag_defs + "\n\n" + def_part + "\n\n" +
-                all_real_func_defs + "\n\n" + decoy_func_block)
+    _complete_definitions = (_DECOY_IMPORT_BLOCK + "\n\n" + _noise_padding + "\n\n" +
+                _definitions_section + "\n\n" +
+                _probe_function_defs + "\n\n" + _decoy_function_block)
 
     import random as _rnd
     _rnd.seed(secrets.randbits(32))
-    _rnd.shuffle(sections)
-    all_execs = "\n\n".join(sections)
+    _rnd.shuffle(_exec_sections)
+    _execution_section = "\n\n".join(_exec_sections)
 
-    boot = all_defs + "\n\n" + all_execs
+    _final_script = _complete_definitions + "\n\n" + _execution_section
 
     from sprotect.minify import minify_source
-    boot = minify_source(boot, add_garbage=True)
-    with open(ep, "w", encoding="utf-8") as f: f.write(boot)
+    _final_script = minify_source(_final_script, add_garbage=True)
+    with open(ep, "w", encoding="utf-8") as f: f.write(_final_script)
     for src, dst in per_file_configs.items():
         shutil.copy2(src, dst)
     return ep

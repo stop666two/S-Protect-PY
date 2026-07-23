@@ -59,7 +59,7 @@
     //     变量名被重命名、字符串被加密、调用被混淆，
     //     但控制流和 AST 操作保持原样。
     // =================================================================
-  level: 5,
+    level: 5,
 
     // =================================================================
     // --- rename_variables: 变量重命名 ---
@@ -95,6 +95,29 @@
     // =================================================================
     rename_classes: true,
 
+    // --- rename_rules: 重命名规则 ---
+    // 可用值: { style: string, reserved: string[], prefix: string, suffix: string, min_length: number, blacklist: string[] }
+    //   - style: 命名风格 — "hex" | "random" | "chinese" | "invisible"
+    //   - reserved: 保留名称列表（不会被重命名的标识符）
+    //   - prefix: 重命名后标识符的前缀，如 "_"
+    //   - suffix: 重命名后标识符的后缀，如 "_"
+    //   - min_length: 重命名后标识符的最小长度
+    //   - blacklist: 禁止使用的标识符列表
+    // 推荐值: { style: "hex", reserved: [], prefix: "", suffix: "", min_length: 6, blacklist: [] }
+    // ⚠️ 模块特殊原因: 水印模块的 code()、compute_hash()、verify()
+    //   等函数虽不被外部直接 import，但它们是模块的公开 API，
+    //   保留原名便于构建过程中的内联调用和测试。
+    //   使用空数组时所有函数都会被重命名（rename_functions=true），
+    //   此处显式声明以确保配置清晰。
+    rename_rules: {
+      style: "hex",
+      reserved: [],
+      prefix: "",
+      suffix: "",
+      min_length: 6,
+      blacklist: [],
+    },
+
     // =================================================================
     // --- encrypt_strings: 字符串加密 ---
     //   数据类型: boolean
@@ -119,6 +142,29 @@
     //     加密这些数字不会带来额外安全收益。
     // =================================================================
     encrypt_numbers: false,
+
+    // --- string_min_length: 字符串最小加密长度 ---
+    // 可用值: number（>= 0，小于此长度的字符串不加密）
+    // 推荐值: 3
+    // ⚠️ 模块特殊原因: encrypt_strings=true，设置最小长度 3
+    //   可以避免加密过短的无关字符串（如 "a"、"=="），
+    //   减少运行时解密开销。
+    string_min_length: 3,
+
+    // --- string_encrypt_ratio: 字符串加密比例 ---
+    // 可用值: 0.0 ~ 1.0（0.0=不加密任何字符串，1.0=加密所有字符串）
+    // 推荐值: 1.0
+    // ⚠️ 模块特殊原因: encrypt_strings=true，比值设为 1.0
+    //   确保所有长度 >= string_min_length 的字符串都被加密，
+    //   最大化对水印模板字符串的保护。
+    string_encrypt_ratio: 1.0,
+
+    // --- string_cipher: 字符串加密算法 ---
+    // 可用值: "base64" | "xor" | "aes"
+    // 推荐值: "aes"
+    // ⚠️ 模块特殊原因: 水印模板字符串是攻击者的关键搜索目标，
+    //   使用 AES 加密提供最高强度的静态保护。
+    string_cipher: "aes",
 
     // =================================================================
     // --- control_flow_flattening: 控制流平坦化 ---
@@ -155,6 +201,7 @@
     //     简而言之：控制流平坦化和 AST 注入水印是不兼容的。
     //     这是硬性约束，不能为了增加混淆而牺牲水印功能。
     // =================================================================
+    control_flow_flattening: false,
 
     // =================================================================
     // --- dead_code_injection: 死代码注入 ---
@@ -181,6 +228,45 @@
     //     死代码注入的收益（增加反编译难度）远小于风险
     //     （水印功能失效）。此模块必须关闭死代码注入。
     // =================================================================
+    dead_code_injection: false,
+
+    // --- dead_code_density: 死代码密度 ---
+    // 可用值: 0.0 ~ 1.0（0.0=不注入，1.0=最大密度）
+    // 推荐值: 0.0
+    // ⚠️ 模块特殊原因: dead_code_injection=false，此字段无效。
+    dead_code_density: 0.0,
+
+    // --- opaque_predicate_count: 不透明谓词数量 ---
+    // 可用值: number（>= 0）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: 不透明谓词可能触发死代码生成器，
+    //   为了安全全部关闭。
+    opaque_predicate_count: 0,
+
+    // --- remove_docstrings: 移除文档字符串 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 保留 docstring 有助于模块维护。
+    remove_docstrings: false,
+
+    // --- remove_comments: 移除注释 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // ⚠️ 模块特殊原因: 注释在构建产物中无意义，移除可减小体积。
+    remove_comments: true,
+
+    // --- strip_blank_lines: 移除空行 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // ⚠️ 模块特殊原因: 移除空行可减小构建产物体积。
+    strip_blank_lines: true,
+
+    // --- max_line_length: 最大行长度 ---
+    // 可用值: number（0 = 不限制）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: 水印 lambda 表达式可能较长，
+    //   不做行长度限制以避免被截断。
+    max_line_length: 0,
 
     // =================================================================
     // --- string_split: 字符串拆分 ---
@@ -251,9 +337,60 @@
     // =================================================================
     enabled: false,
 
-    // 以下字段虽然为默认值，但 enabled=false 时不会被使用。
-    // 保留它们是出于配置完整性考虑，便于未来审计。
+    // --- action: 反调试触发时的全局行为 ---
+    // 可用值: "warn" | "exit" | "crash" | "corrupt"
+    // 推荐值: "warn"
+    // ⚠️ 模块特殊原因: enabled=false，此字段不生效。
     action: "warn",
-    checks: ["pdb", "debugger"],
+
+    // --- checks: 启用的反调试检查列表 ---
+    // 可用值: string[]，支持: "pdb", "debugger", "ptrace",
+    //   "process_name", "remote_debug", "container", "vm"
+    // 推荐值: []
+    // ⚠️ 模块特殊原因: 构建模块不需要任何反调试检查。
+    checks: [],
+
+    // --- per_check_actions: 每个检查的独立触发动作 ---
+    // 可用值: string[]，与 checks 数组一一对应
+    //   每个元素可为: "warn" | "exit" | "crash" | "corrupt"
+    // 推荐值: []
+    // ⚠️ 模块特殊原因: checks 为空，此字段无效。
+    per_check_actions: [],
+
+    // --- process_whitelist: 允许调试的进程白名单 ---
+    // 可用值: string[]（进程名列表）
+    // 推荐值: []
+    // ⚠️ 模块特殊原因: enabled=false，无需白名单。
+    process_whitelist: [],
+
+    // --- block_tracing: 阻止系统级跟踪 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: enabled=false，无需阻止跟踪。
+    block_tracing: false,
+
+    // --- timing_threshold: 反调试超时阈值（秒） ---
+    // 可用值: number（0 = 禁用定时检查）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: enabled=false，无需定时检查。
+    timing_threshold: 0,
+
+    // --- exit_code: 反调试触发时的进程退出码 ---
+    // 可用值: number（通常为 1 或负数）
+    // 推荐值: 1
+    // ⚠️ 模块特殊原因: enabled=false，此字段不生效。
+    exit_code: 1,
+
+    // --- wipe_memory: 退出时擦除敏感内存 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 此模块无敏感内存数据。
+    wipe_memory: false,
+
+    // --- corrupt_on_exit: 退出时损坏关键数据 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 此模块无关键数据可损坏。
+    corrupt_on_exit: false,
   },
 }

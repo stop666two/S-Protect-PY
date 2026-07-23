@@ -1,0 +1,9 @@
+{
+  enabled: false,
+  pool_size: 1024,
+  xor_mask_hex: "A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5",
+  pid_binding: true,
+  pid_salt: "0xDEADBEEF",
+  decoy_min_size: 64,
+  decoy_max_size: 256,
+}

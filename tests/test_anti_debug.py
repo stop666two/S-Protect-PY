@@ -9,12 +9,12 @@ def test_anti_debug_init():
     cfg = AntiDebugConfig(enabled=True, action=AntiDebugAction.WARN, checks=["pdb"])
     ad = AntiDebug(cfg)
     assert ad is not None
-    assert ad.cfg.action == AntiDebugAction.WARN
+    assert ad._ad_config.action == AntiDebugAction.WARN
 
 def test_anti_debug_disabled():
     cfg = AntiDebugConfig(enabled=True, checks=["pdb"])
     ad = AntiDebug(cfg)
-    ad.cfg.checks = []
+    ad._ad_config.checks = []
     assert ad.run()
 
 

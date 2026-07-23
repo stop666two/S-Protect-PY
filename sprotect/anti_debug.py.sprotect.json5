@@ -19,139 +19,156 @@
   // ==========================================
 
   obfuscate: {
-    // --- level: 混淆等级 ---
-    // 可用值: 1 | 2 | 3 | 4 | 5
-    // 不可用: "5"（字符串） / 0 / 6 / -1 / 3.5
-    // 为什么用 5: 反调试模块是运行时保护的第一道防线，
-    //   必须最高强度保护。任何针对此模块的逆向成功
-    //   都意味着整个保护系统可以被调试绕过。
+    // --- 混淆等级 (1-5) ---
+    // 等级说明: L1=仅变量重命名, L2=+字符串加密, L3=+控制流平坦化+不透明谓词,
+    //           L4=+数字加密+死代码注入, L5=全部启用
     level: 5,
 
-    // --- rename_variables: 变量重命名 ---
-    // 可用值: true | false
-    // true = 所有局部变量名改为 _0x 风格随机名
-    // false = 保持原始变量名
-    // 注意事项: 变量名混淆后 stack trace 更难追踪
+    // --- 重命名变量 ---
+    // true: 局部变量名改为随机十六进制 (如 _0xa1b2)
+    // false: 保留原名，降低混淆效果
     rename_variables: true,
 
-    // --- rename_functions: 函数重命名 ---
-    // 可用值: true | false
-    // 注意事项: 此模块的函数被 loader 和 runtime 调用，
-    //   但 Python 通过模块对象引用函数，改名不影响调用
+    // --- 重命名函数 ---
+    // true: 函数名改为随机标识符
+    // false: 保留原名（当函数被其他模块按名导入时必须 false）
     rename_functions: true,
 
-    // --- rename_classes: 类重命名 ---
+    // --- 重命名类 ---
+    // true: 类名改为随机标识符
+    // false: 保留原名（当类被 isinstance/类型注解引用时必须 false）
     rename_classes: true,
 
-    // --- encrypt_strings: 字符串加密 ---
-    // 可用值: true | false
-    // 注意事项: 检测项名称（如 "pdb", "vm"）以字符串形式出现，
-    //   加密后这些字符串在反编译工具中不可读
+    rename_rules: {
+      // --- 命名风格 ---
+      // hex=十六进制, chinese=中文, invisible=零宽字符, math-symbols=数学符号, custom=自定义
+      style: "hex",
+      // --- 保留名称（这些标识符不会被混淆） ---
+      reserved: [],
+      // --- 混淆名前缀 ---
+      prefix: "_0x",
+      // --- 混淆名后缀 ---
+      suffix: "",
+      // --- 混淆名最小长度 ---
+      min_length: 6,
+      // --- 黑名单（强制不改名的标识符） ---
+      blacklist: [],
+    },
+
+    // --- 字符串加密 ---
+    // true: 字符串常量转为 base64/XOR 编码，运行时解码
+    // false: 保持明文（当字符串用于配置匹配/F-字符串模板时必须 false）
     encrypt_strings: true,
 
-    // --- encrypt_numbers: 数字加密 ---
-    // 可用值: true | false
-    // 注意事项: 退出码、时序阈值等数字常量被加密后
-    //   攻击者无法通过数字特征定位敏感代码
+    // --- 数字加密 ---
+    // true: 数字常量转为 struct.pack 运行时计算
+    // false: 保持原值（当数字用于配置默认值/Enum值/模板时必须 false）
     encrypt_numbers: true,
 
-    // --- control_flow_flattening: 控制流平坦化 ---
-    // 可用值: true | false
-    // 注意事项: 将函数体转为 while-switch 形式，
-    //   破坏控制流图，让 IDA/Ghidra 的反编译结果混乱
+    // --- 字符串最小加密长度 ---
+    // 小于此长度的字符串不加密（避免 "a","b" 等单字符也加密）
+    string_min_length: 3,
+
+    // --- 字符串加密比例 (0.0 ~ 1.0) ---
+    // 1.0 = 全部加密, 0.5 = 50% 随机加密
+    string_encrypt_ratio: 1.0,
+
+    // --- 控制流平坦化 ---
+    // true: 顺序代码转为 while-switch 状态机
+    // false: 保持原控制流（当代码含 yield/async/异常处理时必须 false）
     control_flow_flattening: true,
 
-    // --- dead_code_injection: 死代码注入 ---
-    // 可用值: true | false
-    // 注意事项: 插入与真实检测代码结构相同的假检测，
-    //   攻击者难以区分哪些是真检测、哪些是假检测。
-    //   相比启动时增加的几百毫秒，安全性收益更大。
+    // --- 死代码注入 ---
+    // true: 注入永远不会执行的代码块（含不透明谓词）
+    // false: 不注入（当函数体为空或含 yield 时必须 false）
     dead_code_injection: true,
 
-    // --- string_split: 字符串分割 ---
+    // --- 死代码密度 (0.0 ~ 1.0) ---
+    // 0.3 = 每10行注入3行死代码, 大于0.8会严重膨胀体积
+    dead_code_density: 0.3,
+
+    // --- 不透明谓词数量 ---
+    // 每个函数中插入的永远为真的条件判断数
+    opaque_predicate_count: 2,
+
+    // --- 删除文档字符串 ---
+    remove_docstrings: true,
+
+    // --- 删除注释 ---
+    remove_comments: true,
+
+    // --- 删除空行 ---
+    strip_blank_lines: true,
+
+    // --- 最大行长 (0=不限制) ---
+    max_line_length: 0,
+
+    // --- 字符串分割为碎片 ---
+    // true: 将字符串拆为多个碎片 + 拼接
     string_split: true,
 
-    // --- obfuscate_imports: import 混淆 ---
+    // --- 字符串加密方式 ---
+    // base64: 标准 base64 编码, xor: 单字节 XOR, mixed: 随机选择
+    string_cipher: "mixed",
+
+    // --- 导入混淆 ---
+    // true: import os → os = __import__("os")
     obfuscate_imports: true,
 
-    // --- obfuscate_calls: 调用混淆 ---
+    // --- 函数调用混淆 ---
+    // true: func(a) → (lambda _a0: func(_a0))(a)
     obfuscate_calls: true,
 
-    // --- obfuscate_arithmetic: 算术混淆 ---
+    // --- 算术表达式混淆 ---
+    // true: a+b → a-(-b), a*2^n → a<<n
     obfuscate_arithmetic: true,
 
-    // --- obfuscate_booleans: 布尔值混淆 ---
+    // --- 布尔值混淆 ---
+    // true: True → 1==1, False → 1!=0
     obfuscate_booleans: true,
   },
 
   // --- anti_debug: 反调试/反VM/反沙箱（自引用配置）---
   anti_debug: {
-    // --- enabled: 总开关 ---
-    // 可用值: true | false
-    // 不可用: "true" / 1 / 0
-    // 注意事项: 此模块自身的反调试必须开启，
-    //   防止攻击者在调试此模块时触发自身检测逻辑
+    // --- 反调试总开关 ---
+    // true: 运行时执行反调试检测
+    // false: 跳过所有检测（仅构建时/测试模块）
     enabled: true,
 
-    // --- action: 检测到异常后的动作 ---
-    // 可用值: "exit" | "warn" | "corrupt"
-    //    exit    = 立即退出并清空内存（最安全）
-    //    warn    = 打印警告后继续运行（调试用）
-    //    corrupt = 破坏内存数据后退出（最激进）
-    // 不可用: "pause" / "crash" / 空字符串
+    // --- 检测到异常时的动作 ---
+    // exit: 立即退出, warn: 打印警告继续, corrupt: 破坏内存后退出
     action: "exit",
 
-    // --- checks: 启用的检测项列表 ---
-    // 可用值: "pdb" | "ptrace" | "debugger" | "vm" | "sandbox"
-    //        | "timing" | "cuckoo" | "ida" | "procmon", "gpu"
-    // 不可用: 不存在的检测项名称
-    // 注意事项: 建议全部开启，每一项都有其特定防御场景。
-    //   如果某些检测在特定环境下误报，可通过 per_check_actions
-    //   单独覆盖其行为而非直接移除。
+    // --- 启用的检测项列表 ---
+    // pdb/debugger: Python调试器, ptrace: 系统级跟踪,
+    // vm: 虚拟机检测, sandbox: 沙箱检测,
+    // timing: 时序检测, cuckoo: Cuckoo沙箱,
+    // ida: IDA/Ghidra远程调试, procmon: 进程监控工具,
+    // gpu: GPU调试环境
     checks: [
       "pdb", "ptrace", "debugger", "vm",
       "sandbox", "timing", "cuckoo", "ida", "procmon", "gpu",
     ],
 
-    // --- per_check_actions: 逐检测项覆盖动作 ---
-    // 可用值: [{check:"vm", action:"warn"}] | []
-    // 不可用: check 值不在 checks 列表中
-    // 注意事项: 优先级高于全局 action，
-    //   例: VM 中只警告不退出，其他检测直接退出
+    // --- 逐检测项动作覆盖 ---
     per_check_actions: [],
 
-    // --- process_whitelist: 进程白名单 ---
-    // 可用值: ["python.exe", "myapp.exe"] | []
-    // 注意事项: 白名单中的进程名不会被检测为调试器
+    // --- 进程白名单 ---
     process_whitelist: [],
 
-    // --- block_tracing: 阻断跟踪 ---
-    // 可用值: true | false
-    // 注意事项: 启动时清空 sys.settrace 和 sys.setprofile
+    // --- 阻断 sys.settrace/sys.setprofile ---
     block_tracing: true,
 
-    // --- timing_threshold: 时序检测阈值（秒）---
-    // 可用值: 0.5 ~ 10.0
-    // 推荐值: 2.0（普通机器）| 5.0（VM 环境）
-    // 不可用: 0 / 负数 / > 60
-    // 注意事项: VM 中因 CPU 降频可能导致误判，
-    //   在 VM 环境建议设为 3-5 秒
+    // --- 时序检测阈值（秒） ---
     timing_threshold: 2.0,
 
-    // --- exit_code: 退出码 ---
-    // 可用值: 1 ~ 255
-    // 不可用: 0（表示正常退出）/ 负数 / > 255
+    // --- 退出码 ---
     exit_code: 1,
 
-    // --- wipe_memory: 退出时清空内存 ---
-    // 可用值: true | false
-    // 注意事项: 通过 gc 模块清空敏感数据，防止 crash dump 泄露
+    // --- 退出时清空内存 ---
     wipe_memory: true,
 
-    // --- corrupt_on_exit: 退出时破坏内存 ---
-    // 可用值: true | false
-    // 注意事项: 比 wipe 更激进，会随机修改内存中的对象值。
-    //   和 action: "corrupt" 配合使用效果翻倍。
+    // --- 退出时破坏内存 ---
     corrupt_on_exit: false,
   },
 

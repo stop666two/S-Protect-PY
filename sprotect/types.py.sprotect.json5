@@ -22,68 +22,241 @@
     // --- level: 混淆等级 ---
     // 可用值: 1 | 2
     // ❌ 禁止: 3-5（控制流平坦化和死代码注入会破坏类结构）
-    // 推荐值: 2（level 1 只修改变量名，安全）
-  level: 5,
+    // 推荐值: 2（仅变量重命名，字符串/数字/控制流全部关闭）
+    level: 2,
 
     // --- rename_variables: 变量重命名 ---
     // 可用值: true | false
-    // 推荐值: true（安全，只影响局部变量）
+    // 推荐值: true
+    // ⚠️ 模块特殊原因: 局部变量名无外部依赖，可以安全重命名。
     rename_variables: true,
 
     // --- rename_functions: 函数重命名 ---
+    // 可用值: true | false
     // ❌ 必须 false
-    // 原因: Enum 的 __init__ 等魔术方法被 Python 运行时调用，
-    //   dataclass 的 __init__、__repr__ 自动生成方法，
-    //   改名后出现 TypeError
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: Enum 的 name/value 通过反射访问，
+    //   函数名（如 __init__、__new__）与 Python 内省机制绑定，
+    //   重命名会破坏 Enum 和 Dataclass 的运行时行为。
     rename_functions: false,
 
     // --- rename_classes: 类重命名 ---
+    // 可用值: true | false
     // ❌ 必须 false
-    // 原因: Config 类被所有模块引用，EncryptConfig 等
-    //   被 config.py 的 _enc() 显式构造，
-    //   类名改变导致 NameError
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 类名被 isinstance() 和类型注解
+    //   （如 def foo(cfg: Config)）引用。重命名后：
+    //   • isinstance(obj, Config) 永远返回 False
+    //   • 函数签名中的类型注解失效
+    //   • pickle 反序列化因类名不匹配而失败
     rename_classes: false,
 
+    // --- rename_rules: 重命名规则 ---
+    // 可用值: { style: string, reserved: string[] }
+    //   - style: 命名风格 — "hex" | "random" | "chinese" | "invisible"
+    //   - reserved: 保留名称列表（不会被重命名的标识符）
+    // 推荐值: { style: "hex", reserved: [] }
+    // ⚠️ 模块特殊原因: rename_functions=false 且 rename_classes=false，
+    //   因此 reserved 列表实际上不会生效。但保留此字段以确保
+    //   配置完整性，便于未来审计和对比。
     rename_rules: {
+      // --- 命名风格: hex=十六进制随机串 ---
       style: "hex",
-      // 保留所有公开 API 类型名
+      // --- 保留名称（Enum/Config/Field 全部保留，不混淆） ---
       reserved: [],
+      // --- 混淆名前缀 ---
+      prefix: "_0x",
+      // --- 混淆名后缀 ---
+      suffix: "",
+      // --- 混淆名最小长度 ---
+      min_length: 6,
+      // --- 黑名单 ---
+      blacklist: [],
     },
 
     // --- encrypt_strings: 字符串加密 ---
+    // 可用值: true | false
     // ❌ 必须 false
-    // 原因: Enum 的 value 属性（如 "chain"、"exit"、"hex"）
-    //   以字符串形式被 config.py 的 d.get() 匹配，
-    //   加密后编码为 base64 → 匹配失败 → 配置加载异常
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: Enum 的成员值字符串（如 "high"、"medium"）
+    //   在 config.py 中通过字符串匹配进行配置合并。
+    //   加密后运行时无法正确匹配枚举值。
+    encrypt_strings: false,
 
     // --- encrypt_numbers: 数字加密 ---
-    // ❌ 必须 false
-    // 原因: Enum 的整数值（如 ObfuscateLevel.L5 = 5）
-    //   被 config.py 的 d.get("level", 3) 比较，
-    //   加密后变为 struct.unpack 表达式 → 值不匹配
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 类型模块中的数字仅为枚举数值，
+    //   加密无收益且可能引起序列化问题。
     encrypt_numbers: false,
 
+    // --- string_min_length: 字符串最小加密长度 ---
+    // 可用值: number（>= 0，小于此长度的字符串不加密）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: encrypt_strings=false，此字段无效。
+    string_min_length: 3,
+
+    // --- string_encrypt_ratio: 字符串加密比例 ---
+    // 可用值: 0.0 ~ 1.0（0.0=不加密任何字符串，1.0=加密所有字符串）
+    // 推荐值: 0.0
+    // ⚠️ 模块特殊原因: encrypt_strings=false，此字段无效。
+    string_encrypt_ratio: 0.0,
+
     // --- control_flow_flattening: 控制流平坦化 ---
+    // 可用值: true | false
     // ❌ 必须 false
-    // 原因: dataclass 的 __init__ 由装饰器自动生成，
-    //   平坦化不影响装饰器生成的代码但仍有风险
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 平坦化会重写类的方法体，破坏 Enum
+    //   的元类和 Dataclass 的 __init__ 自动生成逻辑。
+    control_flow_flattening: false,
 
     // --- dead_code_injection: 死代码注入 ---
+    // 可用值: true | false
     // ❌ 必须 false
-    // 原因: 无函数体可注入，设置无效但保留一致性
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 死代码注入可能插入额外的类属性或方法，
+    //   干扰 Dataclass 的字段顺序和 Enum 的成员枚举。
+    dead_code_injection: false,
 
-    string_split: true,
-    obfuscate_imports: true,
-    obfuscate_calls: true,
-    obfuscate_arithmetic: true,
-    obfuscate_booleans: true,
+    // --- dead_code_density: 死代码密度 ---
+    // 可用值: 0.0 ~ 1.0（0.0=不注入，1.0=最大密度）
+    // 推荐值: 0.0
+    // ⚠️ 模块特殊原因: dead_code_injection=false，此字段无效。
+    dead_code_density: 0.0,
+
+    // --- opaque_predicate_count: 不透明谓词数量 ---
+    // 可用值: number（>= 0）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: 类型模块无需谓词混淆。
+    opaque_predicate_count: 0,
+
+    // --- remove_docstrings: 移除文档字符串 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: Enum 和 Dataclass 的 docstring 有助于
+    //   代码理解和 IDE 提示，保留它们便于开发维护。
+    remove_docstrings: false,
+
+    // --- remove_comments: 移除注释 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // ⚠️ 模块特殊原因: 注释在构建产物中无意义，移除可减小体积。
+    remove_comments: true,
+
+    // --- strip_blank_lines: 移除空行 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // ⚠️ 模块特殊原因: 移除空行可减小构建产物体积。
+    strip_blank_lines: true,
+
+    // --- max_line_length: 最大行长度 ---
+    // 可用值: number（0 = 不限制）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: 类型模块行数少，无需截断。
+    max_line_length: 0,
+
+    // --- string_split: 字符串拆分 ---
+    // 可用值: true | false
+    // ❌ 必须 false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 字符串拆分可能改变 Enum 成员值的
+    //   字符串表示形式，导致配置匹配失败。
+    string_split: false,
+
+    // --- string_cipher: 字符串加密算法 ---
+    // 可用值: "base64" | "xor" | "aes"
+    // 推荐值: "base64"
+    // ⚠️ 模块特殊原因: encrypt_strings=false，此字段无效。
+    string_cipher: "base64",
+
+    // --- obfuscate_imports: 导入混淆 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 类型模块的导入（如 from enum import Enum）
+    //   是类型系统的一部分，混淆后可能导致 IDE 类型推断错误。
+    obfuscate_imports: false,
+
+    // --- obfuscate_calls: 调用混淆 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 类型模块几乎无函数调用（只有类定义），
+    //   混淆无收益。
+    obfuscate_calls: false,
+
+    // --- obfuscate_arithmetic: 算术表达式混淆 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 类型模块无算术表达式。
+    obfuscate_arithmetic: false,
+
+    // --- obfuscate_booleans: 布尔表达式混淆 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 类型模块无布尔表达式。
+    obfuscate_booleans: false,
   },
 
   anti_debug: {
     // --- enabled: 总开关 ---
-    // 为什么 false: 类型定义在 build 机器上运行，不需要反调试
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 类型定义在 build 机器上运行，不需要反调试
     enabled: false,
+
+    // --- action: 反调试触发时的全局行为 ---
+    // 可用值: "warn" | "exit" | "crash" | "corrupt"
+    // 推荐值: "warn"
+    // ⚠️ 模块特殊原因: enabled=false，此字段不生效。
     action: "warn",
+
+    // --- checks: 启用的反调试检查列表 ---
+    // 可用值: string[]，支持: "pdb", "debugger", "ptrace",
+    //   "process_name", "remote_debug", "container", "vm"
+    // 推荐值: []
+    // ⚠️ 模块特殊原因: 构建模块不需要任何反调试检查。
     checks: [],
+
+    // --- per_check_actions: 每个检查的独立触发动作 ---
+    // 可用值: string[]，与 checks 数组一一对应
+    //   每个元素可为: "warn" | "exit" | "crash" | "corrupt"
+    // 推荐值: []
+    // ⚠️ 模块特殊原因: checks 为空，此字段无效。
+    per_check_actions: [],
+
+    // --- process_whitelist: 允许调试的进程白名单 ---
+    // 可用值: string[]（进程名列表）
+    // 推荐值: []
+    // ⚠️ 模块特殊原因: enabled=false，无需白名单。
+    process_whitelist: [],
+
+    // --- block_tracing: 阻止系统级跟踪 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: enabled=false，无需阻止跟踪。
+    block_tracing: false,
+
+    // --- timing_threshold: 反调试超时阈值（秒） ---
+    // 可用值: number（0 = 禁用定时检查）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: enabled=false，无需定时检查。
+    timing_threshold: 0,
+
+    // --- exit_code: 反调试触发时的进程退出码 ---
+    // 可用值: number（通常为 1 或负数）
+    // 推荐值: 1
+    // ⚠️ 模块特殊原因: enabled=false，此字段不生效。
+    exit_code: 1,
+
+    // --- wipe_memory: 退出时擦除敏感内存 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 此模块无敏感内存数据。
+    wipe_memory: false,
+
+    // --- corrupt_on_exit: 退出时损坏关键数据 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 此模块无关键数据可损坏。
+    corrupt_on_exit: false,
   },
 }

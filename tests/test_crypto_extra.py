@@ -20,45 +20,45 @@ def test_derive_layer_key_domain_sep():
 
 
 from sprotect.crypto_extra import (
-    encrypt_serpent, decrypt_serpent,
-    encrypt_twofish, decrypt_twofish,
-    encrypt_camellia, decrypt_camellia,
+    encrypt_aes_cbc_1, decrypt_aes_cbc_1,
+    encrypt_aes_cbc_2, decrypt_aes_cbc_2,
+    encrypt_aes_cbc_3, decrypt_aes_cbc_3,
     encrypt_salsa20, decrypt_salsa20,
 )
 
-def test_serpent_roundtrip():
-    data = b"Hello Serpent AES!" * 100
+def test_aes_cbc_1_roundtrip():
+    data = b"Hello AES-CBC layer1!" * 100
     key = _key32()
     iv = _iv16()
-    ct = encrypt_serpent(data, key, iv)
+    ct = encrypt_aes_cbc_1(data, key, iv)
     assert ct != data
-    pt = decrypt_serpent(ct, key, iv)
+    pt = decrypt_aes_cbc_1(ct, key, iv)
     assert pt == data
 
-def test_serpent_wrong_key():
+def test_aes_cbc_1_wrong_key():
     data = b"test data here!!"
     key = _key32()
     iv = _iv16()
-    ct = encrypt_serpent(data, key, iv)
-    wrong = decrypt_serpent(ct, _key32(), iv)
+    ct = encrypt_aes_cbc_1(data, key, iv)
+    wrong = decrypt_aes_cbc_1(ct, _key32(), iv)
     assert wrong != data
 
-def test_twofish_roundtrip():
-    data = b"Hello Twofish CBC!" * 50
+def test_aes_cbc_2_roundtrip():
+    data = b"Hello AES-CBC layer2!" * 50
     key = _key32()
     iv = _iv16()
-    ct = encrypt_twofish(data, key, iv)
+    ct = encrypt_aes_cbc_2(data, key, iv)
     assert ct != data
-    pt = decrypt_twofish(ct, key, iv)
+    pt = decrypt_aes_cbc_2(ct, key, iv)
     assert pt == data
 
-def test_camellia_roundtrip():
-    data = b"Hello Camellia CBC!" * 50
+def test_aes_cbc_3_roundtrip():
+    data = b"Hello AES-CBC layer3!" * 50
     key = _key32()
     iv = _iv16()
-    ct = encrypt_camellia(data, key, iv)
+    ct = encrypt_aes_cbc_3(data, key, iv)
     assert ct != data
-    pt = decrypt_camellia(ct, key, iv)
+    pt = decrypt_aes_cbc_3(ct, key, iv)
     assert pt == data
 
 def test_salsa20_roundtrip():

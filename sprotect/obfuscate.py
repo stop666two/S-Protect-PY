@@ -1,9 +1,13 @@
+# OBFUSCATION ENGINE: AST-level code transformation
+# PASSES: 8 transformer stages
+
 """AST-based obfuscation engine."""
 
 from __future__ import annotations
 import ast, base64, struct, hashlib, secrets
 from sprotect.types import ObfuscateConfig
 from sprotect.random_gen import NameGen
+
 
 def collect_defs(source: str, cfg: ObfuscateConfig, mapping: dict[str, str],
                  param_names: set[str] | None = None,
@@ -44,7 +48,7 @@ def collect_defs(source: str, cfg: ObfuscateConfig, mapping: dict[str, str],
     except SyntaxError: pass
 
 
-def _opaque_predicate() -> ast.If:
+def _synthesize_opaque_check() -> ast.If:
     """Generate an opaque predicate: a condition that always takes one branch
     but looks complex to static analysis.
     Uses an always-true XOR comparison."""
@@ -56,10 +60,12 @@ def _opaque_predicate() -> ast.If:
             op=ast.Add(), right=ast.Constant(1)),
         ops=[ast.Eq()],
         comparators=[ast.Constant(1)])
-    return ast.If(test=test, body=[ast.Pass()], orelse=[])
+    result = ast.If(test=test, body=[ast.Pass()], orelse=[])
+    ast.fix_missing_locations(result)
+    return result
 
 
-def _split_string(s: str, n: int = 3) -> ast.Call:
+def _fragment_string_ast(s: str, n: int = 3) -> ast.Call:
     """Split a string into n fragments and reconstruct at runtime with +."""
     if len(s) <= n:
         return ast.Constant(s)
@@ -79,25 +85,25 @@ class Obfuscator(ast.NodeTransformer):
                  import_names: set[str] | None = None):
         self.cfg = cfg
         self.map = mapping if mapping is not None else {}
-        self.param_names = param_names or set()
-        self.import_names = import_names or set()
+        self._param_set = param_names or set()
+        self._import_set = import_names or set()
         self.reserved = set(cfg.rename_rules.reserved or [])
         self.gen = NameGen(cfg.rename_rules.style, cfg.rename_rules.dictionary)
-        self._class_depth = 0; self._fstring_depth = 0; self._params: list[set[str]] = []
-        self._dead_count = 0
+        self._cls_nesting = 0; self._fmt_nesting = 0; self._param_stack: list[set[str]] = []
+        self._dead_counter = 0
         # Feature detection flags for protected patterns
-        self._in_dataclass = False
-        self._in_enum = False
-        self._protected_names: set[str] = set()
-        self._class_names: set[str] = set()
+        self._within_dataclass = False
+        self._within_enum = False
+        self._guarded_names: set[str] = set()
+        self._cls_defs: set[str] = set()
 
-    _BUILTIN_RESERVED = frozenset({
+    _RESERVED_BUILTINS = frozenset({
         "property", "staticmethod", "classmethod", "setter", "deleter",
         "getter", "__init__", "__new__", "__call__",
     })
 
     def _name(self, old: str) -> str:
-        if old.startswith("_") or old in self.reserved or old in self._BUILTIN_RESERVED: return old
+        if old.startswith("_") or old in self.reserved or old in self._RESERVED_BUILTINS: return old
         self.map.setdefault(old, self.gen.gen())
         return self.map[old]
 
@@ -106,16 +112,16 @@ class Obfuscator(ast.NodeTransformer):
         for a in node.args.args + node.args.posonlyargs + node.args.kwonlyargs: ps.add(a.arg)
         if node.args.vararg: ps.add(node.args.vararg.arg)
         if node.args.kwarg: ps.add(node.args.kwarg.arg)
-        self._params.append(ps)
-    def _pop_params(self): self._params.pop()
-    def _is_param(self, n: str) -> bool: return any(n in s for s in self._params)
+        self._param_stack.append(ps)
+    def _pop_params(self): self._param_stack.pop()
+    def _is_param(self, n: str) -> bool: return any(n in s for s in self._param_stack)
 
     def obfuscate(self, src: str) -> str:
         tree = ast.parse(src)
-        self._collect(tree)
+        self._pre_scan_names(tree)
         tree = self.visit(tree)
         if self.map:
-            tree = _AttrObfuscator(self.map, self.param_names, self.import_names).visit(tree)
+            tree = _AttrObfuscator(self.map, self._param_set, self._import_set).visit(tree)
         if self.cfg.obfuscate_imports:
             tree = _ImportObfuscator(self.map).visit(tree)
         if self.cfg.obfuscate_arithmetic:
@@ -123,33 +129,33 @@ class Obfuscator(ast.NodeTransformer):
         if self.cfg.obfuscate_booleans:
             tree = _BooleanObfuscator().visit(tree)
         if self.cfg.encrypt_strings or self.cfg.encrypt_numbers:
-            tree = _LiteralEncryptor(self.cfg, self._fstring_depth).visit(tree)
+            tree = _LiteralEncryptor(self.cfg, self._fmt_nesting).visit(tree)
         if self.cfg.obfuscate_calls:
             tree = _CallObfuscator().visit(tree)
         if self.cfg.control_flow_flattening:
             tree = _ControlFlowFlattener().visit(tree)
         if self.cfg.dead_code_injection:
-            self._inject_dead_code(tree)
+            self._seed_dead_blocks(tree)
             tree = _HoneypotInjector(self.map).visit(tree)
         ast.fix_missing_locations(tree)
         return ast.unparse(tree)
 
-    def _collect(self, tree):
+    def _pre_scan_names(self, tree):
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 self._name(node.name)
             elif isinstance(node, ast.ClassDef):
                 self._name(node.name)
 
-    def _inject_dead_code(self, tree):
+    def _seed_dead_blocks(self, tree):
         """Insert opaque predicates + dead code into function bodies."""
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                if len(node.body) > 1 and self._dead_count % 2 == 0:
-                    node.body.insert(0, _opaque_predicate())
-                self._dead_count += 1
+                if len(node.body) > 1 and self._dead_counter % 2 == 0:
+                    node.body.insert(0, _synthesize_opaque_check())
+                self._dead_counter += 1
 
-    def _has_decorator(self, node: ast.ClassDef | ast.FunctionDef, name: str) -> bool:
+    def _check_decorator(self, node: ast.ClassDef | ast.FunctionDef, name: str) -> bool:
         for d in node.decorator_list:
             if isinstance(d, ast.Name) and d.id == name: return True
             if isinstance(d, ast.Attribute) and d.attr == name: return True
@@ -159,40 +165,43 @@ class Obfuscator(ast.NodeTransformer):
                 if isinstance(fn, ast.Attribute) and fn.attr == name: return True
         return False
 
-    def _has_base(self, node: ast.ClassDef, name: str) -> bool:
+    def _check_base_class(self, node: ast.ClassDef, name: str) -> bool:
         for b in node.bases:
             if isinstance(b, ast.Attribute) and b.attr == name: return True
             if isinstance(b, ast.Name) and b.id == name: return True
         return False
 
     def visit_alias(self, node: ast.alias):
-        if self.cfg.rename_variables and node.name in self.map:
-            node.name = self.map[node.name]
+        if node.name in self.map and not node.name.startswith("_"):
+            new = self.map.get(node.name)
+            if new:
+                node.name = new
         return node
 
     def visit_Lambda(self, node: ast.Lambda):
         self._push_params(node); node = self.generic_visit(node); self._pop_params(); return node
 
     def visit_Name(self, node: ast.Name):
-        if (self._in_dataclass or self._in_enum) and isinstance(node.ctx, ast.Store):
-            self._protected_names.add(node.id)
-        if (self.cfg.rename_variables and node.id in self.map
-            and not self._is_param(node.id) and node.id not in self.param_names
-            and node.id not in self._protected_names
-            and node.id not in self._BUILTIN_RESERVED
-            and node.id not in self._class_names):
+        if (self._within_dataclass or self._within_enum) and isinstance(node.ctx, ast.Store):
+            self._guarded_names.add(node.id)
+        if (node.id in self.map
+            and not self._is_param(node.id) and node.id not in self._param_set
+            and node.id not in self._guarded_names
+            and node.id not in self._RESERVED_BUILTINS
+            and node.id not in self._cls_defs
+            and not node.id.startswith("_")):
             node.id = self.map[node.id]
         return node
 
     def visit_FunctionDef(self, node: ast.FunctionDef):
-        if self.cfg.rename_functions and self._class_depth == 0: node.name = self._name(node.name)
+        if self.cfg.rename_functions and self._cls_nesting == 0: node.name = self._name(node.name)
         self._push_params(node); self.generic_visit(node); self._pop_params(); return node
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
-        if self.cfg.rename_functions and self._class_depth == 0: node.name = self._name(node.name)
+        if self.cfg.rename_functions and self._cls_nesting == 0: node.name = self._name(node.name)
         self._push_params(node); self.generic_visit(node); self._pop_params(); return node
 
-    def _collect_class_names(self, node: ast.ClassDef) -> set[str]:
+    def _gather_class_members(self, node: ast.ClassDef) -> set[str]:
         """Collect names defined directly in a class (methods, attributes)."""
         names: set[str] = set()
         for child in ast.walk(node):
@@ -205,21 +214,21 @@ class Obfuscator(ast.NodeTransformer):
 
     def visit_ClassDef(self, node: ast.ClassDef):
         if self.cfg.rename_classes: node.name = self._name(node.name)
-        prev_dc, prev_enum = self._in_dataclass, self._in_enum
-        self._in_dataclass = self._has_decorator(node, "dataclass")
-        self._in_enum = any(
+        prev_dc, prev_enum = self._within_dataclass, self._within_enum
+        self._within_dataclass = self._check_decorator(node, "dataclass")
+        self._within_enum = any(
             isinstance(b, (ast.Name, ast.Attribute))
             and (b.id if isinstance(b, ast.Name) else b.attr) in ("Enum", "IntEnum", "StrEnum", "IntFlag", "Flag")
             for b in node.bases
         )
-        self._class_names = self._collect_class_names(node)
-        protected_before = set(self._protected_names)
-        self._class_depth += 1; self.generic_visit(node); self._class_depth -= 1
-        if self._in_dataclass or self._in_enum:
-            protected_now = self._protected_names - protected_before
+        self._cls_defs = self._gather_class_members(node)
+        protected_before = set(self._guarded_names)
+        self._cls_nesting += 1; self.generic_visit(node); self._cls_nesting -= 1
+        if self._within_dataclass or self._within_enum:
+            protected_now = self._guarded_names - protected_before
             for pn in protected_now:
                 self.map.pop(pn, None)
-        self._in_dataclass, self._in_enum = prev_dc, prev_enum
+        self._within_dataclass, self._within_enum = prev_dc, prev_enum
         return node
 
     def visit_ExceptHandler(self, node: ast.ExceptHandler):
@@ -237,9 +246,9 @@ class Obfuscator(ast.NodeTransformer):
 
     def visit_arg(self, node: ast.arg): return node
     def visit_FormattedValue(self, n):
-        self._fstring_depth += 1; r = self.generic_visit(n); self._fstring_depth -= 1; return r
+        self._fmt_nesting += 1; r = self.generic_visit(n); self._fmt_nesting -= 1; return r
     def visit_JoinedStr(self, n):
-        self._fstring_depth += 1; r = self.generic_visit(n); self._fstring_depth -= 1; return r
+        self._fmt_nesting += 1; r = self.generic_visit(n); self._fmt_nesting -= 1; return r
 
 
 class _AttrObfuscator(ast.NodeTransformer):
@@ -248,19 +257,19 @@ class _AttrObfuscator(ast.NodeTransformer):
 
     def __init__(self, rename_map: dict[str, str], param_names: set[str],
                  import_names: set[str]):
-        self._map = rename_map
-        self._param_names = param_names
-        self._import_names = import_names
+        self._rename_table = rename_map
+        self._param_set = param_names
+        self._import_set = import_names
 
     def visit_Attribute(self, node: ast.Attribute):
         self.generic_visit(node)
-        if (node.attr in self._map and isinstance(node.value, ast.Name)
-                and node.value.id in self._map):
-            if node.value.id in self._param_names:
+        if (node.attr in self._rename_table and isinstance(node.value, ast.Name)
+                and node.value.id in self._rename_table):
+            if node.value.id in self._param_set:
                 return node
-            if node.value.id in self._import_names:
+            if node.value.id in self._import_set:
                 return node
-            node.attr = self._map[node.attr]
+            node.attr = self._rename_table[node.attr]
         return node
 
 
@@ -268,10 +277,10 @@ class _ImportObfuscator(ast.NodeTransformer):
     """Transform import statements into __import__() calls."""
 
     def __init__(self, rename_map: dict[str, str] | None = None):
-        self._map = rename_map or {}
+        self._rename_table = rename_map or {}
 
-    def _r(self, name: str) -> str:
-        return self._map.get(name, name)
+    def _resolve_name(self, name: str) -> str:
+        return self._rename_table.get(name, name)
 
     def visit_Import(self, node: ast.Import):
         new_nodes: list[ast.AST] = []
@@ -298,7 +307,7 @@ class _ImportObfuscator(ast.NodeTransformer):
         new_nodes: list[ast.AST] = []
         for alias in node.names:
             attr = ast.Attribute(value=base, attr=alias.name, ctx=ast.Load())
-            target = self._r(alias.asname or alias.name)
+            target = self._resolve_name(alias.asname or alias.name)
             new_nodes.append(ast.Assign(targets=[ast.Name(id=target, ctx=ast.Store())], value=attr))
         return new_nodes if len(new_nodes) != 1 else new_nodes[0]
 
@@ -343,27 +352,27 @@ class _CallObfuscator(ast.NodeTransformer):
 class _HoneypotInjector(ast.NodeTransformer):
     """Inject honeypot functions that look like real decrypt/validate logic."""
 
-    _TRAP_SOURCES = [
+    _HONEYPOT_TEMPLATES = [
         'def {name}({args}):\n    import sys\n    while True:\n        pass\n    return None\n',
         'def {name}({args}):\n    import os\n    try:\n        os._exit(0)\n    except:\n        pass\n    return None\n',
         'def {name}({args}):\n    _d = bytearray(1024)\n    for i in range(1024):\n        _d[i] = (i * 7 + 3) & 0xFF\n    return bytes(_d)\n',
         'def {name}({args}):\n    import hashlib as _h\n    _k = _h.sha256(b"key").hexdigest()\n    _v = _h.md5(b"data").hexdigest()\n    return _k[:8] == _v[:8]\n',
     ]
-    _TRAP_ARGS = ["", "key, iv", "data, sig", "path, mode, ctx", "buf, offset"]
+    _HONEYPOT_ARGS = ["", "key, iv", "data, sig", "path, mode, ctx", "buf, offset"]
 
     def __init__(self, name_map: dict[str, str]):
-        self._map = name_map
+        self._rename_table = name_map
 
     def visit_Module(self, node: ast.Module):
         self.generic_visit(node)
-        used_names = set(self._map.values())
+        used_names = set(self._rename_table.values())
         for _ in range(secrets.randbelow(3) + 2):
             fn = secrets.token_hex(5)
             while fn in used_names:
                 fn = secrets.token_hex(5)
             used_names.add(fn)
-            args = secrets.choice(self._TRAP_ARGS)
-            tpl = secrets.choice(self._TRAP_SOURCES)
+            args = secrets.choice(self._HONEYPOT_ARGS)
+            tpl = secrets.choice(self._HONEYPOT_TEMPLATES)
             trap_src = tpl.format(name=fn, args=args)
             try:
                 trap_tree = ast.parse(trap_src)
@@ -388,24 +397,27 @@ class _ControlFlowFlattener(ast.NodeTransformer):
         self.generic_visit(node)
         if len(node.body) < 3 or self._has_yield(node):
             return node
-        sname = f"_s{secrets.token_hex(2)}"
-        state_st = ast.Name(id=sname, ctx=ast.Store())
-        state_ld = ast.Name(id=sname, ctx=ast.Load())
+        _state_var = f"_s{secrets.token_hex(2)}"
+        _state_store = ast.Name(id=_state_var, ctx=ast.Store())
+        _state_load = ast.Name(id=_state_var, ctx=ast.Load())
         blocks = list(enumerate(node.body))
         if len(blocks) < 3:
             return node
         if_chain = None
         for i, (_, stmt) in reversed(list(enumerate(blocks))):
             if i == len(blocks) - 1:
-                if_chain = stmt
+                if isinstance(stmt, ast.Return):
+                    if_chain = [stmt]
+                else:
+                    if_chain = [stmt, ast.Break()]
             else:
-                next_val = ast.BinOp(left=state_ld, op=ast.Add(), right=ast.Constant(1))
+                next_val = ast.BinOp(left=_state_load, op=ast.Add(), right=ast.Constant(1))
                 if_chain = ast.If(
-                    test=ast.Compare(left=state_ld, ops=[ast.Eq()], comparators=[ast.Constant(i)]),
-                    body=[stmt, ast.Assign(targets=[state_st], value=next_val)],
-                    orelse=[if_chain] if isinstance(if_chain, ast.If) else [if_chain])
+                    test=ast.Compare(left=_state_load, ops=[ast.Eq()], comparators=[ast.Constant(i)]),
+                    body=[stmt, ast.Assign(targets=[_state_store], value=next_val)],
+                    orelse=if_chain if isinstance(if_chain, list) else [if_chain])
         dispatch = ast.While(test=ast.Constant(True), body=[if_chain], orelse=[])
-        node.body = [ast.Assign(targets=[state_st], value=ast.Constant(0)), dispatch]
+        node.body = [ast.Assign(targets=[_state_store], value=ast.Constant(0)), dispatch]
         return node
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
@@ -492,7 +504,7 @@ class _LiteralEncryptor(ast.NodeTransformer):
     def visit_Constant(self, node):
         if isinstance(node.value, str) and self.cfg.encrypt_strings and len(node.value) > 1 and self._fdepth == 0:
             if self.cfg.string_split and secrets.randbelow(2) == 0:
-                return _split_string(node.value, secrets.randbelow(3) + 2)
+                return _fragment_string_ast(node.value, secrets.randbelow(3) + 2)
             cipher = self.cfg.string_cipher
             if cipher == "xor" or (cipher == "mixed" and secrets.randbelow(2) == 0):
                 return self._xor_encrypt(node.value)

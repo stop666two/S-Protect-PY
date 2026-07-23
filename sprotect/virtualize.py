@@ -1,9 +1,11 @@
+# VM BYTECODE ENGINE: custom interpreter for obfuscated control flow
+# OPCODES: 40+ instruction types
 """Code virtualization: compile Python AST to custom VM bytecode."""
 from __future__ import annotations
 import ast, struct, hashlib, secrets
 from sprotect.types import VirtualizationConfig, VirtualizationMode
 
-_OP = {
+_INSTRUCTION_SET = {
     "NOP": 0, "LOAD_CONST": 1, "LOAD_NAME": 2, "STORE_NAME": 3,
     "BINARY_ADD": 10, "BINARY_SUB": 11, "BINARY_MUL": 12, "BINARY_DIV": 13,
     "BINARY_MOD": 14, "BINARY_POW": 15, "BINARY_AND": 16, "BINARY_OR": 17,
@@ -20,14 +22,14 @@ _OP = {
     "LOAD_SUBSCR": 112, "STORE_SUBSCR": 113,
 }
 
-_OP_REV = {v: k for k, v in _OP.items()}
-_BINOP_MAP = {
+_INSTRUCTION_REVERSE = {v: k for k, v in _INSTRUCTION_SET.items()}
+_BINARY_OPCODES = {
     ast.Add: "BINARY_ADD", ast.Sub: "BINARY_SUB", ast.Mult: "BINARY_MUL",
     ast.Div: "BINARY_DIV", ast.Mod: "BINARY_MOD", ast.Pow: "BINARY_POW",
     ast.BitAnd: "BINARY_AND", ast.BitOr: "BINARY_OR", ast.BitXor: "BINARY_XOR",
     ast.LShift: "BINARY_LSHIFT", ast.RShift: "BINARY_RSHIFT",
 }
-_CMPOP_MAP = {
+_COMPARE_OPCODES = {
     ast.Eq: "COMPARE_EQ", ast.NotEq: "COMPARE_NE", ast.Lt: "COMPARE_LT",
     ast.Gt: "COMPARE_GT", ast.LtE: "COMPARE_LE", ast.GtE: "COMPARE_GE",
 }
@@ -39,36 +41,36 @@ class VMCompiler:
     def __init__(self, func_name: str, arg_names: list[str]):
         self._func_name = func_name
         self._arg_names = arg_names
-        self._code: list[int] = []
-        self._consts: list = []
-        self._names: list[str] = []
-        self._const_map: dict = {}
-        self._name_map: dict = {}
-        self._labels: dict[int, int] = {}
-        self._patches: list[tuple[int, int]] = []
+        self._bytecode_stream: list[int] = []
+        self._constant_pool: list = []
+        self._symbol_table: list[str] = []
+        self._const_lookup: dict = {}
+        self._symbol_lookup: dict = {}
+        self._branch_targets: dict[int, int] = {}
+        self._fixup_table: list[tuple[int, int]] = []
 
     def _const_idx(self, v) -> int:
-        if v not in self._const_map:
-            self._const_map[v] = len(self._consts)
-            self._consts.append(v)
-        return self._const_map[v]
+        if v not in self._const_lookup:
+            self._const_lookup[v] = len(self._constant_pool)
+            self._constant_pool.append(v)
+        return self._const_lookup[v]
 
     def _name_idx(self, n: str) -> int:
-        if n not in self._name_map:
-            self._name_map[n] = len(self._names)
-            self._names.append(n)
-        return self._name_map[n]
+        if n not in self._symbol_lookup:
+            self._symbol_lookup[n] = len(self._symbol_table)
+            self._symbol_table.append(n)
+        return self._symbol_lookup[n]
 
     def _emit(self, op: str, arg: int = 0):
-        self._code.append(_OP[op])
-        self._code.append(arg)
+        self._bytecode_stream.append(_INSTRUCTION_SET[op])
+        self._bytecode_stream.append(arg)
 
     def _patch(self, pos: int, target: int):
-        self._code[pos] = target
+        self._bytecode_stream[pos] = target
 
     def _label(self) -> int:
-        lbl = len(self._code)
-        self._labels[lbl] = lbl
+        lbl = len(self._bytecode_stream)
+        self._branch_targets[lbl] = lbl
         return lbl
 
     def compile(self, node: ast.AST):
@@ -100,39 +102,39 @@ class VMCompiler:
         elif isinstance(node, ast.BinOp):
             self.compile(node.left)
             self.compile(node.right)
-            op_name = _BINOP_MAP.get(type(node.op))
+            op_name = _BINARY_OPCODES.get(type(node.op))
             if op_name:
                 self._emit(op_name)
         elif isinstance(node, ast.Compare):
             self.compile(node.left)
             self.compile(node.comparators[0])
-            op_name = _CMPOP_MAP.get(type(node.ops[0]))
+            op_name = _COMPARE_OPCODES.get(type(node.ops[0]))
             if op_name:
                 self._emit(op_name)
         elif isinstance(node, ast.If):
             self.compile(node.test)
             self._emit("JUMP_IF_FALSE", 0)
-            patch_false = len(self._code) - 1
+            patch_false = len(self._bytecode_stream) - 1
             for stmt in node.body:
                 self.compile(stmt)
             if node.orelse:
                 self._emit("JUMP_FORWARD", 0)
-                patch_end = len(self._code) - 1
-                self._patch(patch_false, len(self._code))
+                patch_end = len(self._bytecode_stream) - 1
+                self._patch(patch_false, len(self._bytecode_stream))
                 for stmt in node.orelse:
                     self.compile(stmt)
-                self._patch(patch_end, len(self._code))
+                self._patch(patch_end, len(self._bytecode_stream))
             else:
-                self._patch(patch_false, len(self._code))
+                self._patch(patch_false, len(self._bytecode_stream))
         elif isinstance(node, ast.While):
-            start = len(self._code)
+            start = len(self._bytecode_stream)
             self.compile(node.test)
             self._emit("JUMP_IF_FALSE", 0)
-            patch_exit = len(self._code) - 1
+            patch_exit = len(self._bytecode_stream) - 1
             for stmt in node.body:
                 self.compile(stmt)
             self._emit("JUMP_ABSOLUTE", start)
-            self._patch(patch_exit, len(self._code))
+            self._patch(patch_exit, len(self._bytecode_stream))
         elif isinstance(node, ast.Call):
             self.compile(node.func)
             for arg in node.args:
@@ -154,19 +156,19 @@ class VMCompiler:
             iter_name = f"_i{secrets.token_hex(2)}"
             self.compile(node.iter)
             self._emit("STORE_NAME", self._name_idx(iter_name))
-            start = len(self._code)
+            start = len(self._bytecode_stream)
             self._emit("LOAD_NAME", self._name_idx(iter_name))
             self._emit("FOR_ITER")
-            exit_patch = len(self._code) - 1
+            exit_patch = len(self._bytecode_stream) - 1
             self.compile(node.target)
             for stmt in node.body:
                 self.compile(stmt)
             self._emit("JUMP_ABSOLUTE", start)
-            self._patch(exit_patch, len(self._code))
+            self._patch(exit_patch, len(self._bytecode_stream))
         elif isinstance(node, ast.Try):
             for handler in node.handlers:
                 self._emit("SETUP_EXCEPT")
-                try_start = len(self._code)
+                try_start = len(self._bytecode_stream)
                 for stmt in node.body:
                     self.compile(stmt)
                 self._emit("POP_EXCEPT")
@@ -205,10 +207,10 @@ class VMCompiler:
 
     def get_bytecode(self) -> bytes:
         data = bytearray()
-        data += struct.pack("<I", len(self._code))
-        data += struct.pack("<" + "I" * len(self._code), *self._code)
+        data += struct.pack("<I", len(self._bytecode_stream))
+        data += struct.pack("<" + "I" * len(self._bytecode_stream), *self._bytecode_stream)
         consts_data = bytearray()
-        for c in self._consts:
+        for c in self._constant_pool:
             if isinstance(c, (int, float)):
                 consts_data += b"i" + struct.pack("<d", float(c))
             elif isinstance(c, str):
@@ -219,8 +221,8 @@ class VMCompiler:
             elif isinstance(c, bool):
                 consts_data += b"b" + struct.pack("<?", c)
         data += struct.pack("<I", len(consts_data)) + bytes(consts_data)
-        data += struct.pack("<I", len(self._names))
-        for n in self._names:
+        data += struct.pack("<I", len(self._symbol_table))
+        for n in self._symbol_table:
             nb = n.encode()
             data += struct.pack("<I", len(nb)) + nb
         return bytes(data)
@@ -229,9 +231,9 @@ class VMCompiler:
         return {
             "func": self._func_name,
             "args": self._arg_names,
-            "names": self._names,
-            "consts": [str(c)[:40] for c in self._consts],
-            "instrs": len(self._code) // 2,
+            "names": self._symbol_table,
+            "consts": [str(c)[:40] for c in self._constant_pool],
+            "instrs": len(self._bytecode_stream) // 2,
         }
 
 
@@ -252,7 +254,7 @@ class VMInterpreter:
 
     def __init__(self, bytecode: bytes, globals_dict: dict):
         self._globals = globals_dict
-        self._code, self._consts, self._names = self._load(bytecode)
+        self._vm_opcodes, self._consts, self._names = self._load(bytecode)
 
     def _load(self, data: bytes) -> tuple[list[int], list, list[str]]:
         off = 0
@@ -285,73 +287,73 @@ class VMInterpreter:
             for i, n in enumerate(self._names[:len(args)]):
                 locals_dict[n] = args[i]
         ip = 0
-        while ip < len(self._code):
-            op = self._code[ip]; arg = self._code[ip + 1]; ip += 2
-            if op == _OP["LOAD_CONST"]: stack.append(self._consts[arg])
-            elif op == _OP["LOAD_NAME"]: stack.append(locals_dict.get(self._names[arg], self._globals.get(self._names[arg])))
-            elif op == _OP["STORE_NAME"]: locals_dict[self._names[arg]] = stack.pop()
-            elif op == _OP["BINARY_ADD"]: b, a = stack.pop(), stack.pop(); stack.append(a + b)
-            elif op == _OP["BINARY_SUB"]: b, a = stack.pop(), stack.pop(); stack.append(a - b)
-            elif op == _OP["BINARY_MUL"]: b, a = stack.pop(), stack.pop(); stack.append(a * b)
-            elif op == _OP["BINARY_DIV"]: b, a = stack.pop(), stack.pop(); stack.append(a / b)
-            elif op == _OP["BINARY_MOD"]: b, a = stack.pop(), stack.pop(); stack.append(a % b)
-            elif op == _OP["BINARY_POW"]: b, a = stack.pop(), stack.pop(); stack.append(a ** b)
-            elif op == _OP["BINARY_AND"]: b, a = stack.pop(), stack.pop(); stack.append(a & b)
-            elif op == _OP["BINARY_OR"]: b, a = stack.pop(), stack.pop(); stack.append(a | b)
-            elif op == _OP["BINARY_XOR"]: b, a = stack.pop(), stack.pop(); stack.append(a ^ b)
-            elif op == _OP["BINARY_LSHIFT"]: b, a = stack.pop(), stack.pop(); stack.append(a << b)
-            elif op == _OP["BINARY_RSHIFT"]: b, a = stack.pop(), stack.pop(); stack.append(a >> b)
-            elif op == _OP["COMPARE_EQ"]: b, a = stack.pop(), stack.pop(); stack.append(a == b)
-            elif op == _OP["COMPARE_NE"]: b, a = stack.pop(), stack.pop(); stack.append(a != b)
-            elif op == _OP["COMPARE_LT"]: b, a = stack.pop(), stack.pop(); stack.append(a < b)
-            elif op == _OP["COMPARE_GT"]: b, a = stack.pop(), stack.pop(); stack.append(a > b)
-            elif op == _OP["COMPARE_LE"]: b, a = stack.pop(), stack.pop(); stack.append(a <= b)
-            elif op == _OP["COMPARE_GE"]: b, a = stack.pop(), stack.pop(); stack.append(a >= b)
-            elif op == _OP["JUMP_FORWARD"]: ip += arg
-            elif op == _OP["JUMP_IF_FALSE"]:
+        while ip < len(self._vm_opcodes):
+            op = self._vm_opcodes[ip]; arg = self._vm_opcodes[ip + 1]; ip += 2
+            if op == _INSTRUCTION_SET["LOAD_CONST"]: stack.append(self._consts[arg])
+            elif op == _INSTRUCTION_SET["LOAD_NAME"]: stack.append(locals_dict.get(self._names[arg], self._globals.get(self._names[arg])))
+            elif op == _INSTRUCTION_SET["STORE_NAME"]: locals_dict[self._names[arg]] = stack.pop()
+            elif op == _INSTRUCTION_SET["BINARY_ADD"]: b, a = stack.pop(), stack.pop(); stack.append(a + b)
+            elif op == _INSTRUCTION_SET["BINARY_SUB"]: b, a = stack.pop(), stack.pop(); stack.append(a - b)
+            elif op == _INSTRUCTION_SET["BINARY_MUL"]: b, a = stack.pop(), stack.pop(); stack.append(a * b)
+            elif op == _INSTRUCTION_SET["BINARY_DIV"]: b, a = stack.pop(), stack.pop(); stack.append(a / b)
+            elif op == _INSTRUCTION_SET["BINARY_MOD"]: b, a = stack.pop(), stack.pop(); stack.append(a % b)
+            elif op == _INSTRUCTION_SET["BINARY_POW"]: b, a = stack.pop(), stack.pop(); stack.append(a ** b)
+            elif op == _INSTRUCTION_SET["BINARY_AND"]: b, a = stack.pop(), stack.pop(); stack.append(a & b)
+            elif op == _INSTRUCTION_SET["BINARY_OR"]: b, a = stack.pop(), stack.pop(); stack.append(a | b)
+            elif op == _INSTRUCTION_SET["BINARY_XOR"]: b, a = stack.pop(), stack.pop(); stack.append(a ^ b)
+            elif op == _INSTRUCTION_SET["BINARY_LSHIFT"]: b, a = stack.pop(), stack.pop(); stack.append(a << b)
+            elif op == _INSTRUCTION_SET["BINARY_RSHIFT"]: b, a = stack.pop(), stack.pop(); stack.append(a >> b)
+            elif op == _INSTRUCTION_SET["COMPARE_EQ"]: b, a = stack.pop(), stack.pop(); stack.append(a == b)
+            elif op == _INSTRUCTION_SET["COMPARE_NE"]: b, a = stack.pop(), stack.pop(); stack.append(a != b)
+            elif op == _INSTRUCTION_SET["COMPARE_LT"]: b, a = stack.pop(), stack.pop(); stack.append(a < b)
+            elif op == _INSTRUCTION_SET["COMPARE_GT"]: b, a = stack.pop(), stack.pop(); stack.append(a > b)
+            elif op == _INSTRUCTION_SET["COMPARE_LE"]: b, a = stack.pop(), stack.pop(); stack.append(a <= b)
+            elif op == _INSTRUCTION_SET["COMPARE_GE"]: b, a = stack.pop(), stack.pop(); stack.append(a >= b)
+            elif op == _INSTRUCTION_SET["JUMP_FORWARD"]: ip += arg
+            elif op == _INSTRUCTION_SET["JUMP_IF_FALSE"]:
                 if not stack.pop(): ip = arg
-            elif op == _OP["JUMP_ABSOLUTE"]: ip = arg
-            elif op == _OP["CALL_FUNCTION"]:
+            elif op == _INSTRUCTION_SET["JUMP_ABSOLUTE"]: ip = arg
+            elif op == _INSTRUCTION_SET["CALL_FUNCTION"]:
                 args_list = [stack.pop() for _ in range(arg)][::-1]
                 fn = stack.pop()
                 stack.append(fn(*args_list))
-            elif op == _OP["RETURN_VALUE"]: return stack.pop() if stack else None
-            elif op == _OP["NOP"]: pass
-            elif op == _OP["UNARY_NOT"]: stack.append(not stack.pop())
-            elif op == _OP["UNARY_NEG"]: stack.append(-stack.pop())
-            elif op == _OP["UNARY_INV"]: stack.append(~stack.pop())
-            elif op == _OP["BUILD_LIST"]:
+            elif op == _INSTRUCTION_SET["RETURN_VALUE"]: return stack.pop() if stack else None
+            elif op == _INSTRUCTION_SET["NOP"]: pass
+            elif op == _INSTRUCTION_SET["UNARY_NOT"]: stack.append(not stack.pop())
+            elif op == _INSTRUCTION_SET["UNARY_NEG"]: stack.append(-stack.pop())
+            elif op == _INSTRUCTION_SET["UNARY_INV"]: stack.append(~stack.pop())
+            elif op == _INSTRUCTION_SET["BUILD_LIST"]:
                 items = [stack.pop() for _ in range(arg)][::-1]; stack.append(items)
-            elif op == _OP["BUILD_TUPLE"]:
+            elif op == _INSTRUCTION_SET["BUILD_TUPLE"]:
                 items = [stack.pop() for _ in range(arg)][::-1]; stack.append(tuple(items))
-            elif op == _OP["BUILD_SET"]:
+            elif op == _INSTRUCTION_SET["BUILD_SET"]:
                 items = [stack.pop() for _ in range(arg)][::-1]; stack.append(set(items))
-            elif op == _OP["BUILD_DICT"]:
+            elif op == _INSTRUCTION_SET["BUILD_DICT"]:
                 items = [(stack.pop(), stack.pop()) for _ in range(arg)][::-1]
                 stack.append(dict(items))
-            elif op == _OP["LOAD_ATTR"]:
+            elif op == _INSTRUCTION_SET["LOAD_ATTR"]:
                 obj = stack.pop(); stack.append(getattr(obj, self._consts[arg]))
-            elif op == _OP["STORE_ATTR"]:
+            elif op == _INSTRUCTION_SET["STORE_ATTR"]:
                 val = stack.pop(); obj = stack.pop()
                 setattr(obj, self._consts[arg], val)
-            elif op == _OP["LOAD_SUBSCR"]:
+            elif op == _INSTRUCTION_SET["LOAD_SUBSCR"]:
                 key = stack.pop(); obj = stack.pop(); stack.append(obj[key])
-            elif op == _OP["STORE_SUBSCR"]:
+            elif op == _INSTRUCTION_SET["STORE_SUBSCR"]:
                 val = stack.pop(); key = stack.pop(); obj = stack.pop(); obj[key] = val
-            elif op == _OP["GET_ITER"]:
+            elif op == _INSTRUCTION_SET["GET_ITER"]:
                 stack.append(iter(stack.pop()))
-            elif op == _OP["FOR_ITER"]:
+            elif op == _INSTRUCTION_SET["FOR_ITER"]:
                 try:
                     it = stack[-1]; stack.append(next(it))
                 except StopIteration:
                     stack.pop(); ip = arg
-            elif op == _OP["YIELD_VALUE"]:
+            elif op == _INSTRUCTION_SET["YIELD_VALUE"]:
                 return stack.pop()
-            elif op == _OP["SETUP_EXCEPT"]:
+            elif op == _INSTRUCTION_SET["SETUP_EXCEPT"]:
                 pass
-            elif op == _OP["POP_EXCEPT"]:
+            elif op == _INSTRUCTION_SET["POP_EXCEPT"]:
                 pass
-            elif op == _OP["RAISE"]:
+            elif op == _INSTRUCTION_SET["RAISE"]:
                 raise stack.pop() if stack else Exception("VM raise")
         return stack.pop() if stack else None
 
@@ -373,5 +375,6 @@ def virtualize_source(source: str, config: VirtualizationConfig) -> str:
     for fn_name, bc in virtualized.items():
         bc_str = bc.hex()
         result_lines.append(f"\n# VM:{fn_name}")
+        result_lines.append(f"from sprotect.virtualize import VMInterpreter")
         result_lines.append(f"_vm_{fn_name} = VMInterpreter(bytes.fromhex('{bc_str}'), globals())")
     return "\n".join(result_lines) + "\n"

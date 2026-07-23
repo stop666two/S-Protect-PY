@@ -1,16 +1,126 @@
 {
   // ===================================================================
-  // 字节码保护 — marshal + AES-GCM 加密代码对象
-  // ===================================================================
-  // 将 Python 源码编译为 code object，使用 marshal 序列化 + zlib 压缩
-  // + AES-GCM 加密，生成 .pye 容器文件。运行时通过 SecureImporter
-  // import hook 透明解密执行。
-  //
-  // ⚠️ 此模块的代码会生成 .pye 容器格式，因此 encrypt_strings 等
-  //    可能破坏二进制格式的功能已在代码中关闭。
+  // 字节码保护模块 — 代码对象加密 + 导入钩子
+  // 此模块运行在构建时和运行时之间：protect_code/unprotect_code 被生成器调用
+  // ⚠️ rename_rules.reserved 必须保留所有公开 API 名，否则导入链断裂
+  // ⚠️ anti_debug 在打包 exe 后跟随用户运行，必须开启
   // ===================================================================
 
   obfuscate: {
+    // --- 混淆等级 (1-5) ---
+    // L5 = 全部启用：变量/函数/类重命名 + 字符串/数字加密 + 控制流平坦化 + 死代码 + 蜜罐
     level: 5,
+
+    // --- 变量重命名: 局部变量名改为 _0x 随机十六进制 ---
+    rename_variables: true,
+
+    // --- 函数重命名: 函数名改为随机标识符 ---
+    // true: 可改（protect_code 等只在包内引用）
+    rename_functions: true,
+
+    // --- 类重命名: 类名改为随机标识符 ---
+    // true: SecureImporter 只通过 importlib 反射调用 find_spec/exec_module，API 名已保留
+    rename_classes: true,
+
+    rename_rules: {
+      // --- 命名风格: hex=十六进制随机串 ---
+      style: "hex",
+      // --- 保留名称（这些标识符不会被混淆，importlib 通过名称反射调用） ---
+      reserved: ["protect_code", "unprotect_code", "SecureImporter", "find_spec", "create_module", "exec_module", "generate_loader_stub"],
+      // --- 混淆名前缀 ---
+      prefix: "_0x",
+      // --- 混淆名后缀（建议空） ---
+      suffix: "",
+      // --- 混淆名最小长度 ---
+      min_length: 6,
+      // --- 黑名单（强制不改名的额外标识符） ---
+      blacklist: [],
+    },
+
+    // --- 字符串加密: 将字符串常量转为 base64/XOR 编码，运行时解码 ---
+    encrypt_strings: true,
+
+    // --- 数字加密: 数字常量转为 struct.pack 运行时计算 ---
+    encrypt_numbers: true,
+
+    // --- 字符串最小加密长度: 小于此值不加密 ---
+    string_min_length: 3,
+
+    // --- 字符串加密比例: 1.0 = 全部加密 ---
+    string_encrypt_ratio: 1.0,
+
+    // --- 控制流平坦化: 顺序代码转为 while-switch 状态机 ---
+    control_flow_flattening: true,
+
+    // --- 死代码注入: 注入永不执行的代码块 ---
+    dead_code_injection: true,
+
+    // --- 死代码密度: 0.3 = 每 10 行注入 3 行 ---
+    dead_code_density: 0.3,
+
+    // --- 不透明谓词: 每个函数插入永远为真的条件判断 ---
+    opaque_predicate_count: 2,
+
+    // --- 删除文档字符串 ---
+    remove_docstrings: true,
+
+    // --- 删除注释 ---
+    remove_comments: true,
+
+    // --- 删除空行 ---
+    strip_blank_lines: true,
+
+    // --- 最大行长: 0=不限制 ---
+    max_line_length: 0,
+
+    // --- 字符串分割: 将字符串拆为多个碎片 + 运行时拼接 ---
+    string_split: true,
+
+    // --- 字符串加密方式: mixed=随机选择 base64 或 xor ---
+    string_cipher: "mixed",
+
+    // --- 导入混淆: import os → os = __import__("os") ---
+    obfuscate_imports: true,
+
+    // --- 函数调用混淆: func(a) → (lambda _a0: func(_a0))(a) ---
+    obfuscate_calls: true,
+
+    // --- 算术表达式混淆: a+b → a-(-b), a*2^n → a<<n ---
+    obfuscate_arithmetic: true,
+
+    // --- 布尔值混淆: True → 1==1 ---
+    obfuscate_booleans: true,
+  },
+
+  anti_debug: {
+    // --- 反调试总开关: 此模块在打包 exe 后随用户运行，必须开启保护 ---
+    enabled: true,
+
+    // --- 检测到异常时动作: exit=退出, warn=警告, corrupt=破坏内存后退出 ---
+    action: "exit",
+
+    // --- 启用的检测项 ---
+    checks: ["pdb", "ptrace", "debugger", "vm", "sandbox", "timing", "cuckoo", "ida", "procmon", "gpu"],
+
+    // --- 逐检测项动作覆盖（空=全部使用全局 action） ---
+    per_check_actions: [],
+
+    // --- 进程白名单（进程名匹配时不检测） ---
+    process_whitelist: [],
+
+    // --- 阻断 sys.settrace/sys.setprofile ---
+    block_tracing: true,
+
+    // --- 时序检测阈值（秒） ---
+    timing_threshold: 2.0,
+
+    // --- 退出码 ---
+    exit_code: 1,
+
+    // --- 退出时清空敏感内存 ---
+    wipe_memory: true,
+
+    // --- 退出时破坏内存（激进） ---
+    corrupt_on_exit: false,
   },
 }

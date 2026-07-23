@@ -1,3 +1,5 @@
+# BUILD ENGINE: project compilation pipeline
+# STAGES: collect->obfuscate->encrypt->assemble->deploy
 """Encryption: integrated watermark, expiration, anti-tamper."""
 from __future__ import annotations
 import os, json, secrets, hashlib, hmac, zlib
@@ -7,20 +9,46 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from sprotect.types import Config
 from sprotect.config import merge_file_config
 from sprotect.obfuscate import Obfuscator, collect_defs
-from sprotect.project import find_py_files
+from sprotect.project import find_py_files, copy_non_py_files
 from sprotect.virtualize import virtualize_source
-from sprotect.crypto import aes_key, split_key, chain_hash, encrypt_payload, encrypt_payload_v2, generate_decoy_payload, rsa_generate_keypair, rsa_encrypt_master_key, ecc_generate_keypair, ecc_encrypt_master_key
+from sprotect.crypto import aes_key, split_key, shamir_split, chain_hash, encrypt_payload, encrypt_payload_v2, generate_decoy_payload, rsa_generate_keypair, rsa_encrypt_master_key, ecc_generate_keypair, ecc_encrypt_master_key
 from sprotect.loader import gen_boot, gen_loader_source
 from sprotect.backup import backup
 from sprotect.minify import minify_source
+from sprotect.keyvault import generate_vault, KeyVaultConfig, VaultData
 
 
-def _extract_d(pye_bytes: bytes) -> tuple[str, dict]:
+def _parse_watermark_dict(_pye_bytes: bytes) -> tuple[str, dict]:
     try:
-        p = json.loads(pye_bytes.decode())
-        return p.get("d", ""), p
+        _pkg_data = json.loads(_pye_bytes.decode())
+        return _pkg_data.get("d", ""), _pkg_data
     except (json.JSONDecodeError, UnicodeDecodeError):
         return "", {}
+
+
+def _generate_decoy_file() -> str:
+    """Generate a valid Python file with real-looking code for decoy purposes."""
+    import random
+    rng = random.Random(secrets.randbits(32))
+    funcs = []
+    for _ in range(rng.randint(2, 5)):
+        fn = f"_d{secrets.token_hex(4)}"
+        ops = [
+            f"    return sum(range({rng.randint(10, 100)}))",
+            f"    x = hashlib.sha256(b'{secrets.token_hex(8)}').hexdigest()\n    return x[:{rng.randint(4, 12)}]",
+            f"    return [{rng.randint(1, 99)} * i for i in range({rng.randint(3, 10)})]",
+            f"    return os.path.basename(__file__) if os.path.isfile(__file__) else '{secrets.token_hex(4)}'",
+        ]
+        body = rng.choice(ops)
+        funcs.append(f"def {fn}({rng.choice(['x', 'n', 'val', 'data', 'key'])}):\n{body}")
+    src = "import hashlib, os, sys, json, base64\n\n"
+    src += "\n\n".join(funcs)
+    src += f"\n\n# {secrets.token_hex(16)}\n# TODO: {secrets.token_hex(8)}\n"
+    if rng.random() < 0.3:
+        src += f"\ndef main():\n    return {rng.randint(1, 9)} * {rng.randint(1, 9)}\n"
+    if rng.random() < 0.3:
+        src += f"\nif __name__ == '__main__':\n    main()\n"
+    return src
 
 
 def build(project_dir, output_dir, config):
@@ -30,160 +58,198 @@ def build(project_dir, output_dir, config):
     py_files = find_py_files(project_dir, config)
     if not py_files:
         print("  WARN: no Python files found"); return
-    helper_created = False
+    _decoy_count = 0
+    _MIN_REAL_DECOYS = 10
+    if len(py_files) < _MIN_REAL_DECOYS:
+        _needed = _MIN_REAL_DECOYS - len(py_files) + secrets.randbelow(6)
+        _decoy_dir = os.path.join(project_dir, "_decoy_modules")
+        os.makedirs(_decoy_dir, exist_ok=True)
+        for i in range(_needed):
+            _dn = f"decoy_module_{secrets.token_hex(4)}.py"
+            _df = _generate_decoy_file()
+            with open(os.path.join(_decoy_dir, _dn), "w", encoding="utf-8") as _fh:
+                _fh.write(_df)
+            py_files.append(os.path.join(_decoy_dir, _dn))
+            _decoy_count += 1
+        py_files.sort()
+        if _decoy_count:
+            print(f"  Generated {_decoy_count} decoy modules (anti-crack defense)")
+    _helper_generated = False
     if len(py_files) < 2:
         print("  WARN: only 1 file found, creating companion module for sharding")
-        helper = os.path.join(project_dir, "_sprotect_helper.py")
-        with open(helper, "w") as f: f.write("# S-Protect shard helper\n")
-        py_files.append(helper)
-        helper_created = True
+        _shard_helper_path = os.path.join(project_dir, "_sprotect_helper.py")
+        with open(_shard_helper_path, "w") as f: f.write("# S-Protect shard helper\n")
+        py_files.append(_shard_helper_path)
+        _helper_generated = True
+    _runtime_dir = os.path.join(output_dir, "_runtime")
+    os.makedirs(_runtime_dir, exist_ok=True)
 
-    helper_created = False
-    rd = os.path.join(output_dir, "_runtime")
-    os.makedirs(rd, exist_ok=True)
-
-    shared_map = {}
-    shared_params: set[str] = set()
-    shared_imports: set[str] = set()
+    _global_rename_map = {}
+    _global_param_set: set[str] = set()
+    _global_import_set: set[str] = set()
     for fp in py_files:
         try:
             collect_defs(open(fp, encoding="utf-8-sig").read(), config.obfuscate,
-                         shared_map, shared_params, shared_imports)
+                         _global_rename_map, _global_param_set, _global_import_set)
         except: pass
 
     from sprotect.watermark import Watermark
-    wm = Watermark(config.watermark) if config.watermark.enabled else None
+    _watermark_engine = Watermark(config.watermark) if config.watermark.enabled else None
 
-    loader_key = aes_key()
-    master_key = aes_key()
-    hybrid_key = None
+    _loader_build_salt = secrets.token_hex(16)
+    _loader_cipher_key = hmac.new(
+        bytes.fromhex(_loader_build_salt),
+        b"sprotect-loader-key-v1",
+        hashlib.sha256
+    ).digest()
+    _master_cipher_key = aes_key()
+    _hybrid_wrapped_key = None
     if config.encrypt.hybrid.enabled:
-        hc = config.encrypt.hybrid
-        if hc.algorithm == "RSA":
-            pub, priv = rsa_generate_keypair(hc.key_size)
-        elif hc.algorithm == "ECC":
-            curve = f"P-{hc.key_size}" if hc.key_size <= 521 else "P-256"
-            pub, priv = ecc_generate_keypair(curve)
+        _hybrid_cfg = config.encrypt.hybrid
+        if _hybrid_cfg.algorithm == "RSA":
+            _public_key, _private_key = rsa_generate_keypair(_hybrid_cfg.key_size)
+        elif _hybrid_cfg.algorithm == "ECC":
+            curve = f"P-{_hybrid_cfg.key_size}" if _hybrid_cfg.key_size <= 521 else "P-256"
+            _public_key, _private_key = ecc_generate_keypair(curve)
         else:
-            pub, priv = rsa_generate_keypair(hc.key_size)
-        key_path = os.path.join(output_dir, hc.key_file)
-        with open(key_path, "wb") as f:
-            f.write(priv)
-        print(f"  Private key saved: {key_path}")
-        if hc.algorithm == "RSA":
-            hybrid_key = rsa_encrypt_master_key(master_key, pub)
+            _public_key, _private_key = rsa_generate_keypair(_hybrid_cfg.key_size)
+        _key_file_path = os.path.join(output_dir, _hybrid_cfg.key_file)
+        with open(_key_file_path, "wb") as f:
+            f.write(_private_key)
+        print(f"  Private key saved: {_key_file_path}")
+        if _hybrid_cfg.algorithm == "RSA":
+            _hybrid_wrapped_key = rsa_encrypt_master_key(_master_cipher_key, _public_key)
         else:
-            hybrid_key = ecc_encrypt_master_key(master_key, pub)
-    shards = split_key(master_key, len(py_files))
+            _hybrid_wrapped_key = ecc_encrypt_master_key(_master_cipher_key, _public_key)
+    _vault = None
+    if config.keyvault.enabled:
+        fp_entries = sorted(hashlib.sha256(open(f, "rb").read()).hexdigest() for f in py_files[:5])
+        _fingerprint = "|".join(fp_entries) + "|" + config.project.name
+        _vault = generate_vault(_master_cipher_key, config.keyvault, _fingerprint)
+        _master_cipher_key = _vault.key_pool[_vault.real_position]
+    _threshold = max(2, len(py_files) // 3 + 1)
+    _key_fragments = split_key(_master_cipher_key, len(py_files))
+    _shamir_shares = shamir_split(_master_cipher_key, len(py_files), _threshold)
 
-    module_map: dict[str, str] = {}
-    raw_payloads: list[bytes] = []
-    results: list[tuple[str, str, bytes] | None] = [None] * len(py_files)
+    _module_hex_map: dict[str, str] = {}
+    _encrypted_blobs: list[bytes] = []
+    _build_results: list[tuple[str, str, bytes] | None] = [None] * len(py_files)
 
-    def _process_one(idx: int, fp: str) -> tuple[str, str, bytes] | None:
+    def _encrypt_single_file(idx: int, fp: str) -> tuple[str, str, bytes] | None:
         """Process a single file: obfuscate, encrypt, write .pye."""
-        fc = merge_file_config(config, fp)
-        rel = os.path.relpath(fp, project_dir).replace("\\", "/")
-        mod_name = rel.replace(".py", "").replace("/", ".")
-        if mod_name.endswith(".__init__"): mod_name = mod_name[:-9]
-        hex_name = secrets.token_hex(6)
+        _file_config = merge_file_config(config, fp)
+        _relative_path = os.path.relpath(fp, project_dir).replace("\\", "/")
+        _module_dotted = _relative_path.replace(".py", "").replace("/", ".")
+        if _module_dotted.endswith(".__init__"): _module_dotted = _module_dotted[:-9]
+        _random_hex_alias = secrets.token_hex(6)
         try:
-            src = open(fp, encoding="utf-8-sig").read()
-            if fc.obfuscate.level.value >= 1:
-                src = Obfuscator(fc.obfuscate, shared_map, shared_params, shared_imports).obfuscate(src)
-            if fc.virtualization.enabled and fc.virtualization.functions:
-                src = virtualize_source(src, fc.virtualization)
-            if wm: src = wm.code(src)
-            extra = fc.encrypt.extra_layers or []
-            if extra:
-                ct, hdr = encrypt_payload_v2(src.encode(), master_key, extra,
+            _source_code = open(fp, encoding="utf-8-sig").read()
+            if _file_config.obfuscate.level.value >= 1:
+                _source_code = Obfuscator(_file_config.obfuscate, _global_rename_map, _global_param_set, _global_import_set).obfuscate(_source_code)
+            if _file_config.virtualization.enabled and _file_config.virtualization.functions:
+                _source_code = virtualize_source(_source_code, _file_config.virtualization)
+            if _watermark_engine: _source_code = _watermark_engine.code(_source_code)
+            _extra_layers = _file_config.encrypt.extra_layers or []
+            if _extra_layers:
+                _ciphertext, _enc_header = encrypt_payload_v2(_source_code.encode(), _master_cipher_key, _extra_layers,
                                              config.encrypt.compress_level)
-                hdr_json = json.dumps(hdr, separators=(",", ":"))
-                payload_bytes = json.dumps({"v":2,"h":hdr_json,"d":ct.hex()},
+                _header_json = json.dumps(_enc_header, separators=(",", ":"))
+                _serialized_payload = json.dumps({"v":2,"h":_header_json,"d":_ciphertext.hex()},
                                            separators=(",", ":")).encode()
             else:
-                payload_bytes = encrypt_payload(src.encode(), master_key,
+                _serialized_payload = encrypt_payload(_source_code.encode(), _master_cipher_key,
                                            config.encrypt.compress_level,
                                            config.encrypt.polymorphic_padding_max)
-            p = json.loads(payload_bytes.decode())
-            from sprotect.crypto import make_keys_complex
-            keys_dict, _ = make_keys_complex(shards[idx], 4)
-            p.update(keys_dict)
-            if wm: p["wm"] = wm.file_payload()
-            payload = json.dumps(p, separators=(",", ":")).encode()
-            pye_path = os.path.join(rd, hex_name + ".pye")
-            with open(pye_path, "wb") as f: f.write(payload)
-            return mod_name, hex_name, payload
+            _pkg_data = json.loads(_serialized_payload.decode())
+            _sid, _sval = _shamir_shares[idx]
+            _pkg_data["sid"] = _sid
+            _pkg_data["sv"] = _sval.hex()
+            if _watermark_engine: _pkg_data["wm"] = _watermark_engine.file_payload()
+            _final_pkg = json.dumps(_pkg_data, separators=(",", ":")).encode()
+            _pye_file_path = os.path.join(_runtime_dir, _random_hex_alias + ".pye")
+            with open(_pye_file_path, "wb") as f: f.write(_final_pkg)
+            return _module_dotted, _random_hex_alias, _final_pkg
         except Exception as e:
-            print(f"  WARN: {rel} - {e}")
+            print(f"  WARN: {_relative_path} - {e}")
             return None
 
-    workers = config.encrypt.workers or os.cpu_count() or 1
-    if workers > 1 and len(py_files) > 1:
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            fut_map = {pool.submit(_process_one, i, fp): i for i, fp in enumerate(py_files)}
-            for fut in as_completed(fut_map):
-                i = fut_map[fut]
-                results[i] = fut.result()
+    _thread_count = config.encrypt.workers or os.cpu_count() or 1
+    if _thread_count > 1 and len(py_files) > 1:
+        with ThreadPoolExecutor(max_workers=_thread_count) as pool:
+            _future_index = {pool.submit(_encrypt_single_file, i, fp): i for i, fp in enumerate(py_files)}
+            for fut in as_completed(_future_index):
+                i = _future_index[fut]
+                _build_results[i] = fut.result()
     else:
         for i, fp in enumerate(py_files):
-            results[i] = _process_one(i, fp)
+            _build_results[i] = _encrypt_single_file(i, fp)
 
-    failed = sum(1 for r in results if r is None)
-    if failed:
-        print(f"  ERROR: {failed}/{len(py_files)} files failed to encrypt")
-        if failed == len(py_files):
+    _failure_count = sum(1 for r in _build_results if r is None)
+    if _failure_count:
+        print(f"  ERROR: {_failure_count}/{len(py_files)} files failed to encrypt")
+        if _failure_count == len(py_files):
             raise RuntimeError("All files failed to encrypt")
-    for r in results:
+    for r in _build_results:
         if r:
-            mod_name, hex_name, payload = r
-            module_map[mod_name] = hex_name
-            raw_payloads.append(payload)
+            _module_dotted, _random_hex_alias, _final_pkg = r
+            _module_hex_map[_module_dotted] = _random_hex_alias
+            _encrypted_blobs.append(_final_pkg)
 
-    sigs = chain_hash(raw_payloads, master_key)
+    _chain_hashes = chain_hash(_encrypted_blobs, _master_cipher_key)
     for idx, (rel, _) in enumerate([(fp, "") for fp in py_files]):
-        mod_name = os.path.relpath(fp, project_dir).replace("\\", "/")
-        mod_name = mod_name.replace(".py", "").replace("/", ".")
-        if mod_name.endswith(".__init__"): mod_name = mod_name[:-9]
-        hex_n = module_map.get(mod_name, "")
-        if not hex_n: continue
-        pye_path = os.path.join(rd, hex_n + ".pye")
-        raw = open(pye_path, "rb").read()
-        p2 = json.loads(raw.decode())
-        p2["c"] = sigs[idx]
-        open(pye_path, "wb").write(json.dumps(p2, separators=(",", ":")).encode())
+        _module_dotted = os.path.relpath(fp, project_dir).replace("\\", "/")
+        _module_dotted = _module_dotted.replace(".py", "").replace("/", ".")
+        if _module_dotted.endswith(".__init__"): _module_dotted = _module_dotted[:-9]
+        _hex_module = _module_hex_map.get(_module_dotted, "")
+        if not _hex_module: continue
+        _pye_file_path = os.path.join(_runtime_dir, _hex_module + ".pye")
+        _raw_bytes = open(_pye_file_path, "rb").read()
+        _payload_data = json.loads(_raw_bytes.decode())
+        _payload_data["c"] = _chain_hashes[idx]
+        open(_pye_file_path, "wb").write(json.dumps(_payload_data, separators=(",", ":")).encode())
 
     for i in range(max(2, len(py_files) // 2)):
-        decoy = generate_decoy_payload()
-        dn = secrets.token_hex(6) + ".pye"
-        with open(os.path.join(rd, dn), "wb") as f: f.write(decoy)
+        _garbage_payload = generate_decoy_payload()
+        _decoy_name = secrets.token_hex(6) + ".pye"
+        with open(os.path.join(_runtime_dir, _decoy_name), "wb") as f: f.write(_garbage_payload)
         if i % 2 == 0:
-            sub = secrets.token_hex(4)
-            os.makedirs(os.path.join(rd, sub), exist_ok=True)
+            _sub_dir = secrets.token_hex(4)
+            os.makedirs(os.path.join(_runtime_dir, _sub_dir), exist_ok=True)
             for _ in range(2):
-                sn = secrets.token_hex(6) + ".pye"
-                with open(os.path.join(rd, sub, sn), "wb") as f:
+                _sub_file = secrets.token_hex(6) + ".pye"
+                with open(os.path.join(_runtime_dir, _sub_dir, _sub_file), "wb") as f:
                     f.write(generate_decoy_payload())
 
-    map_json = json.dumps(module_map, separators=(",", ":"))
-    loader_src = gen_loader_source()
-    escaped = json.dumps(map_json)
-    loader_src = loader_src.replace('_MAP = ""', f"_MAP = {escaped}")
-    loader_src = minify_source(loader_src, add_garbage=True)
+    _module_map_json = json.dumps(_module_hex_map, separators=(",", ":"))
+    _loader_source = gen_loader_source()
+    _escaped_json = json.dumps(_module_map_json)
+    _loader_source = _loader_source.replace('_MAP = ""', f"_MAP = {_escaped_json}")
+    if _vault:
+        _vault_pool_hex = [k.hex() for k in _vault.key_pool]
+        _vault_payload = json.dumps({
+            "pool": _vault_pool_hex,
+            "pos": _vault.real_position,
+            "mask": _vault.xor_mask.hex(),
+            "seed": _vault.index_seed or config.project.name,
+            "pay": [p.hex() for p in _vault.payloads],
+        }, separators=(",", ":"))
+        _vault_escaped = json.dumps(_vault_payload)
+        _loader_source = _loader_source.replace('_VAULT = ""', f"_VAULT = {_vault_escaped}")
+    _loader_source = minify_source(_loader_source, add_garbage=True)
 
-    compressed = zlib.compress(loader_src.encode(), 9)
+    _zlib_compressed = zlib.compress(_loader_source.encode(), 9)
     from sprotect.crypto import xor_stream as _xs
-    xored = _xs(compressed, loader_key)
-    nonce = os.urandom(12)
-    ct = nonce + AESGCM(loader_key).encrypt(nonce, xored, b"")
-    lkeys = [os.urandom(32) for _ in range(5)]
-    lkpos = secrets.randbelow(5)
-    lkeys[lkpos] = loader_key
-    lflags = (lkpos << 3) | (secrets.randbelow(8) << 6)
-    loader_payload = {"v":7,"d":ct.hex(),"l":lflags,"k1":lkeys[0].hex(),"k2":lkeys[1].hex(),
-                       "k3":lkeys[2].hex(),"k4":lkeys[3].hex(),"k5":lkeys[4].hex(),
+    _xor_obfuscated = _xs(_zlib_compressed, _loader_cipher_key)
+    _aes_nonce = os.urandom(12)
+    _aes_ciphertext = _aes_nonce + AESGCM(_loader_cipher_key).encrypt(_aes_nonce, _xor_obfuscated, b"")
+    _decoy_keys = [os.urandom(32) for _ in range(5)]
+    _real_key_slot = secrets.randbelow(5)
+    _decoy_keys[_real_key_slot] = _loader_cipher_key
+    _key_flags = (_real_key_slot << 3) | (secrets.randbelow(8) << 6)
+    loader_payload = {"v":7,"d":_aes_ciphertext.hex(),"l":_key_flags,"k1":_decoy_keys[0].hex(),"k2":_decoy_keys[1].hex(),
+                       "k3":_decoy_keys[2].hex(),"k4":_decoy_keys[3].hex(),"k5":_decoy_keys[4].hex(),
                        "f1":"","f2":"","f3":""}
-    open(os.path.join(rd, "loader.pye"), "wb").write(
+    open(os.path.join(_runtime_dir, "loader.pye"), "wb").write(
         json.dumps(loader_payload, separators=(",", ":")).encode())
 
     # Create _meta/ directory for metadata files
@@ -191,26 +257,26 @@ def build(project_dir, output_dir, config):
     os.makedirs(meta_dir, exist_ok=True)
 
     # Integrity manifest
-    manifest = {}
-    for r, _, fs in os.walk(rd):
+    _integrity_db = {}
+    for r, _, fs in os.walk(_runtime_dir):
         for f in sorted(fs):
             if f.endswith(".pye"):
                 fp = os.path.join(r, f)
-                h = hashlib.sha256()
+                _hash_obj = hashlib.sha256()
                 with open(fp, "rb") as fh:
                     while True:
-                        chunk = fh.read(65536)
-                        if not chunk: break
-                        h.update(chunk)
-                rel = os.path.relpath(fp, rd).replace("\\", "/")
-                manifest[rel] = h.hexdigest()
-    mpath = os.path.join(meta_dir, "integrity_manifest.json")
-    with open(mpath, "w", encoding="utf-8") as f:
-        json.dump(manifest, f, separators=(",", ":"))
-    print(f"  Integrity manifest: {mpath} ({len(manifest)} files)")
+                        _read_buffer = fh.read(65536)
+                        if not _read_buffer: break
+                        _hash_obj.update(_read_buffer)
+                _relative_path = os.path.relpath(fp, _runtime_dir).replace("\\", "/")
+                _integrity_db[_relative_path] = _hash_obj.hexdigest()
+    _manifest_path = os.path.join(meta_dir, "integrity_manifest.json")
+    with open(_manifest_path, "w", encoding="utf-8") as f:
+        json.dump(_integrity_db, f, separators=(",", ":"))
+    print(f"  Integrity manifest: {_manifest_path} ({len(_integrity_db)} files)")
 
     # Build spec
-    spec = {
+    _build_metadata = {
         "project": config.project.name,
         "version": config.project.version,
         "entry": config.project.entry,
@@ -219,24 +285,24 @@ def build(project_dir, output_dir, config):
         "encrypt_algorithm": config.encrypt.algorithm,
         "extra_layers": config.encrypt.extra_layers,
         "shard_count": config.encrypt.shard_count,
-        "watermark_batch_id": wm.bid if wm else "",
+        "watermark_batch_id": _watermark_engine.bid if _watermark_engine else "",
         "hybrid_encryption": config.encrypt.hybrid.enabled,
         "file_count": len(py_files),
         "decoy_count": max(2, len(py_files) // 2),
     }
-    spec_path = os.path.join(meta_dir, "build.spec")
-    with open(spec_path, "w", encoding="utf-8") as f:
-        json.dump(spec, f, indent=2, ensure_ascii=False)
-    print(f"  Build spec: {spec_path}")
+    _spec_save_path = os.path.join(meta_dir, "build.spec")
+    with open(_spec_save_path, "w", encoding="utf-8") as f:
+        json.dump(_build_metadata, f, indent=2, ensure_ascii=False)
+    print(f"  Build spec: {_spec_save_path}")
 
     # Protection report
-    md5_list = []
-    for rel, h in sorted(manifest.items()):
-        fsize = os.path.getsize(os.path.join(rd, rel))
-        md5_list.append(f"    <tr><td>{rel}</td><td>{h[:16]}...</td><td>{fsize}</td></tr>")
-    layers_html = ", ".join(config.encrypt.extra_layers) if config.encrypt.extra_layers else "none"
-    report_html = f"""<!DOCTYPE html>
-<html lang="zh-CN"><head><meta charset="UTF-8"><title>保护报告 - {spec['project']}</title>
+    _html_rows = []
+    for _relative_path, _hash_obj in sorted(_integrity_db.items()):
+        fsize = os.path.getsize(os.path.join(_runtime_dir, _relative_path))
+        _html_rows.append(f"    <tr><td>{_relative_path}</td><td>{_hash_obj[:16]}...</td><td>{fsize}</td></tr>")
+    _layers_display = ", ".join(config.encrypt.extra_layers) if config.encrypt.extra_layers else "none"
+    _html_report = f"""<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><title>保护报告 - {_build_metadata['project']}</title>
 <style>body{{font-family:sans-serif;max-width:800px;margin:40px auto;padding:0 20px}}
 table{{width:100%;border-collapse:collapse;margin:10px 0}}
 th,td{{padding:8px 12px;text-align:left;border-bottom:1px solid #ddd}}
@@ -244,61 +310,66 @@ th{{background:#333;color:#fff}}
 .section{{background:#f5f5f5;padding:8px 12px;font-weight:bold;margin-top:20px}}
 </style></head><body>
 <h1>保护报告</h1>
-<p>项目: {spec['project']} v{spec['version']} | 构建时间: {spec['built_at']}</p>
+<p>项目: {_build_metadata['project']} v{_build_metadata['version']} | 构建时间: {_build_metadata['built_at']}</p>
 <div class="section">保护配置</div>
-<table><tr><td>混淆等级</td><td>L{spec['obfuscate_level']}</td></tr>
-<tr><td>加密算法</td><td>{spec['encrypt_algorithm']}</td></tr>
-<tr><td>额外加密层</td><td>{layers_html}</td></tr>
-<tr><td>密钥分片数</td><td>{spec['shard_count']}</td></tr>
-<tr><td>混合加密</td><td>{'是' if spec['hybrid_encryption'] else '否'}</td></tr>
-<tr><td>水印批次</td><td>{spec['watermark_batch_id'] or '无'}</td></tr>
-<tr><td>文件数</td><td>{spec['file_count']} 源码 + {spec['decoy_count']} 诱饵</td></tr></table>
-<div class="section">文件清单 ({len(manifest)} 个)</div>
+<table><tr><td>混淆等级</td><td>L{_build_metadata['obfuscate_level']}</td></tr>
+<tr><td>加密算法</td><td>{_build_metadata['encrypt_algorithm']}</td></tr>
+<tr><td>额外加密层</td><td>{_layers_display}</td></tr>
+<tr><td>密钥分片数</td><td>{_build_metadata['shard_count']}</td></tr>
+<tr><td>混合加密</td><td>{'是' if _build_metadata['hybrid_encryption'] else '否'}</td></tr>
+<tr><td>水印批次</td><td>{_build_metadata['watermark_batch_id'] or '无'}</td></tr>
+<tr><td>文件数</td><td>{_build_metadata['file_count']} 源码 + {_build_metadata['decoy_count']} 诱饵</td></tr></table>
+<div class="section">文件清单 ({len(_integrity_db)} 个)</div>
 <table><thead><tr><th>文件</th><th>哈希</th><th>大小</th></tr></thead><tbody>
-{chr(10).join(md5_list)}
+{chr(10).join(_html_rows)}
 </tbody></table></body></html>"""
-    rpt_path = os.path.join(meta_dir, "protection_report.html")
-    with open(rpt_path, "w", encoding="utf-8") as f:
-        f.write(report_html)
-    print(f"  Protection report: {rpt_path}")
+    _report_path = os.path.join(meta_dir, "protection_report.html")
+    with open(_report_path, "w", encoding="utf-8") as f:
+        f.write(_html_report)
+    print(f"  Protection report: {_report_path}")
 
     # Watermark report
-    if wm:
+    if _watermark_engine:
         try:
-            records = []
-            for r, _, fs in os.walk(rd):
+            _watermark_records = []
+            for r, _, fs in os.walk(_runtime_dir):
                 for f in sorted(fs):
                     if f.endswith(".pye"):
                         fp = os.path.join(r, f)
                         try:
                             pp = json.loads(open(fp, "rb").read().decode())
                             w = pp.get("wm")
-                            if w: records.append({"file": f, "bid": w.get("bid",""),
+                            if w: _watermark_records.append({"file": f, "bid": w.get("bid",""),
                                                    "ts": w.get("ts",""), "sig": w.get("sig",""),
                                                    "auth": w.get("auth","")})
                         except: pass
-            report = {"generated": datetime.now(timezone.utc).isoformat(),
-                       "project": config.project.name, "total": len(records),
-                       "batch_id": wm.bid if wm else "",
-                       "records": records}
-            rpath = os.path.join(meta_dir, "watermark_report.json")
-            with open(rpath, "w", encoding="utf-8") as f:
-                json.dump(report, f, indent=2, ensure_ascii=False)
-            print(f"  Watermark report: {rpath}")
-            print(f"  Batch ID: {wm.bid}")
+            _wm_report = {"generated": datetime.now(timezone.utc).isoformat(),
+                       "project": config.project.name, "total": len(_watermark_records),
+                       "batch_id": _watermark_engine.bid if _watermark_engine else "",
+                       "records": _watermark_records}
+            _wm_report_path = os.path.join(meta_dir, "watermark_report.json")
+            with open(_wm_report_path, "w", encoding="utf-8") as f:
+                json.dump(_wm_report, f, indent=2, ensure_ascii=False)
+            print(f"  Watermark report: {_wm_report_path}")
+            print(f"  Batch ID: {_watermark_engine.bid}")
         except Exception as e:
             print(f"  Watermark report: {e}")
 
-    if helper_created:
-        try: os.remove(helper)
+    if _helper_generated:
+        try: os.remove(_shard_helper_path)
         except OSError: pass
 
-    entry_mod = config.project.entry.replace(".py", "")
-    entry_hex = module_map.get(entry_mod, "")
-    hc = config.encrypt.hybrid
-    gen_boot(output_dir, entry_mod, entry_hex, {}, loader_key, hybrid_key, hc.algorithm if hybrid_key else "RSA")
+    _entry_module = config.project.entry.replace(".py", "")
+    _entry_hex_alias = _module_hex_map.get(_entry_module, "")
+    _hybrid_cfg = config.encrypt.hybrid
+    gen_boot(output_dir, _entry_module, _entry_hex_alias, {}, _loader_cipher_key, _loader_build_salt, _hybrid_wrapped_key, _hybrid_cfg.algorithm if _hybrid_wrapped_key else "RSA")
 
-    for f in ["run.bat", "requirements.txt"]:
-        s = os.path.join(project_dir, f)
-        if os.path.isfile(s):
-            import shutil; shutil.copy2(s, os.path.join(output_dir, f))
+    # Cleanup decoy modules
+    _decoy_dir_path = os.path.join(project_dir, "_decoy_modules")
+    if os.path.isdir(_decoy_dir_path):
+        import shutil as _shu
+        _shu.rmtree(_decoy_dir_path, ignore_errors=True)
+
+    _copied = copy_non_py_files(project_dir, output_dir, config)
+    if _copied:
+        print(f"  Copied {_copied} non-Py files")

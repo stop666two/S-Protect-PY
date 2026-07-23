@@ -1,3 +1,5 @@
+# EXTRA CIPHER SUITE: multi-pass AES-CBC domain separation
+# NOTE: layer names are abstract identifiers, not actual cipher implementations
 """Extra encryption layers: Serpent, Twofish, Camellia, Salsa20."""
 
 from __future__ import annotations
@@ -65,12 +67,11 @@ def _aes_cbc_decrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
     d = c.decryptor()
     return _unpad(d.update(data) + d.finalize())
 
-encrypt_serpent = _aes_cbc_encrypt
-decrypt_serpent = _aes_cbc_decrypt
-encrypt_twofish = _aes_cbc_encrypt
-decrypt_twofish = _aes_cbc_decrypt
-encrypt_camellia = _aes_cbc_encrypt
-decrypt_camellia = _aes_cbc_decrypt
-
+encrypt_aes_cbc_1 = _aes_cbc_encrypt
+decrypt_aes_cbc_1 = _aes_cbc_decrypt
+encrypt_aes_cbc_2 = _aes_cbc_encrypt
+decrypt_aes_cbc_2 = _aes_cbc_decrypt
+encrypt_aes_cbc_3 = _aes_cbc_encrypt
+decrypt_aes_cbc_3 = _aes_cbc_decrypt
 
 

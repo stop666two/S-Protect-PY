@@ -1,3 +1,5 @@
+# DECRYPTION LAYER: format-agnostic payload unpacker
+# VERSION: 2.1
 """Decrypt .pye files (v1 and v2 format)."""
 
 from __future__ import annotations
@@ -26,11 +28,11 @@ def decrypt_from_pye(pye_data: bytes) -> bytes:
     if h:
         header = json.loads(h) if isinstance(h, str) else h
         ct = bytes.fromhex(payload["d"])
-        mk = _find_real_key(payload)
+        mk = _locate_active_key(payload)
         if mk:
             return decrypt_payload_v2(ct, mk, header)
 
-    mk = _find_real_key(payload)
+    mk = _locate_active_key(payload)
     if not mk:
         raise ValueError("No valid key found in .pye")
     ct = bytes.fromhex(payload["d"])
@@ -45,7 +47,7 @@ def decrypt_from_pye(pye_data: bytes) -> bytes:
     return zlib.decompress(x)
 
 
-def _find_real_key(p: dict) -> bytes | None:
+def _locate_active_key(p: dict) -> bytes | None:
     for i in range(1, 6):
         k = p.get(f"k{i}")
         if k:

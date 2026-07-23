@@ -1,15 +1,91 @@
 {
   // ===================================================================
-  // 自定义打包器 — 自解压单文件 / .pyz zip 包
+  // 自定义打包模块 — 自解压 zip 分发（PyInstaller 替代方案）
+  // 此模块生成运行时使用的引导模板，混淆保护必须完全开启
   // ===================================================================
-  // 替代 PyInstaller，生成自包含的 .py 脚本或 .pyz 压缩包。
-  // 输出 bundle.py 可直接用 python bundle.py 运行。
-  //
-  // ⚠️ 此模块包含代码生成模板（_STUB_TEMPLATE），
-  //    因此 encrypt_strings 等功能已在代码中强制关闭。
-  // ===================================================================
-
   obfuscate: {
+    // --- 混淆等级: L5 = 全部启用 ---
     level: 5,
+    // --- 变量重命名 ---
+    rename_variables: true,
+    // --- 函数重命名（保留公开 API 名） ---
+    rename_functions: true,
+    // --- 类重命名 ---
+    rename_classes: true,
+    rename_rules: {
+      // --- 命名风格: hex=十六进制随机串 ---
+      style: "hex",
+      // --- 保留名称（外部导入的 API） ---
+      reserved: ["pack_to_single_file", "pack_to_onefile"],
+      // --- 混淆名前缀 ---
+      prefix: "_0x",
+      // --- 混淆名后缀 ---
+      suffix: "",
+      // --- 混淆名最小长度 ---
+      min_length: 6,
+      // --- 黑名单 ---
+      blacklist: [],
+    },
+    // --- 字符串加密 ---
+    encrypt_strings: true,
+    // --- 数字加密 ---
+    encrypt_numbers: true,
+    // --- 字符串最小加密长度 ---
+    string_min_length: 3,
+    // --- 字符串加密比例 ---
+    string_encrypt_ratio: 1.0,
+    // --- 控制流平坦化 ---
+    control_flow_flattening: true,
+    // --- 死代码注入 ---
+    dead_code_injection: true,
+    // --- 死代码密度 ---
+    dead_code_density: 0.3,
+    // --- 不透明谓词数量 ---
+    opaque_predicate_count: 2,
+    // --- 删除文档字符串 ---
+    remove_docstrings: true,
+    // --- 删除注释 ---
+    remove_comments: true,
+    // --- 删除空行 ---
+    strip_blank_lines: true,
+    // --- 最大行长: 0=不限制 ---
+    max_line_length: 0,
+    // --- 字符串分割 ---
+    string_split: true,
+    // --- 字符串加密方式 ---
+    string_cipher: "mixed",
+    // --- 导入混淆 ---
+    obfuscate_imports: true,
+    // --- 函数调用混淆 ---
+    obfuscate_calls: true,
+    // --- 算术表达式混淆 ---
+    obfuscate_arithmetic: true,
+    // --- 布尔值混淆 ---
+    obfuscate_booleans: true,
+  },
+  // ===================================================================
+  // 反调试配置 — 打包后的文件运行时需防范逆向
+  // ===================================================================
+  anti_debug: {
+    // --- 总开关 ---
+    enabled: true,
+    // --- 检测到异常时动作 ---
+    action: "exit",
+    // --- 启用的检测项 ---
+    checks: ["pdb", "ptrace", "debugger", "vm", "sandbox", "timing", "cuckoo", "ida", "procmon", "gpu"],
+    // --- 逐检测项动作覆盖 ---
+    per_check_actions: [],
+    // --- 进程白名单 ---
+    process_whitelist: [],
+    // --- 阻断 sys.settrace ---
+    block_tracing: true,
+    // --- 时序检测阈值（秒） ---
+    timing_threshold: 2.0,
+    // --- 退出码 ---
+    exit_code: 1,
+    // --- 退出时清空内存 ---
+    wipe_memory: true,
+    // --- 退出时破坏内存 ---
+    corrupt_on_exit: false,
   },
 }

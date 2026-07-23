@@ -43,7 +43,7 @@
     //   而此模块的 encrypt_strings 和 control_flow_flattening
     //   必须为 false（会破坏生成的 loader 代码），
     //   因此不能使用 L5 的分组预设，需手动逐项指定。
-  level: 5,
+    level: 5,
 
     // --- rename_variables: 变量重命名 ---
     // 可用值: true | false
@@ -78,6 +78,23 @@
       // 注意事项: hex 风格最稳定，兼容所有 Python 版本
       style: "hex",
 
+      // --- prefix: 重命名前缀 ---
+      // 可用值: "_0x" | "_" | 任意合法标识符前缀
+      // 推荐值: "_0x"
+      // 注意事项: style="custom" 时生效，其他风格忽略此值
+      prefix: "_0x",
+
+      // --- suffix: 重命名后缀 ---
+      // 可用值: "" | "_" | 任意合法标识符后缀
+      // 推荐值: ""
+      suffix: "",
+
+      // --- min_length: 重命名最小长度 ---
+      // 可用值: 4 ~ 32
+      // 推荐值: 6
+      // 注意事项: 防止生成过短的名称导致命名冲突
+      min_length: 6,
+
       // --- reserved: 保留名称列表 ---
       // 可用值: ["gen_loader_source", "gen_boot"] | []
       // 不可用: 非字符串 / 空字符串
@@ -86,6 +103,13 @@
       //   虽然 rename_functions=true 不影响模块导入，
       //   但 reserved 列表确保函数名在 traceback 中可识别
       reserved: ["gen_loader_source", "gen_boot"],
+
+      // --- blacklist: 黑名单名称列表 ---
+      // 可用值: ["__init__", "__name__"] | []
+      // 推荐值: []
+      // 注意事项: 黑名单中的名称不会被重命名，
+      //   用于保护 Python 魔术方法和内置属性
+      blacklist: [],
     },
 
     // --- encrypt_strings: 字符串加密 ---
@@ -115,6 +139,7 @@
     //   简言之: 模板字符串作为 Python 字符串在运行时是正常的，
     //   但写入到文件的代码片段失去了运行时的解密环境。
     //   结论: encrypt_strings 必须 false。
+    encrypt_strings: false,
 
     // --- encrypt_numbers: 数字加密 ---
     // 可用值: true | false
@@ -125,6 +150,25 @@
     //   但增加了不必要的复杂度和出错概率。
     //   原则：任何会出现在生成代码中的内容都不能被加密/混淆。
     encrypt_numbers: false,
+
+    // --- string_min_length: 字符串加密最小长度 ---
+    // 可用值: 2 ~ 20
+    // 推荐值: 3
+    // 注意事项: 虽 encrypt_strings=false，保留此项用于
+    //   未来切换为 true 时直接生效
+    string_min_length: 3,
+
+    // --- string_encrypt_ratio: 字符串加密比例 ---
+    // 可用值: 0.0 ~ 1.0
+    // 推荐值: 0.8
+    // 注意事项: 当前未启用（encrypt_strings=false）
+    string_encrypt_ratio: 0.8,
+
+    // --- string_cipher: 字符串加密算法 ---
+    // 可用值: "aes" | "xor" | "base64" | "rot13"
+    // 推荐值: "aes"
+    // 注意事项: 当前未启用（encrypt_strings=false）
+    string_cipher: "aes",
 
     // --- control_flow_flattening: 控制流平坦化 ---
     // 可用值: true | false
@@ -145,6 +189,7 @@
     //   这种情况下生成的 loader.py 语法完全错误。
     //   更严重的是：此 bug 不是每次都出现，取决于状态分配算法。
     //   结论: 控制流平坦化必须 false。
+    control_flow_flattening: false,
 
     // --- dead_code_injection: 死代码注入 ---
     // 可用值: true | false
@@ -160,6 +205,21 @@
     //   有些混淆工具的死代码注入不够智能，可能将假代码插入到
     //   f-string 表达式内部——这直接产生语法错误。
     //   结论: dead_code_injection 必须 false。
+    dead_code_injection: false,
+
+    // --- dead_code_density: 死代码密度 ---
+    // 可用值: 0.1 ~ 0.5
+    // 推荐值: 0.3
+    // 注意事项: 当前未启用（dead_code_injection=false），
+    //   保留此项用于未来切换时直接生效
+    dead_code_density: 0.3,
+
+    // --- opaque_predicate_count: 不透明谓词数量 ---
+    // 可用值: 1 ~ 20
+    // 推荐值: 5
+    // 注意事项: 不透明谓词是永远为真/假的表达式，
+    //   用于创建看似有分支的假控制流
+    opaque_predicate_count: 5,
 
     // --- string_split: 字符串分割 ---
     // 可用值: true | false
@@ -195,6 +255,30 @@
     // 可用值: true | false
     // 推荐值: true
     obfuscate_booleans: true,
+
+    // --- remove_docstrings: 移除文档字符串 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // 注意事项: 移除所有 """docstring""" 和 '''docstring'''
+    remove_docstrings: true,
+
+    // --- remove_comments: 移除注释 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // 注意事项: 移除所有单行注释 #，防止注释泄露模板生成逻辑
+    remove_comments: true,
+
+    // --- strip_blank_lines: 移除空行 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // 注意事项: 移除多余空行，压缩代码体积
+    strip_blank_lines: true,
+
+    // --- max_line_length: 最大行长度 ---
+    // 可用值: 100 ~ 500
+    // 推荐值: 200
+    // 注意事项: 防止单行过长导致某些分析工具崩溃
+    max_line_length: 200,
   },
 
   // ===================================================================
@@ -432,7 +516,7 @@
     //   • 相比主模块混淆（level 4），二次混淆等级较低
     //   • 因为 loader 代码本身是在资源受限的环境下运行
     //   • 过高的等级可能导致生成的 loader 启动延迟
-  level: 5,
+    level: 5,
 
     // --- variable_rename: 重命名 loader 中的变量 ---
     // 可用值: true | false

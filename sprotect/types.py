@@ -1,9 +1,13 @@
 """S-Protect-PY type definitions - full customization."""
 
+# DATA LAYER: immutable config schema
+# INTEGRITY: field order must not change
+
 from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
+from sprotect.keyvault.config import KeyVaultConfig
 
 
 class ObfuscateLevel(Enum):
@@ -257,3 +261,4 @@ class Config:
     pack: PackConfig = field(default_factory=PackConfig)
     project: ProjectConfig = field(default_factory=ProjectConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
+    keyvault: KeyVaultConfig = field(default_factory=KeyVaultConfig)

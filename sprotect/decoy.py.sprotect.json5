@@ -16,8 +16,22 @@
   //     就被设计为无意义，重命名不冲突。
   // ===================================================================
 
+  // ===================================================================
+  // reserved: 保留名称列表
+  // 数据类型: string[]
+  // 作用: 指定在混淆过程中必须保持原名的标识符。
+  //   这些名称不会被重命名，以确保外部调用能够正确引用。
+  // 注意事项: 即使 rename_functions=true，此列表中的函数名也会被排除。
+  // ===================================================================
+  reserved: [
+    "generate_decoy_module",  // 公开 API — 被构建脚本调用的入口函数
+    "DecoyCipher",            // 公开类 — 诱饵密码类的对外接口
+    "FakeValidator",          // 公开类 — 假验证器的对外接口
+  ],
+
   obfuscate: {
     // --- level: 混淆强度 ---
+    // 数据类型: number（整数）
     // 可用值: 0 | 1 | 2 | 3 | 4 | 5
     //         0 = 不混淆
     //         1 = 最低
@@ -25,17 +39,20 @@
     //         3 = 中等
     //         4 = 高
     //         5 = 最高
-    // 推荐值: 3
+    // 推荐值: 5
     // 禁止值: 0, 1（诱饵模块虽非核心安全模块，但仍需一定混淆
     //   以防止攻击者通过混淆程度差异区分诱饵和真实模块）
     // ⚠️ 模块特殊原因: 诱饵模块的混淆强度应与真实模块接近。
     //   若诱饵完全不混淆，攻击者会发现"有几个模块没混淆"，
-    //   从而直接定位到这些是诱饵。level 3 与大多数真实模块的
+    //   从而直接定位到这些是诱饵。level 5 与大多数真实模块的
     //   level 2-5 混在一起难以区分。
-  level: 5,
+    level: 5,
 
     // --- rename_variables: 局部变量重命名 ---
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 将局部变量名替换为无意义短名称
+    // false = 保留原始变量名
     // 推荐值: true
     // 禁止值: 无
     // ⚠️ 模块特殊原因: 诱饵模块中的变量名（如 fake_data、
@@ -44,27 +61,57 @@
     rename_variables: true,
 
     // --- rename_functions: 函数重命名 ---
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 将函数名替换为无意义短名称
+    // false = 保留原始函数名
     // 推荐值: true
     // 禁止值: 无
     // ⚠️ 模块特殊原因: 诱饵模块的公开函数（如 generate_fake_key、
     //   simulate_decrypt）虽然没有外部引用，但函数名本身
     //   揭示了此模块的"欺骗"性质，必须重命名。
+    //   注: reserved 列表中的函数名不受此设置影响。
     rename_functions: true,
 
     // --- rename_classes: 类重命名 ---
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 将类名替换为无意义短名称
+    // false = 保留原始类名
     // 推荐值: true
     // 禁止值: 无
     // ⚠️ 模块特殊原因: 诱饵模块中的类名（如 DecoyCipher、
     //   FakeValidator）直接暴露虚假身份，必须重命名。
+    //   注: reserved 列表中的类名不受此设置影响。
     rename_classes: true,
 
+    // --- rename_rules: 重命名规则 ---
+    // 可用值: { style: string, reserved: string[], prefix: string, suffix: string, min_length: number, blacklist: string[] }
+    //   - style: 命名风格 — "hex" | "random" | "chinese" | "invisible"
+    //   - reserved: 保留名称列表（不会被重命名的标识符）
+    //   - prefix: 重命名后标识符的前缀，如 "_"
+    //   - suffix: 重命名后标识符的后缀，如 "_"
+    //   - min_length: 重命名后标识符的最小长度
+    //   - blacklist: 禁止使用的标识符列表
+    // 推荐值: { style: "hex", reserved: [], prefix: "", suffix: "", min_length: 6, blacklist: [] }
+    // ⚠️ 模块特殊原因: 诱饵模块的公开函数名设计为无意义，无需额外保留。
+    //   顶层 reserved 列表已保护外部接口。hex 风格生成不可读短标识符即可。
+    rename_rules: {
+      style: "hex",
+      reserved: [],
+      prefix: "",
+      suffix: "",
+      min_length: 6,
+      blacklist: [],
+    },
+
     // --- encrypt_strings: 字符串加密 ---
-    // ❌ 必须 false
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 所有字符串常量在编译时编码为加密形式，运行时解密
+    // false = 字符串以明文形式存储在字节码中
     // 推荐值: false
-    // 禁止值: true
+    // ❌ 禁止值: true
     // ⚠️ 模块特殊原因:
     //   此模块的核心是"生成看起来像真实代码的诱饵代码"。
     //   实现方式是在 Python 代码中包含大量模板字符串：
@@ -78,15 +125,19 @@
     //   如果 encrypt_strings=true，混淆器会在编译时将模板字符串
     //   编码为加密形式，运行时才解密。但问题是：
     //   ① 诱饵生成函数在构建时执行，它输出的诱饵代码字符串
-    //      会先被 decrypt 再被 c 写入文件 → 诱饵代码中充满乱码
+    //      会先被 decrypt 再被写入文件 → 诱饵代码中充满乱码
     //   ② 攻击者看到乱码的"假代码"会立刻意识到这是诱饵或垃圾文件
     //   ③ 正确的诱饵应该看起来是完全合法的 Python 代码
     //
     //   所以: encrypt_strings 必须 false，确保模板字符串以
     //   明文形式编译，生成的诱饵代码是干净合法的 Python 代码。
+    encrypt_strings: false,
 
     // --- encrypt_numbers: 数字常量加密 ---
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 数字常量在字节码中被替换为运行时计算的表达式
+    // false = 数字以明文形式存储在字节码中
     // 推荐值: false
     // 禁止值: 无
     // ⚠️ 模块特殊原因: 诱饵模块中的数字（如假密钥长度 32、
@@ -94,23 +145,93 @@
     //   真相反倒是"这些数字看起来越真实越好"。
     encrypt_numbers: false,
 
+    // --- string_min_length: 字符串最小加密长度 ---
+    // 可用值: number（>= 0，小于此长度的字符串不加密）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: encrypt_strings=false，此字段无效。
+    string_min_length: 0,
+
+    // --- string_encrypt_ratio: 字符串加密比例 ---
+    // 可用值: 0.0 ~ 1.0（0.0=不加密任何字符串，1.0=加密所有字符串）
+    // 推荐值: 0.0
+    // ⚠️ 模块特殊原因: encrypt_strings=false，此字段无效。
+    string_encrypt_ratio: 0.0,
+
+    // --- string_cipher: 字符串加密算法 ---
+    // 可用值: "base64" | "xor" | "aes"
+    // 推荐值: "base64"
+    // ⚠️ 模块特殊原因: encrypt_strings=false，此字段无效。
+    string_cipher: "base64",
+
     // --- control_flow_flattening: 控制流平坦化 ---
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 将顺序执行的代码转换为 switch-case 分发器结构
+    // false = 保持原始控制流
     // 推荐值: false
     // 禁止值: 无
     // ⚠️ 模块特殊原因: 诱饵模块逻辑简单（字符串拼接 + 条件选择），
-    //   平坦化后生成的诱饵代码质量不会受影响。
-    //   但考虑到性能（构建诱饵时执行），保持 false。
+    //   但控制流平坦化会使生成的诱饵代码（模板本身经过平坦化后
+    //   存储在变量中）变得极其难以阅读。更重要的是，平坦化后
+    //   的代码体积膨胀 5-10 倍，而本模块在构建时执行，
+    //   性能影响虽然不大，但产生的混乱代码对诱饵模块
+    //   自身没有实际安全收益。保持 false。
+    control_flow_flattening: false,
 
     // --- dead_code_injection: 死代码注入 ---
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 在每个函数中插入不可达的死代码块
+    // false = 不注入死代码
     // 推荐值: false
     // 禁止值: 无
     // ⚠️ 模块特殊原因: 死代码注入会影响诱饵生成执行的性能，
     //   并且诱饵模块本身的逻辑复杂度很低，注入死代码收益有限。
+    //   注入的假代码可能使生成的诱饵模板字符串意外包含
+    //   垃圾内容，降低诱饵代码的逼真度。
+    dead_code_injection: false,
+
+    // --- dead_code_density: 死代码密度 ---
+    // 可用值: 0.0 ~ 1.0（0.0=不注入，1.0=最大密度）
+    // 推荐值: 0.0
+    // ⚠️ 模块特殊原因: dead_code_injection=false，此字段无效。
+    dead_code_density: 0.0,
+
+    // --- opaque_predicate_count: 不透明谓词数量 ---
+    // 可用值: number（>= 0）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: 此模块控制流简单，无需谓词混淆。
+    opaque_predicate_count: 0,
+
+    // --- remove_docstrings: 移除文档字符串 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 保留 docstring 有助于模块维护。
+    remove_docstrings: false,
+
+    // --- remove_comments: 移除注释 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // ⚠️ 模块特殊原因: 注释在构建产物中无意义，移除可减小体积。
+    remove_comments: true,
+
+    // --- strip_blank_lines: 移除空行 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // ⚠️ 模块特殊原因: 移除空行可减小构建产物体积。
+    strip_blank_lines: true,
+
+    // --- max_line_length: 最大行长度 ---
+    // 可用值: number（0 = 不限制）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: 此模块简单，无需控制行长度。
+    max_line_length: 0,
 
     // --- string_split: 字符串拆分 ---
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 将字符串字面量拆分为 "a" + "b" + "c" 形式
+    // false = 保持字符串为完整字面量
     // 推荐值: true
     // 禁止值: 无
     // ⚠️ 模块特殊原因: 即使 encrypt_strings=false，字符串拆分
@@ -119,7 +240,10 @@
     string_split: true,
 
     // --- obfuscate_imports: 导入混淆 ---
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 将 import 语句通过 __import__() 间接调用实现
+    // false = 保持原始 import 语句
     // 推荐值: true
     // 禁止值: 无
     // ⚠️ 模块特殊原因: 诱饵模块可能导入 random、string、time
@@ -128,7 +252,10 @@
     obfuscate_imports: true,
 
     // --- obfuscate_calls: 调用混淆 ---
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 函数调用通过 getattr/apply 间接实现
+    // false = 保持直接调用
     // 推荐值: true
     // 禁止值: 无
     // ⚠️ 模块特殊原因: 诱饵模块内部函数之间的调用关系
@@ -137,7 +264,10 @@
     obfuscate_calls: true,
 
     // --- obfuscate_arithmetic: 算术表达式混淆 ---
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 将简单算术表达式替换为等价但复杂的形式
+    // false = 保持原始算术表达式
     // 推荐值: true
     // 禁止值: 无
     // ⚠️ 模块特殊原因: 诱饵模块中有大量"看起来像在计算"的
@@ -146,7 +276,10 @@
     obfuscate_arithmetic: true,
 
     // --- obfuscate_booleans: 布尔表达式混淆 ---
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 将简单布尔表达式替换为等价但复杂的形式
+    // false = 保持原始布尔表达式
     // 推荐值: true
     // 禁止值: 无
     // ⚠️ 模块特殊原因: 诱饵模块中的条件判断（如 if key_len > 16:）
@@ -156,14 +289,82 @@
 
   anti_debug: {
     // --- enabled: 反调试开关 ---
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 开启反调试检测，运行时检测调试器并执行预设动作
+    // false = 关闭反调试检测
     // 推荐值: false
-    // 禁止值: true
+    // ❌ 禁止值: true
     // ⚠️ 模块特殊原因: 诱饵模块仅用于生成诱饵文件，在构建时
     //   执行，构建环境是开发者的机器。开发者可能需要在构建时
     //   调试诱饵生成逻辑（查看生成的诱饵代码内容是否正确）。
     //   开启反调试会导致开发者无法调试构建流程。
     //   此模块不部署到最终用户环境。
     enabled: false,
+
+    // --- action: 检测到调试器时的响应动作 ---
+    // 数据类型: string
+    // 可用值: "exit" | "warn" | "crash" | "silent"
+    //   "exit"   = 立即退出进程
+    //   "warn"   = 输出警告但不阻止执行
+    //   "crash"  = 触发异常/崩溃
+    //   "silent" = 静默记录但无可见响应
+    // 推荐值: "warn"（enabled=false 时此字段不生效，仅作占位）
+    // 注意事项: enabled=false 时此配置不会被使用。
+    action: "warn",
+
+    // --- checks: 启用的反调试检测方法列表 ---
+    // 数据类型: string[]
+    // 可用值: "pdb" | "debugger" | "trace" | "time" | "ptrace"
+    //   "pdb"      = 检测 pdb 模块是否已加载
+    //   "debugger" = 检测通用调试器特征
+    //   "trace"    = 检测 sys.settrace 是否被设置
+    //   "time"     = 检测代码执行时间差异（被调试时代码执行更慢）
+    //   "ptrace"   = 检测 ptrace 系统调用（仅 Linux）
+    // 推荐值: ["pdb", "debugger"]（enabled=false 时不生效）
+    // 注意事项: enabled=false 时此配置不会被使用。
+    checks: ["pdb", "debugger"],
+
+    // --- per_check_actions: 逐检测项动作覆盖 ---
+    // 可用值: string[]，与 checks 数组一一对应
+    // 推荐值: []
+    // ⚠️ 模块特殊原因: checks 不生效，此字段无效。
+    per_check_actions: [],
+
+    // --- process_whitelist: 进程白名单 ---
+    // 可用值: string[]（进程名列表）
+    // 推荐值: []
+    // ⚠️ 模块特殊原因: enabled=false，无需白名单。
+    process_whitelist: [],
+
+    // --- block_tracing: 阻止系统级跟踪 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: enabled=false，无需阻止跟踪。
+    block_tracing: false,
+
+    // --- timing_threshold: 反调试超时阈值（秒） ---
+    // 可用值: number（0 = 禁用定时检查）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: enabled=false，无需定时检查。
+    timing_threshold: 0,
+
+    // --- exit_code: 反调试触发时的进程退出码 ---
+    // 可用值: number（通常为 1 或负数）
+    // 推荐值: 1
+    // ⚠️ 模块特殊原因: enabled=false，此字段不生效。
+    exit_code: 1,
+
+    // --- wipe_memory: 退出时擦除敏感内存 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 此模块无敏感内存数据。
+    wipe_memory: false,
+
+    // --- corrupt_on_exit: 退出时损坏关键数据 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 此模块无关键数据可损坏。
+    corrupt_on_exit: false,
   },
 }

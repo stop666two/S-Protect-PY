@@ -1,9 +1,11 @@
+# SOURCE MINIFIER: AST-level compaction + noise injection
+# STYLES: 17 naming variants, 23 comment templates
 """Source minifier: 6+ naming rules, lib alias hiding, garbage comments, trap code."""
 
 from __future__ import annotations
 import ast, zlib, secrets, re
 
-_GARBAGE_COMMENTS = [
+_G82f1e = [
     "# TODO: implement error handling",
     "# FIXME: memory leak here",
     "# NOTE: deprecated in 3.12",
@@ -24,7 +26,7 @@ _GARBAGE_COMMENTS = [
 ]
 
 # 6+ variable naming styles
-_VAR_STYLES = [
+_V39c2a = [
     lambda: f"_{secrets.token_hex(5)}",
     lambda: f"_0x{secrets.token_hex(4)}",
     lambda: f"_{secrets.token_hex(6)}",
@@ -48,21 +50,21 @@ _VAR_STYLES = [
 ]
 
 # Library names that should be aliased
-_LIB_ALIASES = {
+_L57d8b = {
     "zlib": None, "hashlib": None, "hmac": None, "base64": None,
     "struct": None, "json": None, "msgpack": None, "AESGCM": None,
 }
 
 
-def _gen_name(idx: int) -> str:
-    return _VAR_STYLES[idx % len(_VAR_STYLES)]()
+def _generate_alias(idx: int) -> str:
+    return _V39c2a[idx % len(_V39c2a)]()
 
 
-def _garbage_comment() -> str:
-    return secrets.choice(_GARBAGE_COMMENTS) + "\n"
+def _inject_noise() -> str:
+    return secrets.choice(_G82f1e) + "\n"
 
 
-def _make_trap_code() -> str:
+def _weave_trap() -> str:
     """Generate valid-looking Python code that infinite loops."""
     tn = f"_t{secrets.token_hex(4)}"
     cn = f"_c{secrets.token_hex(3)}"
@@ -91,7 +93,7 @@ def minify_source(source: str, add_garbage: bool = True, make_trap: bool = False
                   alias_libs: bool = True) -> str:
     """Minify Python source: strip docs, shorten names, add garbage, alias libs."""
     if make_trap:
-        return _make_trap_code()
+        return _weave_trap()
 
     try:
         tree = ast.parse(source)
@@ -138,15 +140,15 @@ def minify_source(source: str, add_garbage: bool = True, make_trap: bool = False
             if field == 'name' and isinstance(value, str):
                 if value.startswith("_") or value in import_names or value in _RESERVED: continue
                 if value not in mapping:
-                    mapping[value] = _gen_name(idx); idx += 1
+                    mapping[value] = _generate_alias(idx); idx += 1
             if field == 'id' and isinstance(value, str):
                 if value.startswith("_") or value in import_names or value in _RESERVED: continue
                 if value not in mapping:
-                    mapping[value] = _gen_name(idx); idx += 1
+                    mapping[value] = _generate_alias(idx); idx += 1
             if field == 'arg' and isinstance(value, str):
                 if value.startswith("__"): continue
                 if value not in mapping:
-                    mapping[value] = _gen_name(idx); idx += 1
+                    mapping[value] = _generate_alias(idx); idx += 1
 
     # Apply renames
     class Renamer(ast.NodeTransformer):
@@ -189,7 +191,7 @@ def minify_source(source: str, add_garbage: bool = True, make_trap: bool = False
 
     # Add garbage comments at random positions
     if add_garbage:
-        comments = "".join(_garbage_comment() for _ in range(secrets.randbelow(4)+2))
+        comments = "".join(_inject_noise() for _ in range(secrets.randbelow(4)+2))
         pos = secrets.randbelow(max(1, len(result)))
         result.insert(pos, comments)
         minified = "\n".join(result)

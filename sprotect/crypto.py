@@ -1,3 +1,5 @@
+# CRYPTO CORE v7.4 - multi-algorithm engine
+# WARNING: key material in memory is ephemeral
 """Cryptographic engine: PyCryptodome ChaCha20, blake3, multi-layer key derivation."""
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ def aes_decrypt(ct: bytes, key: bytes) -> bytes:
     return AESGCM(key).decrypt(ct[:12], ct[12:], b"")
 
 def split_key(key: bytes, n: int) -> list[bytes]:
+    """XOR-based key splitting (legacy, kept for compatibility)."""
     if n < 2: raise ValueError("Need >= 2 shards")
     shards = [os.urandom(len(key)) for _ in range(n - 1)]
     final = bytearray(len(key))
@@ -38,14 +41,112 @@ def split_key(key: bytes, n: int) -> list[bytes]:
     shards.append(bytes(final))
     return shards
 
-def _xof(l: int, s: bytes) -> bytes:
+
+# ---------------------------------------------------------------------------
+# GF(256) / Shamir's Secret Sharing
+# ---------------------------------------------------------------------------
+
+_GF_MOD = 0x11B  # AES irreducible polynomial: x^8 + x^4 + x^3 + x + 1
+
+def _gf_mul(a: int, b: int) -> int:
+    """Multiply two bytes in GF(256) with AES irreducible poly 0x11B."""
+    p = 0
+    for _ in range(8):
+        if b & 1:
+            p ^= a
+        hi = a & 0x80
+        a = (a << 1) & 0xFF
+        if hi:
+            a ^= (_GF_MOD & 0xFF)
+        b >>= 1
+    return p & 0xFF
+
+def _gf_pow(base: int, exp: int) -> int:
+    """Exponentiation in GF(256): base^exp."""
+    r = 1
+    while exp:
+        if exp & 1:
+            r = _gf_mul(r, base)
+        base = _gf_mul(base, base)
+        exp >>= 1
+    return r
+
+def _gf_inv(x: int) -> int:
+    """Multiplicative inverse in GF(256). 0 -> 0."""
+    if x == 0:
+        return 0
+    return _gf_pow(x, 254)
+
+def _gf_eval(coeffs: list[int], x: int) -> int:
+    """Evaluate polynomial at point x using Horner's method."""
+    r = 0
+    for c in reversed(coeffs):
+        r = _gf_mul(r, x) ^ c
+    return r
+
+def _lagrange_coeff(px: list[int], i: int, x: int) -> int:
+    """Compute Lagrange interpolation coefficient L_i(x) for point set px."""
+    num, den = 1, 1
+    xi = px[i]
+    for j, xj in enumerate(px):
+        if j != i:
+            num = _gf_mul(num, x ^ xj)
+            den = _gf_mul(den, xi ^ xj)
+    return _gf_mul(num, _gf_inv(den))
+
+
+def shamir_split(secret: bytes, n: int, threshold: int) -> list[tuple[int, bytes]]:
+    """Split secret into N shares using Shamir's Secret Sharing over GF(256).
+    
+    Returns list of (share_id, share_bytes). Any `threshold` shares can reconstruct.
+    Coeffs are random but IDENTICAL across shares (same polynomial).
+    """
+    if threshold > n:
+        raise ValueError("Threshold cannot exceed total shares")
+    if threshold < 2:
+        raise ValueError("Threshold must be >= 2")
+    if n < 2:
+        raise ValueError("Need >= 2 shares")
+    
+    # Pre-generate random coefficients for each byte, identical for all shares
+    byte_coeffs = []
+    for byte_idx in range(len(secret)):
+        coeffs = [secret[byte_idx]] + [secrets.randbits(8) for _ in range(threshold - 1)]
+        byte_coeffs.append(coeffs)
+    
+    result = []
+    for sid in range(1, n + 1):
+        share = bytearray()
+        for byte_idx in range(len(secret)):
+            share.append(_gf_eval(byte_coeffs[byte_idx], sid))
+        result.append((sid, bytes(share)))
+    return result
+
+
+def shamir_combine(shares: list[tuple[int, bytes]]) -> bytes:
+    """Reconstruct secret from M shares using Lagrange interpolation."""
+    if len(shares) < 2:
+        raise ValueError("Need at least 2 shares to reconstruct")
+    
+    px = [s[0] for s in shares]
+    coeffs = [_lagrange_coeff(px, i, 0) for i in range(len(px))]
+    
+    result = bytearray(len(shares[0][1]))
+    for byte_idx in range(len(result)):
+        v = 0
+        for i, (_, data) in enumerate(shares):
+            v ^= _gf_mul(data[byte_idx], coeffs[i])
+        result[byte_idx] = v
+    return bytes(result)
+
+def _x9f3e2a(l: int, s: bytes) -> bytes:
     r, c = bytearray(), 0
     while len(r) < l:
         r.extend(hashlib.sha256(s + c.to_bytes(4, "big")).digest()); c += 1
     return bytes(r[:l])
 
 def xor_stream(d: bytes, k: bytes) -> bytes:
-    return bytes(a ^ b for a, b in zip(d, _xof(len(d), k)))
+    return bytes(a ^ b for a, b in zip(d, _x9f3e2a(len(d), k)))
 
 def chain_hash(payloads, key):
     import json
@@ -185,7 +286,7 @@ def encrypt_payload_v2(source_data: bytes, real_key: bytes,
                        extra_layers: list[str] = None,
                        compress: int = 9) -> tuple[bytes, dict]:
     from sprotect.crypto_extra import (
-        encrypt_serpent, encrypt_twofish, encrypt_camellia, encrypt_salsa20,
+        encrypt_aes_cbc_1, encrypt_aes_cbc_2, encrypt_aes_cbc_3, encrypt_salsa20,
     )
     extra_layers = extra_layers or []
     data = zlib.compress(source_data, level=compress)
@@ -201,8 +302,8 @@ def encrypt_payload_v2(source_data: bytes, real_key: bytes,
         iv = os.urandom(16) if algo != "salsa20" else os.urandom(8)
         layer_ivs[algo] = {"iv": iv.hex(), "salt": salt.hex()}
         fn = {
-            "serpent": encrypt_serpent, "twofish": encrypt_twofish,
-            "camellia": encrypt_camellia, "salsa20": encrypt_salsa20,
+            "serpent": encrypt_aes_cbc_1, "twofish": encrypt_aes_cbc_2,
+            "camellia": encrypt_aes_cbc_3, "salsa20": encrypt_salsa20,
         }.get(algo)
         if fn:
             ct = fn(ct, lk, iv)
@@ -217,7 +318,7 @@ def encrypt_payload_v2(source_data: bytes, real_key: bytes,
 
 def decrypt_payload_v2(data: bytes, real_key: bytes, header: dict) -> bytes:
     from sprotect.crypto_extra import (
-        decrypt_serpent, decrypt_twofish, decrypt_camellia, decrypt_salsa20,
+        decrypt_aes_cbc_1, decrypt_aes_cbc_2, decrypt_aes_cbc_3, decrypt_salsa20,
     )
     ct = data
     for algo in reversed(header.get("extra_layers", [])):
@@ -226,8 +327,8 @@ def decrypt_payload_v2(data: bytes, real_key: bytes, header: dict) -> bytes:
         salt = bytes.fromhex(info.get("salt", ""))
         lk, _ = derive_layer_key(real_key, f"sprotect:{algo}")
         fn = {
-            "serpent": decrypt_serpent, "twofish": decrypt_twofish,
-            "camellia": decrypt_camellia, "salsa20": decrypt_salsa20,
+            "serpent": decrypt_aes_cbc_1, "twofish": decrypt_aes_cbc_2,
+            "camellia": decrypt_aes_cbc_3, "salsa20": decrypt_salsa20,
         }.get(algo)
         if fn:
             ct = fn(ct, lk, iv)

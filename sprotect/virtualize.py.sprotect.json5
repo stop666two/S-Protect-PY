@@ -1,16 +1,82 @@
 {
   // ===================================================================
-  // 代码虚拟化引擎 — 将 Python 函数编译为自定义 VM 指令执行
+  // 代码虚拟化模块 — 自定义 VM 字节码解释器
+  // 将 Python 函数编译为自定义指令集，运行时通过 VMInterpreter 执行
+  // 此模块是保护链的核心组件，混淆必须完全开启
   // ===================================================================
-  // 将源码中的指定函数编译为自定义栈式虚拟机 bytecode，
-  // 替代原始 Python 字节码执行，使反汇编结果完全不可读。
-  //
-  // ⚠️ 注意：此模块的混淆配置已使用 L5 全开，
-  //    但某些功能（encrypt_strings、dead_code_injection 等）
-  //    已在代码中强制关闭以防止破坏 VM 编译器逻辑。
-  // ===================================================================
-
   obfuscate: {
+    // --- 混淆等级: L5 = 全部启用 ---
     level: 5,
+    // --- 变量重命名 ---
+    rename_variables: true,
+    // --- 函数重命名（保留公开 API 名） ---
+    rename_functions: true,
+    // --- 类重命名 ---
+    rename_classes: true,
+    rename_rules: {
+      // --- 命名风格: hex=十六进制随机串 ---
+      style: "hex",
+      // --- 保留名称（VMCompiler/VMInterpreter 被外部按名引用） ---
+      reserved: ["VMCompiler", "VMInterpreter", "compile_function", "virtualize_source", "compile", "run", "get_bytecode", "get_metadata"],
+      // --- 混淆名前缀 ---
+      prefix: "_0x",
+      // --- 混淆名后缀 ---
+      suffix: "",
+      // --- 混淆名最小长度 ---
+      min_length: 6,
+      // --- 黑名单 ---
+      blacklist: [],
+    },
+    // --- 字符串加密 ---
+    encrypt_strings: true,
+    // --- 数字加密 ---
+    encrypt_numbers: true,
+    // --- 字符串最小加密长度 ---
+    string_min_length: 3,
+    // --- 字符串加密比例 ---
+    string_encrypt_ratio: 1.0,
+    // --- 控制流平坦化 ---
+    control_flow_flattening: true,
+    // --- 死代码注入 ---
+    dead_code_injection: true,
+    // --- 死代码密度 ---
+    dead_code_density: 0.3,
+    // --- 不透明谓词数量 ---
+    opaque_predicate_count: 2,
+    // --- 删除文档字符串 ---
+    remove_docstrings: true,
+    // --- 删除注释 ---
+    remove_comments: true,
+    // --- 删除空行 ---
+    strip_blank_lines: true,
+    // --- 最大行长: 0=不限制 ---
+    max_line_length: 0,
+    // --- 字符串分割 ---
+    string_split: true,
+    // --- 字符串加密方式 ---
+    string_cipher: "mixed",
+    // --- 导入混淆 ---
+    obfuscate_imports: true,
+    // --- 函数调用混淆 ---
+    obfuscate_calls: true,
+    // --- 算术表达式混淆 ---
+    obfuscate_arithmetic: true,
+    // --- 布尔值混淆 ---
+    obfuscate_booleans: true,
+  },
+  // ===================================================================
+  // 反调试配置 — 虚拟化引擎运行时需防范逆向
+  // ===================================================================
+  anti_debug: {
+    enabled: true,
+    action: "exit",
+    checks: ["pdb", "ptrace", "debugger", "vm", "sandbox", "timing", "cuckoo", "ida", "procmon", "gpu"],
+    per_check_actions: [],
+    process_whitelist: [],
+    block_tracing: true,
+    timing_threshold: 2.0,
+    exit_code: 1,
+    wipe_memory: true,
+    corrupt_on_exit: false,
   },
 }

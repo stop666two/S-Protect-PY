@@ -12,8 +12,21 @@
   //   • 此模块不涉及运行时安全，anti_debug 关闭
   // ===================================================================
 
+  // ===================================================================
+  // reserved: 保留名称列表
+  // 数据类型: string[]
+  // 作用: 指定在混淆过程中必须保持原名的标识符。
+  //   这些名称不会被重命名，以确保外部调用能够正确引用。
+  // 注意事项: 即使 rename_functions=true，此列表中的函数名也会被排除。
+  // ===================================================================
+  reserved: [
+    "decrypt_from_pye",  // 公开 API — 被测试代码直接导入引用的解密函数
+    "encrypt_to_pye",    // 公开 API — 被测试代码直接导入引用的加密函数
+  ],
+
   obfuscate: {
     // --- level: 混淆强度 ---
+    // 数据类型: number（整数）
     // 可用值: 0 | 1 | 2 | 3 | 4 | 5
     //         0 = 不混淆
     //         1 = 最低（仅基础重命名）
@@ -26,12 +39,13 @@
     // ⚠️ 模块特殊原因: 此模块是纯测试工具，不在最终用户环境运行，
     //   且函数签名为测试所依赖。强度 2 已足够防止 casual 级别的
     //   源码阅读，同时确保重命名不会影响测试框架调用。
-  level: 5,
+    level: 2,
 
     // --- rename_variables: 局部变量重命名 ---
+    // 数据类型: boolean
     // 可用值: true | false
-    // true  = 变量名混淆
-    // false = 保留变量名
+    // true  = 将局部变量名替换为无意义短名称
+    // false = 保留原始变量名
     // 推荐值: true
     // 禁止值: 无（局部变量不对外暴露）
     // ⚠️ 模块特殊原因: 此模块内部变量（如 version, payload,
@@ -41,10 +55,12 @@
     rename_variables: true,
 
     // --- rename_functions: 函数重命名 ---
+    // 数据类型: boolean
     // 可用值: true | false
-    // ❌ 必须 false
+    // true  = 将函数名替换为无意义短名称
+    // false = 保留原始函数名
     // 推荐值: false
-    // 禁止值: true
+    // ❌ 禁止值: true
     // ⚠️ 模块特殊原因:
     //   • decrypt_from_pye(data: bytes) -> CodeType
     //   • encrypt_to_pye(code: CodeType, key: bytes) -> bytes
@@ -54,23 +70,47 @@
     //   重命名后测试代码无法找到函数入口，测试框架会抛出
     //   ImportError / AttributeError。
     //   如果未来改为通过字典映射或 getattr 动态调用，才可设为 true。
+    //   注: reserved 列表中的函数名也受此保护。
     rename_functions: false,
 
     // --- rename_classes: 类重命名 ---
+    // 数据类型: boolean
     // 可用值: true | false
-    // true  = 类名混淆
-    // false = 保留类名
+    // true  = 将类名替换为无意义短名称
+    // false = 保留原始类名
     // 推荐值: false
     // 禁止值: 无
     // ⚠️ 模块特殊原因: 此模块目前以函数式编程为主，无公开类。
     //   设为 false 无影响，设为 true 也无不妥。
     //   保持 false 以减少不必要的混淆开销。
+    //   注: reserved 列表中的类名不受此设置影响。
     rename_classes: false,
 
+    // --- rename_rules: 重命名规则 ---
+    // 可用值: { style: string, reserved: string[], prefix: string, suffix: string, min_length: number, blacklist: string[] }
+    //   - style: 命名风格 — "hex" | "random" | "chinese" | "invisible"
+    //   - reserved: 保留名称列表（不会被重命名的标识符）
+    //   - prefix: 重命名后标识符的前缀，如 "_"
+    //   - suffix: 重命名后标识符的后缀，如 "_"
+    //   - min_length: 重命名后标识符的最小长度
+    //   - blacklist: 禁止使用的标识符列表
+    // 推荐值: { style: "hex", reserved: [], prefix: "", suffix: "", min_length: 6, blacklist: [] }
+    // ⚠️ 模块特殊原因: 此模块 rename_functions=false，rename_rules 不生效，
+    //   但保留此字段以确保配置完整性。
+    rename_rules: {
+      style: "hex",
+      reserved: [],
+      prefix: "",
+      suffix: "",
+      min_length: 6,
+      blacklist: [],
+    },
+
     // --- encrypt_strings: 字符串加密 ---
+    // 数据类型: boolean
     // 可用值: true | false
-    // true  = 字符串运行时解密
-    // false = 字符串明文存储
+    // true  = 所有字符串常量在编译时编码为加密形式，运行时解密
+    // false = 字符串以明文形式存储在字节码中
     // 推荐值: false
     // 禁止值: 无
     // ⚠️ 模块特殊原因: 此模块的字符串主要是：
@@ -79,20 +119,42 @@
     //   这些字符串对外部攻击者来说信息价值有限（构建工具链
     //   内部实现细节），且此模块不在最终用户设备上运行。
     //   考虑到性能测试（此模块在 CI 中频繁执行），不开加密。
+    encrypt_strings: false,
 
     // --- encrypt_numbers: 数字常量加密 ---
+    // 数据类型: boolean
     // 可用值: true | false
-    // true  = 数字动态计算
-    // false = 数字明文存储
+    // true  = 数字常量在字节码中被替换为运行时计算的表达式
+    // false = 数字以明文形式存储在字节码中
     // 推荐值: false
+    // 禁止值: 无
     // ⚠️ 模块特殊原因: 数字（magic header 值、版本号等）
     //   被测试用例直接断言验证，加密后不影响测试正确性，
     //   但无实际安全收益（模块仅测试用），保持 false 减少构建时间。
     encrypt_numbers: false,
 
+    // --- string_min_length: 字符串最小加密长度 ---
+    // 可用值: number（>= 0，小于此长度的字符串不加密）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: encrypt_strings=false，此字段无效。
+    string_min_length: 0,
+
+    // --- string_encrypt_ratio: 字符串加密比例 ---
+    // 可用值: 0.0 ~ 1.0（0.0=不加密任何字符串，1.0=加密所有字符串）
+    // 推荐值: 0.0
+    // ⚠️ 模块特殊原因: encrypt_strings=false，此字段无效。
+    string_encrypt_ratio: 0.0,
+
+    // --- string_cipher: 字符串加密算法 ---
+    // 可用值: "base64" | "xor" | "aes"
+    // 推荐值: "base64"
+    // ⚠️ 模块特殊原因: encrypt_strings=false，此字段无效。
+    string_cipher: "base64",
+
     // --- control_flow_flattening: 控制流平坦化 ---
+    // 数据类型: boolean
     // 可用值: true | false
-    // true  = switch-case 分发器结构
+    // true  = 将顺序执行的代码转换为 switch-case 分发器结构
     // false = 保持原始控制流
     // 推荐值: false
     // 禁止值: 无
@@ -100,15 +162,60 @@
     //   后会导致 pytest 的 coverage 追踪困难（行号映射错乱），
     //   不利于 CI 中的覆盖率统计。此模块非安全敏感，不值得
     //   牺牲测试可观测性。
+    control_flow_flattening: false,
 
     // --- dead_code_injection: 死代码注入 ---
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 在每个函数中插入不可达的死代码块
+    // false = 不注入死代码
     // 推荐值: false
+    // 禁止值: 无
     // ⚠️ 模块特殊原因: 测试代码需要对模块进行分支覆盖分析，
     //   死代码注入会污染 coverage 数据。此模块无需此保护。
+    dead_code_injection: false,
+
+    // --- dead_code_density: 死代码密度 ---
+    // 可用值: 0.0 ~ 1.0（0.0=不注入，1.0=最大密度）
+    // 推荐值: 0.0
+    // ⚠️ 模块特殊原因: dead_code_injection=false，此字段无效。
+    dead_code_density: 0.0,
+
+    // --- opaque_predicate_count: 不透明谓词数量 ---
+    // 可用值: number（>= 0）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: 此模块控制流简单，无需谓词混淆。
+    opaque_predicate_count: 0,
+
+    // --- remove_docstrings: 移除文档字符串 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 保留 docstring 有助于模块维护。
+    remove_docstrings: false,
+
+    // --- remove_comments: 移除注释 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // ⚠️ 模块特殊原因: 注释在构建产物中无意义，移除可减小体积。
+    remove_comments: true,
+
+    // --- strip_blank_lines: 移除空行 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // ⚠️ 模块特殊原因: 移除空行可减小构建产物体积。
+    strip_blank_lines: true,
+
+    // --- max_line_length: 最大行长度 ---
+    // 可用值: number（0 = 不限制）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: 此模块简单，无需控制行长度。
+    max_line_length: 0,
 
     // --- string_split: 字符串拆分 ---
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 将字符串字面量拆分为 "a" + "b" + "c" 形式
+    // false = 保持字符串为完整字面量
     // 推荐值: true
     // 禁止值: 无
     // ⚠️ 模块特殊原因: 字符串拆分不改变行为，不增加运行时开销，
@@ -117,7 +224,10 @@
     string_split: true,
 
     // --- obfuscate_imports: 导入混淆 ---
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 将 import 语句通过 __import__() 间接调用实现
+    // false = 保持原始 import 语句
     // 推荐值: true
     // 禁止值: 无
     // ⚠️ 模块特殊原因: 导入 hashlib、struct、types 等不敏感，
@@ -126,7 +236,10 @@
     obfuscate_imports: true,
 
     // --- obfuscate_calls: 调用混淆 ---
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 函数调用通过 getattr/apply 间接实现
+    // false = 保持直接调用
     // 推荐值: true
     // 禁止值: 无
     // ⚠️ 模块特殊原因: 函数调用混淆不影响测试框架的
@@ -135,7 +248,10 @@
     obfuscate_calls: true,
 
     // --- obfuscate_arithmetic: 算术表达式混淆 ---
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 将简单算术表达式替换为等价但复杂的形式
+    // false = 保持原始算术表达式
     // 推荐值: true
     // 禁止值: 无
     // ⚠️ 模块特殊原因: 此模块有大量字节偏移量计算
@@ -144,7 +260,10 @@
     obfuscate_arithmetic: true,
 
     // --- obfuscate_booleans: 布尔表达式混淆 ---
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 将简单布尔表达式替换为等价但复杂的形式
+    // false = 保持原始布尔表达式
     // 推荐值: true
     // 禁止值: 无
     // ⚠️ 模块特殊原因: 版本判断（if version == 1: ...）
@@ -154,7 +273,10 @@
 
   anti_debug: {
     // --- enabled: 反调试开关 ---
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 开启反调试检测，运行时检测调试器并执行预设动作
+    // false = 关闭反调试检测
     // 推荐值: false
     // 禁止值: 无
     // ⚠️ 模块特殊原因: 此模块仅在构建/测试环境中运行。
@@ -162,5 +284,70 @@
     //   开启反调试会导致测试无法正常调试。
     //   此模块不在最终用户设备上运行，无反调试需求。
     enabled: false,
+
+    // --- action: 检测到调试器时的响应动作 ---
+    // 数据类型: string
+    // 可用值: "exit" | "warn" | "crash" | "silent"
+    //   "exit"   = 立即退出进程
+    //   "warn"   = 输出警告但不阻止执行
+    //   "crash"  = 触发异常/崩溃
+    //   "silent" = 静默记录但无可见响应
+    // 推荐值: "warn"（enabled=false 时此字段不生效，仅作占位）
+    // 注意事项: enabled=false 时此配置不会被使用。
+    action: "warn",
+
+    // --- checks: 启用的反调试检测方法列表 ---
+    // 数据类型: string[]
+    // 可用值: "pdb" | "debugger" | "trace" | "time" | "ptrace"
+    //   "pdb"      = 检测 pdb 模块是否已加载
+    //   "debugger" = 检测通用调试器特征
+    //   "trace"    = 检测 sys.settrace 是否被设置
+    //   "time"     = 检测代码执行时间差异（被调试时代码执行更慢）
+    //   "ptrace"   = 检测 ptrace 系统调用（仅 Linux）
+    // 推荐值: ["pdb", "debugger"]（enabled=false 时不生效）
+    // 注意事项: enabled=false 时此配置不会被使用。
+    checks: ["pdb", "debugger"],
+
+    // --- per_check_actions: 逐检测项动作覆盖 ---
+    // 可用值: string[]，与 checks 数组一一对应
+    // 推荐值: []
+    // ⚠️ 模块特殊原因: checks 不生效，此字段无效。
+    per_check_actions: [],
+
+    // --- process_whitelist: 进程白名单 ---
+    // 可用值: string[]（进程名列表）
+    // 推荐值: []
+    // ⚠️ 模块特殊原因: enabled=false，无需白名单。
+    process_whitelist: [],
+
+    // --- block_tracing: 阻止系统级跟踪 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: enabled=false，无需阻止跟踪。
+    block_tracing: false,
+
+    // --- timing_threshold: 反调试超时阈值（秒） ---
+    // 可用值: number（0 = 禁用定时检查）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: enabled=false，无需定时检查。
+    timing_threshold: 0,
+
+    // --- exit_code: 反调试触发时的进程退出码 ---
+    // 可用值: number（通常为 1 或负数）
+    // 推荐值: 1
+    // ⚠️ 模块特殊原因: enabled=false，此字段不生效。
+    exit_code: 1,
+
+    // --- wipe_memory: 退出时擦除敏感内存 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 此模块无敏感内存数据。
+    wipe_memory: false,
+
+    // --- corrupt_on_exit: 退出时损坏关键数据 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 此模块无关键数据可损坏。
+    corrupt_on_exit: false,
   },
 }

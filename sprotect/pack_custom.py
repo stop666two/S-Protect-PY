@@ -1,10 +1,13 @@
+# CUSTOM PACKAGER: self-extracting zip-based distribution
+# ALTERNATIVE: standalone .pyz format
+
 """Custom self-extracting packager (alternative to PyInstaller)."""
 from __future__ import annotations
 import os, sys, zlib, base64, struct, marshal, json, hashlib
 from pathlib import Path
 
 
-def _find_python_dll() -> str | None:
+def _locate_python_runtime() -> str | None:
     """Locate python3xx.dll for bundling."""
     for p in sys.path:
         d = os.path.join(p, "..", "..")
@@ -15,13 +18,13 @@ def _find_python_dll() -> str | None:
     return None
 
 
-def _embed_data(data: bytes) -> str:
+def _compress_and_encode(data: bytes) -> str:
     """Compress and encode data for embedding."""
     compressed = zlib.compress(data, 9)
     return base64.a85encode(compressed).decode()
 
 
-_STUB_TEMPLATE = '''"""Self-extracting encrypted package."""
+_BOOTSTRAP_STUB = '''"""Self-extracting encrypted package."""
 import sys, os, zlib, base64, marshal, json, importlib.abc, importlib.machinery
 
 _EMBEDDED = {embedded}
@@ -34,8 +37,8 @@ def _decrypt(data: bytes, key: bytes) -> bytes:
 def _decompress(data: bytes) -> bytes:
     return zlib.decompress(data)
 
-_RD = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_runtime")
-os.makedirs(_RD, exist_ok=True)
+_rt_workdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_runtime")
+os.makedirs(_rt_workdir, exist_ok=True)
 
 for fname, (ct, kh) in _EMBEDDED.items():
     key = bytes.fromhex(kh)
@@ -43,13 +46,13 @@ for fname, (ct, kh) in _EMBEDDED.items():
         raw = _decompress(_decrypt(bytes.fromhex(ct), key))
     except Exception:
         continue
-    open(os.path.join(_RD, fname), "wb").write(raw)
+    open(os.path.join(_rt_workdir, fname), "wb").write(raw)
 
-_KEY = bytes.fromhex("{loader_key}")
-_LDR = os.path.join(_RD, "loader.pye")
+_loader_master_key = bytes.fromhex("{loader_key}")
+_LDR = os.path.join(_rt_workdir, "loader.pye")
 if os.path.isfile(_LDR):
     import subprocess as _sp
-    _sp.run([sys.executable, os.path.join(os.path.dirname(_RD), "main.py")], cwd=os.path.dirname(_RD))
+    _sp.run([sys.executable, os.path.join(os.path.dirname(_rt_workdir), "main.py")], cwd=os.path.dirname(_rt_workdir))
 '''
 
 
@@ -71,7 +74,7 @@ def pack_to_single_file(output_dir: str, target_exe: str,
             kh = hashlib.sha256(data).hexdigest()[:32]
             embedded[f.name] = (data.hex(), kh)
 
-    script = _STUB_TEMPLATE.format(
+    script = _BOOTSTRAP_STUB.format(
         embedded=json.dumps(embedded),
         manifest=json.dumps(list(embedded.keys())),
         loader_key=loader_key.hex(),
@@ -97,7 +100,7 @@ def pack_to_onefile(output_dir: str, target: str,
                 zf.write(f, f.relative_to(out_dir))
 
         if include_python:
-            python_dll = _find_python_dll()
+            python_dll = _locate_python_runtime()
             if python_dll:
                 zf.write(python_dll, os.path.basename(python_dll))
 

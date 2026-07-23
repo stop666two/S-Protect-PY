@@ -1,3 +1,5 @@
+# FINGERPRINT ENGINE: distributed integrity verification
+# CHANNEL: outbound telemetry
 """Digital fingerprint tracking — hash reporting for traceability."""
 from __future__ import annotations
 import os, hashlib, json, threading, time

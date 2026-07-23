@@ -3,6 +3,9 @@
 from __future__ import annotations
 import sys, os, platform, ctypes, gc, signal, struct, time
 
+# ANTI-DEBUG SUITE: environment hardening layer
+# ACTIVE: runtime process introspection
+
 class AntiDebug:
     """Multi-layer anti-debugging and environment detection.
 
@@ -15,13 +18,13 @@ class AntiDebug:
     """
 
     def __init__(self, cfg):
-        self.cfg = cfg
+        self._ad_config = cfg
         self._block_trace = False
 
     def run(self) -> bool:
-        for c in self.cfg.checks:
+        for c in self._ad_config.checks:
             fn = getattr(self, f"_chk_{c}", None)
-            if fn and fn(): self._act(c); return False
+            if fn and fn(): self._resolve_action(c); return False
         return True
 
     def block_tracing(self):
@@ -88,13 +91,13 @@ class AntiDebug:
     def _chk_sandbox(self):
         """Detect common malware analysis sandboxes."""
         if platform.system() == "Windows":
-            for ind in ["analysis", "sandbox", "malware"]:
-                p = os.path.join(os.environ.get("SYSTEMDRIVE", "C:") + "\\", ind)
+            for _sig_path in ["analysis", "sandbox", "malware"]:
+                p = os.path.join(os.environ.get("SYSTEMDRIVE", "C:") + "\\", _sig_path)
                 if os.path.isdir(p): return True
             ud = os.environ.get("USERPROFILE", "")
             if ud:
-                for ind in ["Desktop\\analysis", "Sandbox", "Malware"]:
-                    if os.path.isdir(os.path.join(ud, ind)): return True
+                for _sig_path in ["Desktop\\analysis", "Sandbox", "Malware"]:
+                    if os.path.isdir(os.path.join(ud, _sig_path)): return True
         if os.path.isfile("/proc/sys/kernel/ostype"):
             try:
                 with open("/proc/sys/kernel/ostype") as f:
@@ -188,24 +191,23 @@ class AntiDebug:
         except: pass
         return False
 
-    def _act(self, c: str):
-        if not hasattr(self, "cfg") or self.cfg.action.value == "exit":
-            self._wipe(); os._exit(1)
-        elif self.cfg.action.value == "warn":
-            print(f"[S-Protect] Warning: {c}")
-        elif self.cfg.action.value == "corrupt":
-            self._corrupt(); os._exit(1)
+    def _resolve_action(self, _check_name: str):
+        if not hasattr(self, "_ad_config") or self._ad_config.action.value == "exit":
+            self._purge_sensitive(); os._exit(1)
+        elif self._ad_config.action.value == "warn":
+            print(f"[S-Protect] Warning: {_check_name}")
+        elif self._ad_config.action.value == "corrupt":
+            self._scramble_heap(); os._exit(1)
 
-    def _wipe(self):
+    def _purge_sensitive(self):
         for o in gc.get_objects():
             try:
-                if isinstance(o, (bytes, bytearray)) and len(o) < 100000:
-                    try: o[:] = b"\x00" * len(o)
-                    except: pass
+                if isinstance(o, bytearray) and len(o) < 100000:
+                    o[:] = b"\x00" * len(o)
             except: pass
         gc.collect()
 
-    def _corrupt(self):
+    def _scramble_heap(self):
         import random
         for o in gc.get_objects():
             try:

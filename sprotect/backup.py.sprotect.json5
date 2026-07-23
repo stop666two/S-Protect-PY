@@ -16,130 +16,152 @@
   // ===================================================================
 
   obfuscate: {
-    // --- level: 混淆强度 ---
-    // 可用值: 0 | 1 | 2 | 3 | 4 | 5
-    //         0 = 不混淆
-    //         1 = 最低
-    //         2 = 低（适合纯工具类模块）
-    //         3 = 中等
-    //         4 = 高
-    //         5 = 最高
-    // 推荐值: 2
-    // 禁止值: 0（即使工具模块也保持最低度混淆以统一构建产物风格）
-    // ⚠️ 模块特殊原因: 备份模块仅约 20 行逻辑，使用标准库
-    //   zipfile。不需要高强度混淆，level 2 足以让此模块在
-    //   构建产物中不被一眼识别为"简单的 zip 打包工具"。
-    //   更高的级别（4-5）会导致无谓的构建时间增加。
-  level: 5,
+    // --- 混淆等级 (1-5) ---
+    // 等级说明: L1=仅变量重命名, L2=+字符串加密, L3=+控制流平坦化+不透明谓词,
+    //           L4=+数字加密+死代码注入, L5=全部启用
+    level: 5,
 
-    // --- rename_variables: 局部变量重命名 ---
-    // 可用值: true | false
-    // 推荐值: true
-    // 禁止值: 无
-    // ⚠️ 模块特殊原因: backup_project() 中的局部变量
-    //   （zip_path、backup_name、exclude_dirs 等）虽然
-    //   信息价值低，但重命名无成本无副作用，开启即可。
+    // --- 重命名变量 ---
+    // true: 局部变量名改为随机十六进制 (如 _0xa1b2)
+    // false: 保留原名，降低混淆效果
     rename_variables: true,
 
-    // --- rename_functions: 函数重命名 ---
-    // 可用值: true | false
-    // 推荐值: false
-    // 禁止值: 无
-    // ⚠️ 模块特殊原因: backup_project() 函数名可能被外部
-    //   构建脚本通过名称引用，且此函数仅有一个公开入口。
-    //   保持原名有助于构建出错时快速定位问题。
+    // --- 重命名函数 ---
+    // true: 函数名改为随机标识符
+    // false: 保留原名（当函数被其他模块按名导入时必须 false）
     rename_functions: false,
 
-    // --- rename_classes: 类重命名 ---
-    // 可用值: true | false
-    // 推荐值: false
-    // ⚠️ 模块特殊原因: 此模块无自定义类（仅使用内置 zipfile
-    //   类）。设为 false 无任何影响。
+    // --- 重命名类 ---
+    // true: 类名改为随机标识符
+    // false: 保留原名（当类被 isinstance/类型注解引用时必须 false）
     rename_classes: false,
 
-    // --- encrypt_strings: 字符串加密 ---
-    // 可用值: true | false
-    // 推荐值: false
-    // 禁止值: 无
-    // ⚠️ 模块特殊原因: 此模块字符串主要是：
-    //   • 文件路径（project_dir, zip_output）
-    //   • 错误消息（"Backup failed: {e}"）
-    //   既不包含密钥，也不包含算法标识。加密徒增构建时间。
+    rename_rules: {
+      // --- 命名风格 ---
+      // hex=十六进制, chinese=中文, invisible=零宽字符, math-symbols=数学符号, custom=自定义
+      style: "hex",
+      // --- 保留名称（这些标识符不会被混淆） ---
+      reserved: [],
+      // --- 混淆名前缀 ---
+      prefix: "_0x",
+      // --- 混淆名后缀 ---
+      suffix: "",
+      // --- 混淆名最小长度 ---
+      min_length: 6,
+      // --- 黑名单（强制不改名的标识符） ---
+      blacklist: [],
+    },
 
-    // --- encrypt_numbers: 数字常量加密 ---
-    // 可用值: true | false
-    // 推荐值: false
-    // ⚠️ 模块特殊原因: 无敏感数字常量。唯一数字可能是
-    //   zipfile.ZIP_DEFLATED（枚举值），加密无收益。
+    // --- 字符串加密 ---
+    // true: 字符串常量转为 base64/XOR 编码，运行时解码
+    // false: 保持明文（当字符串用于配置匹配/F-字符串模板时必须 false）
+    encrypt_strings: false,
+
+    // --- 数字加密 ---
+    // true: 数字常量转为 struct.pack 运行时计算
+    // false: 保持原值（当数字用于配置默认值/Enum值/模板时必须 false）
     encrypt_numbers: false,
 
-    // --- control_flow_flattening: 控制流平坦化 ---
-    // 可用值: true | false
-    // 推荐值: false
-    // ⚠️ 模块特殊原因: 此模块逻辑是：创建 ZipFile → 遍历文件
-    //   → 逐个写入 → 关闭。平坦化对如此简单的线性逻辑
-    //   几乎无混淆效果，反而增加构建开销。
+    // --- 字符串最小加密长度 ---
+    // 小于此长度的字符串不加密（避免 "a","b" 等单字符也加密）
+    string_min_length: 3,
 
-    // --- dead_code_injection: 死代码注入 ---
-    // 可用值: true | false
-    // 推荐值: false
-    // ⚠️ 模块特殊原因: 仅 20 行代码的模块，注入死代码后
-    //   代码量可能膨胀 2-3 倍，而安全收益极低。
-    //   此模块不值得牺牲可读性来换取微不足道的混淆增益。
+    // --- 字符串加密比例 (0.0 ~ 1.0) ---
+    // 1.0 = 全部加密, 0.5 = 50% 随机加密
+    string_encrypt_ratio: 1.0,
 
-    // --- string_split: 字符串拆分 ---
-    // 可用值: true | false
-    // 推荐值: true
-    // 禁止值: 无
-    // ⚠️ 模块特殊原因: 字符串拆分不影响逻辑，无副作用。
-    //   路径字符串（如 os.path.join(project_dir, "build")）
-    //   拆分后略微增加阅读难度，无成本。
+    // --- 控制流平坦化 ---
+    // true: 顺序代码转为 while-switch 状态机
+    // false: 保持原控制流（当代码含 yield/async/异常处理时必须 false）
+    control_flow_flattening: false,
+
+    // --- 死代码注入 ---
+    // true: 注入永远不会执行的代码块（含不透明谓词）
+    // false: 不注入（当函数体为空或含 yield 时必须 false）
+    dead_code_injection: false,
+
+    // --- 死代码密度 (0.0 ~ 1.0) ---
+    // 0.3 = 每10行注入3行死代码, 大于0.8会严重膨胀体积
+    dead_code_density: 0.3,
+
+    // --- 不透明谓词数量 ---
+    // 每个函数中插入的永远为真的条件判断数
+    opaque_predicate_count: 2,
+
+    // --- 删除文档字符串 ---
+    remove_docstrings: true,
+
+    // --- 删除注释 ---
+    remove_comments: true,
+
+    // --- 删除空行 ---
+    strip_blank_lines: true,
+
+    // --- 最大行长 (0=不限制) ---
+    max_line_length: 0,
+
+    // --- 字符串分割为碎片 ---
+    // true: 将字符串拆为多个碎片 + 拼接
     string_split: true,
 
-    // --- obfuscate_imports: 导入混淆 ---
-    // 可用值: true | false
-    // 推荐值: true
-    // 禁止值: 无
-    // ⚠️ 模块特殊原因: 导入 zipfile、os、logging 等标准库
-    //   没有安全风险，但混淆 import 可以统一构建产物风格。
+    // --- 字符串加密方式 ---
+    // base64: 标准 base64 编码, xor: 单字节 XOR, mixed: 随机选择
+    string_cipher: "mixed",
+
+    // --- 导入混淆 ---
+    // true: import os → os = __import__("os")
     obfuscate_imports: true,
 
-    // --- obfuscate_calls: 调用混淆 ---
-    // 可用值: true | false
-    // 推荐值: true
-    // 禁止值: 无
-    // ⚠️ 模块特殊原因: 函数调用（如 zipfile.ZipFile()、
-    //   os.walk()）混淆后不影响功能，可以开启。
+    // --- 函数调用混淆 ---
+    // true: func(a) → (lambda _a0: func(_a0))(a)
     obfuscate_calls: true,
 
-    // --- obfuscate_arithmetic: 算术表达式混淆 ---
-    // 可用值: true | false
-    // 推荐值: true
-    // 禁止值: 无
-    // ⚠️ 模块特殊原因: 即使只有简单的路径拼接
-    //   （os.path.join 等），混淆也无负面影响。
+    // --- 算术表达式混淆 ---
+    // true: a+b → a-(-b), a*2^n → a<<n
     obfuscate_arithmetic: true,
 
-    // --- obfuscate_booleans: 布尔表达式混淆 ---
-    // 可用值: true | false
-    // 推荐值: true
-    // 禁止值: 无
-    // ⚠️ 模块特殊原因: 文件排除判断（if name.endswith('.pyc'):）
-    //   等简单条件，混淆无害。
+    // --- 布尔值混淆 ---
+    // true: True → 1==1, False → 1!=0
     obfuscate_booleans: true,
   },
 
   anti_debug: {
-    // --- enabled: 反调试开关 ---
-    // 可用值: true | false
-    // 推荐值: false
-    // 禁止值: true（工具模块开启反调试 = 干扰开发者正常工作）
-    // ⚠️ 模块特殊原因:
-    //   ① 备份模块仅在构建时运行，构建环境是开发者机器
-    //   ② 开发者可能需要在构建时调试备份逻辑
-    //      （如检查备份文件是否包含了正确的内容）
-    //   ③ 此模块无任何需要保护的敏感逻辑
-    //   结论：反调试完全不需要，且会带来负面效果。
+    // --- 反调试总开关 ---
+    // true: 运行时执行反调试检测
+    // false: 跳过所有检测（仅构建时/测试模块）
     enabled: false,
+
+    // --- 检测到异常时的动作 ---
+    // exit: 立即退出, warn: 打印警告继续, corrupt: 破坏内存后退出
+    action: "exit",
+
+    // --- 启用的检测项列表 ---
+    // pdb/debugger: Python调试器, ptrace: 系统级跟踪,
+    // vm: 虚拟机检测, sandbox: 沙箱检测,
+    // timing: 时序检测, cuckoo: Cuckoo沙箱,
+    // ida: IDA/Ghidra远程调试, procmon: 进程监控工具,
+    // gpu: GPU调试环境
+    checks: ["pdb", "debugger", "vm"],
+
+    // --- 逐检测项动作覆盖 ---
+    per_check_actions: [],
+
+    // --- 进程白名单 ---
+    process_whitelist: [],
+
+    // --- 阻断 sys.settrace/sys.setprofile ---
+    block_tracing: true,
+
+    // --- 时序检测阈值（秒） ---
+    timing_threshold: 2.0,
+
+    // --- 退出码 ---
+    exit_code: 1,
+
+    // --- 退出时清空内存 ---
+    wipe_memory: true,
+
+    // --- 退出时破坏内存 ---
+    corrupt_on_exit: false,
   },
 }

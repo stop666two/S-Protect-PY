@@ -3,6 +3,9 @@
 from __future__ import annotations
 import os, sys, hashlib, hmac, gc, threading, time
 
+# ANTI-TAMPER GUARD: file + memory integrity monitor
+# MODE: periodic + event-driven
+
 class AntiTamper:
     """Runtime integrity protection suite.
 
@@ -13,14 +16,14 @@ class AntiTamper:
     """
 
     def __init__(self, runtime_dir: str, integrity_db: dict[str, str] | None = None):
-        self._dir = runtime_dir
-        self._db = integrity_db or {}
-        self._stop = threading.Event()
+        self._rt_dir = runtime_dir
+        self._hash_db = integrity_db or {}
+        self._halt_signal = threading.Event()
 
     def verify_files(self) -> bool:
         """Check all .pye files in _runtime/ against stored hashes."""
-        for rel, expected in self._db.items():
-            fp = os.path.join(self._dir, rel)
+        for rel, expected in self._hash_db.items():
+            fp = os.path.join(self._rt_dir, rel)
             if not os.path.isfile(fp):
                 return False
             h = hashlib.sha256()
@@ -58,9 +61,9 @@ class AntiTamper:
         for mod in suspicious:
             if mod in sys.modules:
                 return True
-        for name, _ in gc.get_objects():
+        for obj in gc.get_objects():
             try:
-                if isinstance(name, str) and any(h in name.lower() for h in ["hook", "patch", "inject"]):
+                if isinstance(obj, str) and any(h in obj.lower() for h in ["hook", "patch", "inject"]):
                     return True
             except: pass
         return False
@@ -82,13 +85,13 @@ class AntiTamper:
 
     def start_periodic_check(self, interval: float = 5.0) -> threading.Thread:
         """Start a background thread that periodically checks integrity."""
-        def _check_loop():
-            while not self._stop.is_set():
+        def _integrity_watch():
+            while not self._halt_signal.is_set():
                 if not self.verify_files() or self.detect_hooks() or self.detect_dump():
                     import os
                     os._exit(3)
                 time.sleep(interval)
-        t = threading.Thread(target=_check_loop, daemon=True)
+        t = threading.Thread(target=_integrity_watch, daemon=True)
         t.start()
         return t
 
@@ -134,4 +137,4 @@ class AntiTamper:
         return False
 
     def stop(self):
-        self._stop.set()
+        self._halt_signal.set()

@@ -33,138 +33,200 @@
   //   逆向此模块只能得到一些正则表达式。
   // ===================================================================
 
+  // ===================================================================
+  // reserved: 保留名称列表
+  // 数据类型: string[]
+  // 作用: 指定在混淆过程中必须保持原名的标识符。
+  //   这些名称不会被重命名，以确保外部调用能够正确引用。
+  // 注意事项: 此模块为内部工具模块，函数可能被构建脚本引用。
+  // ===================================================================
+  reserved: [
+    "minify_source",    // 公开 API — 被构建脚本调用的源码压缩入口函数
+    "inject_garbage",   // 公开 API — 垃圾代码注入函数（可被单独调用）
+    "Minifier",         // 公开类 — 压缩器类的对外接口
+  ],
+
   obfuscate: {
-    // =================================================================
-    // --- level: 混淆等级 ---
-    //   数据类型: number（整数）
-    //   可用值: 1 | 2 | 3 | 4 | 5
-    //   ⚠️ 不可用值: 0, -1, 1.5
-    //   推荐值: 5
-    //   原因: 虽然此模块不包含敏感逻辑，但等级 5 的混淆
-    //     不会影响其功能（只要 encrypt_strings 和
-    //     control_flow_flattening 保持 false）。
-    //     变量重命名、函数重命名、调用混淆等
-    //     在压缩模块中安全可用。等级 5 可以最大化
-    //     这些安全变换的强度。
-    //     ⚠️ 重要：level=5 不应该自动开启所有子选项。
-    //     子选项的配置是独立的——必须单独关闭
-    //     encrypt_strings、control_flow_flattening 等。
-    // =================================================================
+    // --- level: 混淆强度 ---
+    // 数据类型: number（整数）
+    // 可用值: 0 | 1 | 2 | 3 | 4 | 5
+    //         0 = 不混淆
+    //         1 = 最低
+    //         2 = 低
+    //         3 = 中等
+    //         4 = 高
+    //         5 = 最高
+    // 推荐值: 5
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 虽然此模块不包含敏感逻辑，但等级 5 的混淆
+    //   不会影响其功能（只要 encrypt_strings 和
+    //   control_flow_flattening 保持 false）。
+    //   变量重命名、函数重命名、调用混淆等
+    //   在压缩模块中安全可用。等级 5 可以最大化
+    //   这些安全变换的强度。
+    //   重要：level=5 不应该自动开启所有子选项。
+    //   子选项的配置是独立的——必须单独关闭
+    //   encrypt_strings、control_flow_flattening 等。
     level: 5,
 
-    // =================================================================
-    // --- rename_variables: 变量重命名 ---
-    //   数据类型: boolean
-    //   可用值: true | false
-    //   推荐值: true
-    //   原因: 压缩模块中的变量（source、pattern、replacement 等）
-    //     暗示了它们的用途。重命名增加代码阅读难度。
-    //     不影响正则表达式的匹配——正则模式是字符串常量，
-    //     变量名改变不影响字符串的值。
-    // =================================================================
+    // --- rename_variables: 局部变量重命名 ---
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 将局部变量名替换为无意义短名称
+    // false = 保留原始变量名
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 压缩模块中的变量（source、pattern、
+    //   replacement 等）暗示了它们的用途。重命名增加代码
+    //   阅读难度。不影响正则表达式的匹配——正则模式是
+    //   字符串常量，变量名改变不影响字符串的值。
     rename_variables: true,
 
-    // =================================================================
     // --- rename_functions: 函数重命名 ---
-    //   数据类型: boolean
-    //   可用值: true | false
-    //   推荐值: true
-    //   原因: minify_source()、inject_garbage() 等函数
-    //     只在模块内部被调用，没有外部 import 引用。
-    //     函数重命名安全可用。
-    // =================================================================
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 将函数名替换为无意义短名称
+    // false = 保留原始函数名
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: minify_source()、inject_garbage() 等函数
+    //   只在模块内部被调用，没有外部 import 引用。
+    //   函数重命名安全可用。
+    //   注: reserved 列表中的函数名不受此设置影响。
     rename_functions: true,
 
-    // =================================================================
     // --- rename_classes: 类重命名 ---
-    //   数据类型: boolean
-    //   可用值: true | false
-    //   推荐值: true
-    //   原因: Minifier 类只在模块内部使用。
-    //     类重命名不影响其他模块。
-    // =================================================================
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 将类名替换为无意义短名称
+    // false = 保留原始类名
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: Minifier 类只在模块内部使用。
+    //   类重命名不影响其他模块。
+    //   注: reserved 列表中的类名不受此设置影响。
     rename_classes: true,
 
-    // =================================================================
-    // --- encrypt_strings: 字符串加密 ---
-    //   数据类型: boolean
-    //   可用值: true | false
-    //   ⚠️ 不可用值: "true", 1, 0
-    //   推荐值: false
-    //   ❌ 禁止值: true
-    //   原因（关键约束 — 详细展开）:
-    //
-    //     此模块包含大量正则表达式字符串模式：
-    //       COMMENT_PATTERN = re.compile(r'#.*$')
-    //       BLANK_LINE_PATTERN = re.compile(r'^\s*\n', re.MULTILINE)
-    //       INDENT_PATTERN = re.compile(r'^[ \t]+', re.MULTILINE)
-    //       DEF_PATTERN = re.compile(r'\bdef\s+(\w+)')
-    //       CLASS_PATTERN = re.compile(r'\bclass\s+(\w+)')
-    //       DOCSTRING_PATTERN = re.compile(r'""".*?"""', re.DOTALL)
-    //       ANNOTATION_PATTERN = re.compile(r':\s*\w+')
-    //
-    //     如果 encrypt_strings=true，混淆代理将这些字符串
-    //     转换为运行时解密形式：
-    //       _0x3f8a = decrypt("Y29tbWVudCMuLi4=")  ← "#.*$" 的 base64
-    //       COMMENT_PATTERN = re.compile(_0x3f8a)
-    //
-    //     问题：re.compile() 收到的是运行时解密后的字符串，
-    //     所以从功能角度看应该是正确的... 但实际测试表明
-    //     Chaos 的 encrypt_strings 实现有一个关键陷阱：
-    //
-    //       Chaos 在混淆时先加密字符串，但在 re.compile()
-    //       调用中加密后的字符串会丢失 re.MULTILINE、
-    //       re.DOTALL 等编译标志。结果：
-    //       • r'#.*$' (MULTILINE) → 解密后正确 → 但标志丢失
-    //       • r'""".*?"""' (DOTALL) → decrypt 后字符串正确
-    //         → 但 re.DOTALL 标志在混淆中被剥离
-    //         → 正则不匹配多行文档字符串
-    //
-    //     此外，某些 Chaos 版本会在加密字符串时修改
-    //     原始字符串的内容（如将 r 前缀移除），导致
-    //     某些转义序列（\b、\s、\w）被解释为退格符等
-    //     控制字符，而不是正则中的字符类。
-    //
-    //     结论：任何使用正则表达式字符串的模块
-    //     都必须关闭 encrypt_strings。这个约束
-    //     不仅仅适用于此模块，也适用于所有
-    //     包含 re.compile() 调用的模块。
-    // =================================================================
+    // --- rename_rules: 重命名规则 ---
+    // 可用值: { style: string, reserved: string[], prefix: string, suffix: string, min_length: number, blacklist: string[] }
+    //   - style: 命名风格 — "hex" | "random" | "chinese" | "invisible"
+    //   - reserved: 保留名称列表（不会被重命名的标识符）
+    //   - prefix: 重命名后标识符的前缀，如 "_"
+    //   - suffix: 重命名后标识符的后缀，如 "_"
+    //   - min_length: 重命名后标识符的最小长度
+    //   - blacklist: 禁止使用的标识符列表
+    // 推荐值: { style: "hex", reserved: [], prefix: "", suffix: "", min_length: 6, blacklist: [] }
+    // ⚠️ 模块特殊原因: 顶层 reserved 列表已保护外部接口（minify_source/inject_garbage/Minifier），
+    //   rename_rules 中的保留列表保持空数组。
+    rename_rules: {
+      style: "hex",
+      reserved: [],
+      prefix: "",
+      suffix: "",
+      min_length: 6,
+      blacklist: [],
+    },
 
-    // =================================================================
-    // --- encrypt_numbers: 数字加密 ---
-    //   数据类型: boolean
-    //   可用值: true | false
-    //   推荐值: false
-    //   原因: 压缩模块中的数字主要是 re.compile 的标志位
-    //     （re.MULTILINE=8、re.DOTALL=16 等）。
-    //     加密这些数字会在混淆后产生不正确的标志值，
-    //     导致正则表达式行为异常。
-    //     虽然没有实证表明 encrypt_numbers 一定破坏
-    //     re 标志位，但风险与收益不成正比——这些数字
-    //     没有保护价值。
-    // =================================================================
+    // --- encrypt_strings: 字符串加密 ---
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 所有字符串常量在编译时编码为加密形式，运行时解密
+    // false = 字符串以明文形式存储在字节码中
+    // 推荐值: false
+    // ❌ 禁止值: true
+    // ⚠️ 模块特殊原因（关键约束 — 详细展开）:
+    //
+    //   此模块包含大量正则表达式字符串模式：
+    //     COMMENT_PATTERN = re.compile(r'#.*$')
+    //     BLANK_LINE_PATTERN = re.compile(r'^\s*\n', re.MULTILINE)
+    //     INDENT_PATTERN = re.compile(r'^[ \t]+', re.MULTILINE)
+    //     DEF_PATTERN = re.compile(r'\bdef\s+(\w+)')
+    //     CLASS_PATTERN = re.compile(r'\bclass\s+(\w+)')
+    //     DOCSTRING_PATTERN = re.compile(r'""".*?"""', re.DOTALL)
+    //     ANNOTATION_PATTERN = re.compile(r':\s*\w+')
+    //
+    //   如果 encrypt_strings=true，混淆代理将这些字符串
+    //   转换为运行时解密形式：
+    //     _0x3f8a = decrypt("Y29tbWVudCMuLi4=")  ← "#.*$" 的 base64
+    //     COMMENT_PATTERN = re.compile(_0x3f8a)
+    //
+    //   问题：re.compile() 收到的是运行时解密后的字符串，
+    //   所以从功能角度看应该是正确的... 但实际测试表明
+    //   Chaos 的 encrypt_strings 实现有一个关键陷阱：
+    //
+    //     Chaos 在混淆时先加密字符串，但在 re.compile()
+    //     调用中加密后的字符串会丢失 re.MULTILINE、
+    //     re.DOTALL 等编译标志。结果：
+    //     • r'#.*$' (MULTILINE) → 解密后正确 → 但标志丢失
+    //     • r'""".*?"""' (DOTALL) → decrypt 后字符串正确
+    //       → 但 re.DOTALL 标志在混淆中被剥离
+    //       → 正则不匹配多行文档字符串
+    //
+    //   此外，某些 Chaos 版本会在加密字符串时修改
+    //   原始字符串的内容（如将 r 前缀移除），导致
+    //   某些转义序列（\b、\s、\w）被解释为退格符等
+    //   控制字符，而不是正则中的字符类。
+    //
+    //   结论：任何使用正则表达式字符串的模块
+    //   都必须关闭 encrypt_strings。这个约束
+    //   不仅仅适用于此模块，也适用于所有
+    //   包含 re.compile() 调用的模块。
+    encrypt_strings: false,
+
+    // --- encrypt_numbers: 数字常量加密 ---
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 数字常量在字节码中被替换为运行时计算的表达式
+    // false = 数字以明文形式存储在字节码中
+    // 推荐值: false
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 压缩模块中的数字主要是 re.compile 的标志位
+    //   （re.MULTILINE=8、re.DOTALL=16 等）。
+    //   加密这些数字会在混淆后产生不正确的标志值，
+    //   导致正则表达式行为异常。
+    //   虽然没有实证表明 encrypt_numbers 一定破坏
+    //   re 标志位，但风险与收益不成正比——这些数字
+    //   没有保护价值。
     encrypt_numbers: false,
 
-    // =================================================================
+    // --- string_min_length: 字符串最小加密长度 ---
+    // 可用值: number（>= 0，小于此长度的字符串不加密）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: encrypt_strings=false，此字段无效。
+    string_min_length: 0,
+
+    // --- string_encrypt_ratio: 字符串加密比例 ---
+    // 可用值: 0.0 ~ 1.0（0.0=不加密任何字符串，1.0=加密所有字符串）
+    // 推荐值: 0.0
+    // ⚠️ 模块特殊原因: encrypt_strings=false，此字段无效。
+    string_encrypt_ratio: 0.0,
+
+    // --- string_cipher: 字符串加密算法 ---
+    // 可用值: "base64" | "xor" | "aes"
+    // 推荐值: "base64"
+    // ⚠️ 模块特殊原因: encrypt_strings=false，此字段无效。
+    string_cipher: "base64",
+
     // --- control_flow_flattening: 控制流平坦化 ---
-    //   数据类型: boolean
-    //   可用值: true | false
-    //   推荐值: false
-    //   ❌ 禁止值: true
-    //   原因（关键约束 — 详细展开）:
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 将顺序执行的代码转换为 switch-case 分发器结构
+    // false = 保持原始控制流
+    // 推荐值: false
+    // ❌ 禁止值: true
+    // ⚠️ 模块特殊原因（关键约束 — 详细展开）:
     //
-    //     minify_source() 的典型实现：
-    //       def minify_source(source):
-    //           # 步骤 1: 移除注释
-    //           source = COMMENT_PATTERN.sub('', source)
-    //           # 步骤 2: 移除空行
-    //           source = BLANK_LINE_PATTERN.sub('', source)
-    //           # 步骤 3: 移除缩进
-    //           source = INDENT_PATTERN.sub('', source)
-    //           # 步骤 4: 注入垃圾代码
-    //           source = inject_garbage(source)
-    //           return source
+    //   minify_source() 的典型实现：
+    //     def minify_source(source):
+    //         # 步骤 1: 移除注释
+    //         source = COMMENT_PATTERN.sub('', source)
+    //         # 步骤 2: 移除空行
+    //         source = BLANK_LINE_PATTERN.sub('', source)
+    //         # 步骤 3: 移除缩进
+    //         source = INDENT_PATTERN.sub('', source)
+    //         # 步骤 4: 注入垃圾代码
+    //         source = inject_garbage(source)
+    //         return source
     //
     //     控制流平坦化将这个清晰的流水线转换为：
     //       def minify_source(source):
@@ -176,9 +238,6 @@
     //               elif _state == 1:
     //                   source = BLANK_LINE_PATTERN.sub('', source)
     //                   _state = 2
-    //               elif _state == 2:
-    //                   source = INDENT_PATTERN.sub('', source)
-    //                   _state = 3
     //               ...
     //
     //     问题：
@@ -196,15 +255,16 @@
     //
     //     为了"隐藏正则表达式"而破坏压缩功能，
     //     是本末倒置。
-    // =================================================================
+    control_flow_flattening: false,
 
-    // =================================================================
     // --- dead_code_injection: 死代码注入 ---
-    //   数据类型: boolean
-    //   可用值: true | false
-    //   推荐值: false
-    //   ❌ 禁止值: true
-    //   原因（关键约束 — 详细展开）:
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 在每个函数中插入不可达的死代码块
+    // false = 不注入死代码
+    // 推荐值: false
+    // ❌ 禁止值: true
+    // ⚠️ 模块特殊原因（关键约束 — 详细展开）:
     //
     //     死代码注入的工作原理：
     //       Obfuscator 遍历 AST 中的每个 FunctionDef，
@@ -236,76 +296,179 @@
     //     是面向自身（往此模块源码中注入垃圾）。
     //     两者在同一个函数中并存可能导致意外交互。
     //     为安全起见，直接关闭死代码注入。
-    // =================================================================
+    dead_code_injection: false,
 
-    // =================================================================
+    // --- dead_code_density: 死代码密度 ---
+    // 可用值: 0.0 ~ 1.0（0.0=不注入，1.0=最大密度）
+    // 推荐值: 0.0
+    // ⚠️ 模块特殊原因: dead_code_injection=false，此字段无效。
+    dead_code_density: 0.0,
+
+    // --- opaque_predicate_count: 不透明谓词数量 ---
+    // 可用值: number（>= 0）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: 此模块控制流简单，无需谓词混淆。
+    opaque_predicate_count: 0,
+
+    // --- remove_docstrings: 移除文档字符串 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 保留 docstring 有助于模块维护。
+    remove_docstrings: false,
+
+    // --- remove_comments: 移除注释 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // ⚠️ 模块特殊原因: 注释在构建产物中无意义，移除可减小体积。
+    remove_comments: true,
+
+    // --- strip_blank_lines: 移除空行 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // ⚠️ 模块特殊原因: 移除空行可减小构建产物体积。
+    strip_blank_lines: true,
+
+    // --- max_line_length: 最大行长度 ---
+    // 可用值: number（0 = 不限制）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: 此模块简单，无需控制行长度。
+    max_line_length: 0,
+
     // --- string_split: 字符串拆分 ---
-    //   数据类型: boolean
-    //   可用值: true | false
-    //   推荐值: true
-    //   原因: 将正则模式字符串拆分为片段，
-    //     防止攻击者搜索 "re.compile" 定位关键函数。
-    //     注意: string_split 与 encrypt_strings 不同，
-    //     它只是将字符串字面量拆分为 "a" + "b" 形式，
-    //     不改变字符串的运行时值。因此不会破坏正则匹配。
-    // =================================================================
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 将字符串字面量拆分为 "a" + "b" + "c" 形式
+    // false = 保持字符串为完整字面量
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 将正则模式字符串拆分为片段，
+    //   防止攻击者搜索 "re.compile" 定位关键函数。
+    //   注意: string_split 与 encrypt_strings 不同，
+    //   它只是将字符串字面量拆分为 "a" + "b" 形式，
+    //   不改变字符串的运行时值。因此不会破坏正则匹配。
     string_split: true,
 
-    // =================================================================
     // --- obfuscate_imports: 导入混淆 ---
-    //   数据类型: boolean
-    //   可用值: true | false
-    //   推荐值: true
-    //   原因: 隐藏对 re 模块的依赖，攻击者不能通过 import re
-    //     推断此模块可能使用正则表达式。
-    // =================================================================
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 将 import 语句通过 __import__() 间接调用实现
+    // false = 保持原始 import 语句
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 隐藏对 re 模块的依赖，攻击者不能通过
+    //   import re 推断此模块可能使用正则表达式。
     obfuscate_imports: true,
 
-    // =================================================================
     // --- obfuscate_calls: 函数调用混淆 ---
-    //   数据类型: boolean
-    //   可用值: true | false
-    //   推荐值: true
-    //   原因: 隐藏 re.compile()、re.sub() 等调用。
-    //     调用混淆通过间接调用（getattr）方式实现，
-    //     不影响运行时行为。
-    // =================================================================
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 函数调用通过 getattr/apply 间接实现
+    // false = 保持直接调用
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 隐藏 re.compile()、re.sub() 等调用。
+    //   调用混淆通过间接调用（getattr）方式实现，
+    //   不影响运行时行为。
     obfuscate_calls: true,
 
-    // =================================================================
-    // --- obfuscate_arithmetic: 算术混淆 ---
-    //   数据类型: boolean
-    //   可用值: true | false
-    //   推荐值: true
-    //   原因: 压缩模块中几乎不使用算术，开启没有副作用。
-    // =================================================================
+    // --- obfuscate_arithmetic: 算术表达式混淆 ---
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 将简单算术表达式替换为等价但复杂的形式
+    // false = 保持原始算术表达式
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 压缩模块中几乎不使用算术，开启没有副作用。
     obfuscate_arithmetic: true,
 
-    // =================================================================
     // --- obfuscate_booleans: 布尔表达式混淆 ---
-    //   数据类型: boolean
-    //   可用值: true | false
-    //   推荐值: true
-    //   原因: 对条件判断进行混淆，增加反编译阅读难度。
-    // =================================================================
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 将简单布尔表达式替换为等价但复杂的形式
+    // false = 保持原始布尔表达式
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 对条件判断进行混淆，增加反编译阅读难度。
     obfuscate_booleans: true,
   },
 
   anti_debug: {
-    // =================================================================
     // --- enabled: 反调试总开关 ---
-    //   可用值: true | false
-    //   推荐值: false
-    //   原因: 压缩模块在构建时运行（构建受保护文件时调用），
-    //     不在运行时执行。构建环境是受控的本地机器，
-    //     反调试会导致 CI/CD 流水线出错或 PyCharm 中调试构建
-    //     流程时被误杀。
-    //     压缩模块不包含任何需要在运行时保护的数据。
-    // =================================================================
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 开启反调试检测，运行时检测调试器并执行预设动作
+    // false = 关闭反调试检测
+    // 推荐值: false
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 压缩模块在构建时运行（构建受保护文件时调用），
+    //   不在运行时执行。构建环境是受控的本地机器，
+    //   反调试会导致 CI/CD 流水线出错或 PyCharm 中调试构建
+    //   流程时被误杀。压缩模块不包含任何需要在运行时保护的数据。
     enabled: false,
 
-    // 以下字段保持默认值。enabled=false 时这些配置不会被使用。
+    // --- action: 检测到调试器时的响应动作 ---
+    // 数据类型: string
+    // 可用值: "exit" | "warn" | "crash" | "silent"
+    //   "exit"   = 立即退出进程
+    //   "warn"   = 输出警告但不阻止执行
+    //   "crash"  = 触发异常/崩溃
+    //   "silent" = 静默记录但无可见响应
+    // 推荐值: "warn"（enabled=false 时此字段不生效，仅作占位）
+    // 注意事项: enabled=false 时此配置不会被使用。
     action: "warn",
+
+    // --- checks: 启用的反调试检测方法列表 ---
+    // 数据类型: string[]
+    // 可用值: "pdb" | "debugger" | "trace" | "time" | "ptrace"
+    //   "pdb"      = 检测 pdb 模块是否已加载
+    //   "debugger" = 检测通用调试器特征
+    //   "trace"    = 检测 sys.settrace 是否被设置
+    //   "time"     = 检测代码执行时间差异（被调试时代码执行更慢）
+    //   "ptrace"   = 检测 ptrace 系统调用（仅 Linux）
+    // 推荐值: ["pdb", "debugger"]（enabled=false 时不生效）
+    // 注意事项: enabled=false 时此配置不会被使用。
     checks: ["pdb", "debugger"],
+
+    // --- per_check_actions: 逐检测项动作覆盖 ---
+    // 可用值: string[]，与 checks 数组一一对应
+    // 推荐值: []
+    // ⚠️ 模块特殊原因: checks 不生效，此字段无效。
+    per_check_actions: [],
+
+    // --- process_whitelist: 进程白名单 ---
+    // 可用值: string[]（进程名列表）
+    // 推荐值: []
+    // ⚠️ 模块特殊原因: enabled=false，无需白名单。
+    process_whitelist: [],
+
+    // --- block_tracing: 阻止系统级跟踪 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: enabled=false，无需阻止跟踪。
+    block_tracing: false,
+
+    // --- timing_threshold: 反调试超时阈值（秒） ---
+    // 可用值: number（0 = 禁用定时检查）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: enabled=false，无需定时检查。
+    timing_threshold: 0,
+
+    // --- exit_code: 反调试触发时的进程退出码 ---
+    // 可用值: number（通常为 1 或负数）
+    // 推荐值: 1
+    // ⚠️ 模块特殊原因: enabled=false，此字段不生效。
+    exit_code: 1,
+
+    // --- wipe_memory: 退出时擦除敏感内存 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 此模块无敏感内存数据。
+    wipe_memory: false,
+
+    // --- corrupt_on_exit: 退出时损坏关键数据 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 此模块无关键数据可损坏。
+    corrupt_on_exit: false,
   },
 }

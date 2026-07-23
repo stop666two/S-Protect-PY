@@ -3,69 +3,396 @@
   // 过期控制模块 — 时间验证
   // ===================================================================
   // 此模块负责运行时时间校验 + NTP 联网验证 + 时间漂移检测。
+  // 部署在最终用户设备上，是安全关键组件。
   //
   // ⚠️ 约束:
   //   • Expiration.check() 被 loader 调用，包含 NTP 请求
   //   • 时间比较逻辑中的字符串（错误消息、时间格式）应加密
-  //   • 时间戳数字常量可加密（不会影响 NTP 协议）
+  //   • encrypt_numbers=false（时间戳和超时值加密后可能影响精度）
+  //   • control_flow_flattening=false（NTP 重试逻辑被平坦化后会异常）
+  //   • dead_code_injection=false（死代码注入可能影响 NTP 超时计时）
   // ===================================================================
 
+  // ===================================================================
+  // reserved: 保留名称列表
+  // 数据类型: string[]
+  // 作用: 指定在混淆过程中必须保持原名的标识符。
+  //   这些名称不会被重命名，以确保外部调用能够正确引用。
+  // 注意事项: 此模块的函数通过 loader 动态调用，保留名称
+  //   确保接口兼容性。
+  // ===================================================================
+  reserved: [
+    "Expiration",  // 公开类 — 被 loader 通过模块属性引用的入口类
+    "check",       // 公开方法 — Expiration 类的核心过期检查方法
+    "_ntp",        // 内部方法 — NTP 时间同步方法，通过模块内部引用
+  ],
+
   obfuscate: {
-    // --- level: 混淆等级 ---
-    // 可用值: 1-5
+    // --- level: 混淆强度 ---
+    // 数据类型: number（整数）
+    // 可用值: 0 | 1 | 2 | 3 | 4 | 5
+    //         0 = 不混淆
+    //         1 = 最低
+    //         2 = 低
+    //         3 = 中等
+    //         4 = 高
+    //         5 = 最高
     // 推荐值: 4
     // 不推荐: 5（控制流平坦化会破坏 NTP 请求的重试逻辑）
-  level: 5,
+    // ⚠️ 模块特殊原因: 此模块是运行时安全关键组件，
+    //   需要高强度混淆。但 level 5 会强制启用所有子选项，
+    //   包括 control_flow_flattening 和 dead_code_injection，
+    //   这两个子选项必须单独关闭（见下方独立配置）。
+    //   level 4 提供了足够的混淆强度同时降低风险。
+    level: 4,
 
-    // --- rename_variables: 变量重命名 ---
+    // --- rename_variables: 局部变量重命名 ---
+    // 数据类型: boolean
     // 可用值: true | false
-    // 推荐值: true（隐藏时间变量、NTP 服务器地址的实际用途）
+    // true  = 将局部变量名替换为无意义短名称
+    // false = 保留原始变量名
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 隐藏时间变量（如 start_time、deadline）、
+    //   NTP 服务器地址变量（如 ntp_host、port）的实际用途。
+    //   防止攻击者通过变量名快速定位关键时间判断逻辑。
     rename_variables: true,
 
     // --- rename_functions: 函数重命名 ---
+    // 数据类型: boolean
     // 可用值: true | false
-    // 注意事项: check() 和 _ntp() 被 loader 调用，
-    //   通过模块对象引用，改名不影响
+    // true  = 将函数名替换为无意义短名称
+    // false = 保留原始函数名
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: check() 和 _ntp() 被 loader 调用，
+    //   但 loader 通过模块对象属性引用（如 module.check），
+    //   而非直接 import 函数名。只要模块导出接口不变，
+    //   函数内部名称重命名不影响 loader 调用。
+    //   注: reserved 列表中的函数名不受此设置影响。
     rename_functions: true,
 
     // --- rename_classes: 类重命名 ---
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 将类名替换为无意义短名称
+    // false = 保留原始类名
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 隐藏 Expiration 类的真实用途，
+    //   使逆向者难以通过类名判断此模块的功能域。
+    //   注: reserved 列表中的类名不受此设置影响。
     rename_classes: true,
 
+    // --- rename_rules: 重命名规则 ---
+    // 可用值: { style: string, reserved: string[], prefix: string, suffix: string, min_length: number, blacklist: string[] }
+    //   - style: 命名风格 — "hex" | "random" | "chinese" | "invisible"
+    //   - reserved: 保留名称列表（不会被重命名的标识符）
+    //   - prefix: 重命名后标识符的前缀，如 "_"
+    //   - suffix: 重命名后标识符的后缀，如 "_"
+    //   - min_length: 重命名后标识符的最小长度
+    //   - blacklist: 禁止使用的标识符列表
+    // 推荐值: { style: "hex", reserved: [], prefix: "", suffix: "", min_length: 6, blacklist: [] }
+    // ⚠️ 模块特殊原因: 顶层 reserved 列表已保护外部接口（Expiration/check/_ntp），
+    //   rename_rules 中的保留列表保持空数组。hex 风格生成不可读标识符。
+    rename_rules: {
+      style: "hex",
+      reserved: [],
+      prefix: "",
+      suffix: "",
+      min_length: 6,
+      blacklist: [],
+    },
+
     // --- encrypt_strings: 字符串加密 ---
+    // 数据类型: boolean
     // 可用值: true | false
+    // true  = 所有字符串常量在编译时编码为加密形式，运行时解密
+    // false = 字符串以明文形式存储在字节码中
     // 推荐值: true
-    // 注意事项: NTP 服务器地址、错误消息等字符串被隐藏
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 此模块包含大量需要隐藏的敏感字符串：
+    //   • NTP 服务器地址（如 "pool.ntp.org"、"time.google.com"）
+    //   • 错误消息（如 "License expired", "Time tampering detected"）
+    //   • 时间格式字符串（如 "%Y-%m-%d %H:%M:%S"）
+    //   • 用户提示信息（如 "剩余 %d 天"）
+    //   这些字符串一旦明文暴露，攻击者可据此推断模块行为、
+    //   伪造 NTP 响应或绕过过期判断。必须加密。
     encrypt_strings: true,
 
-    // --- encrypt_numbers: 数字加密 ---
+    // --- encrypt_numbers: 数字常量加密 ---
+    // 数据类型: boolean
     // 可用值: true | false
-    // 不推荐: true（时间戳、超时值等数字被加密后
-    //   运行时计算开销在时间敏感场景中可能影响精度）
+    // true  = 数字常量在字节码中被替换为运行时计算的表达式
+    // false = 数字以明文形式存储在字节码中
+    // 推荐值: false
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 此模块中存在大量时间相关数字：
+    //   • 时间戳（如 1700000000）
+    //   • 超时值（如 5 秒 NTP 超时）
+    //   • 时间偏移阈值（如 300 秒允许的时钟偏差）
+    //   加密这些数字会在运行时产生额外计算开销，
+    //   在时间敏感场景中可能影响精度或导致超时异常。
+    //   此外，时间戳作为常量在字节码中即使明文存储，
+    //   攻击者也无法轻易修改（字节码签名保护）。
     encrypt_numbers: false,
 
+    // --- string_min_length: 字符串最小加密长度 ---
+    // 可用值: number（>= 0，小于此长度的字符串不加密）
+    // 推荐值: 3
+    // ⚠️ 模块特殊原因: encrypt_strings=true，设置最小长度 3
+    //   可避免加密过短的无关字符串（如 ":"、"."），减少运行时解密开销。
+    string_min_length: 3,
+
+    // --- string_encrypt_ratio: 字符串加密比例 ---
+    // 可用值: 0.0 ~ 1.0（0.0=不加密任何字符串，1.0=加密所有字符串）
+    // 推荐值: 1.0
+    // ⚠️ 模块特殊原因: encrypt_strings=true，比值设为 1.0
+    //   确保所有长度 >= string_min_length 的敏感字符串都被加密。
+    string_encrypt_ratio: 1.0,
+
+    // --- string_cipher: 字符串加密算法 ---
+    // 可用值: "base64" | "xor" | "aes"
+    // 推荐值: "aes"
+    // ⚠️ 模块特殊原因: 此模块为运行时安全关键组件，包含 NTP 服务器地址、
+    //   错误消息等敏感字符串，使用 AES 加密提供最高强度保护。
+    string_cipher: "aes",
+
     // --- control_flow_flattening: 控制流平坦化 ---
-    // ❌ 必须 false
-    // 原因: NTP 请求包含复杂的超时/重试逻辑，
-    //   平坦化可能破坏异常处理链，导致 NTP 请求永久挂起
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 将顺序执行的代码转换为 switch-case 分发器结构
+    // false = 保持原始控制流
+    // 推荐值: false
+    // ❌ 禁止值: true
+    // ⚠️ 模块特殊原因: NTP 请求包含复杂的超时/重试逻辑，
+    //   典型的实现包含多个 try-except 块和循环重试：
+    //
+    //   for attempt in range(3):
+    //       try:
+    //           sock.settimeout(5)
+    //           data = sock.recv(1024)
+    //           break
+    //       except socket.timeout:
+    //           continue
+    //
+    //   控制流平坦化会将 for/break/continue/try/except
+    //   转换为 while-if 分发器结构。此过程可能：
+    //   ① 破坏异常处理链 — except 块无法正确捕获异常
+    //   ② 破坏 break/continue 语义 — 循环逻辑错乱
+    //   ③ 导致 NTP 请求永久挂起 — 超时无法正确触发
+    //
+    //   此模块的 NTP 网络请求是其核心功能，
+    //   控制流必须保持原始结构以确保可靠性。
+    control_flow_flattening: false,
 
     // --- dead_code_injection: 死代码注入 ---
-    // ❌ 必须 false
-    // 原因: 死代码注入可能影响 NTP 请求的超时计时
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 在每个函数中插入不可达的死代码块
+    // false = 不注入死代码
+    // 推荐值: false
+    // ❌ 禁止值: true
+    // ⚠️ 模块特殊原因: 死代码注入可能影响 NTP 请求的超时计时。
+    //   注入的死代码虽然不可达，但函数体的体积膨胀会导致
+    //   Python 字节码的 LOAD_CONST 索引变化，可能间接影响
+    //   settimeout() 的参数值（如果超时值是通过常量索引引用）。
+    //   在时间关键路径上，任何字节码层面的意外变化
+    //   都可能引入微妙的时序问题。保持 false 以确保
+    //   时间验证逻辑的精确性。
+    dead_code_injection: false,
 
+    // --- dead_code_density: 死代码密度 ---
+    // 可用值: 0.0 ~ 1.0（0.0=不注入，1.0=最大密度）
+    // 推荐值: 0.0
+    // ⚠️ 模块特殊原因: dead_code_injection=false，此字段无效。
+    dead_code_density: 0.0,
+
+    // --- opaque_predicate_count: 不透明谓词数量 ---
+    // 可用值: number（>= 0）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: 此模块 NTP 重试逻辑复杂，谓词混淆可能影响超时判断。
+    opaque_predicate_count: 0,
+
+    // --- remove_docstrings: 移除文档字符串 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 保留 docstring 有助于模块维护。
+    remove_docstrings: false,
+
+    // --- remove_comments: 移除注释 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // ⚠️ 模块特殊原因: 注释在构建产物中无意义，移除可减小体积。
+    remove_comments: true,
+
+    // --- strip_blank_lines: 移除空行 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // ⚠️ 模块特殊原因: 移除空行可减小构建产物体积。
+    strip_blank_lines: true,
+
+    // --- max_line_length: 最大行长度 ---
+    // 可用值: number（0 = 不限制）
+    // 推荐值: 0
+    // ⚠️ 模块特殊原因: 此模块简单，无需控制行长度。
+    max_line_length: 0,
+
+    // --- string_split: 字符串拆分 ---
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 将字符串字面量拆分为 "a" + "b" + "c" 形式
+    // false = 保持字符串为完整字面量
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 即使 encrypt_strings=true 已经加密了
+    //   字符串，string_split 拆分进一步将密文字符串
+    //   切分为多段拼接形式，增加逆向分析难度。
+    //   两者叠加提供双重保护。
     string_split: true,
+
+    // --- obfuscate_imports: 导入混淆 ---
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 将 import 语句通过 __import__() 间接调用实现
+    // false = 保持原始 import 语句
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 此模块导入 socket、struct、time 等
+    //   网络相关模块。如果攻击者看到 "import socket"，
+    //   会立即推断此模块涉及网络通信（可能用于 NTP 验证）。
+    //   混淆 import 可以隐藏模块的网络功能域。
     obfuscate_imports: true,
+
+    // --- obfuscate_calls: 调用混淆 ---
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 函数调用通过 getattr/apply 间接实现
+    // false = 保持直接调用
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 隐藏 socket 调用（如 socket.socket、
+    //   sock.sendto、sock.recv）的网络操作特征，
+    //   防止攻击者通过搜索 socket 相关 API 定位网络验证代码。
     obfuscate_calls: true,
+
+    // --- obfuscate_arithmetic: 算术表达式混淆 ---
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 将简单算术表达式替换为等价但复杂的形式
+    // false = 保持原始算术表达式
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 此模块包含时间差计算
+    //   （如 remaining = deadline - now）、NTP 时间戳转换
+    //   （如 ntp_to_unix = timestamp - 2208988800）等。
+    //   混淆这些算术表达式可以隐藏时间计算的真实含义。
     obfuscate_arithmetic: true,
+
+    // --- obfuscate_booleans: 布尔表达式混淆 ---
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 将简单布尔表达式替换为等价但复杂的形式
+    // false = 保持原始布尔表达式
+    // 推荐值: true
+    // 禁止值: 无
+    // ⚠️ 模块特殊原因: 过期判断条件
+    //   （如 if now > deadline: raise ExpiredError）是
+    //   此模块最关键的逻辑点。混淆布尔条件可以隐藏
+    //   "这是时间比较"的语义，增加攻击者定位
+    //   过期检查点的难度。
     obfuscate_booleans: true,
   },
 
   anti_debug: {
-    // --- enabled: 总开关 ---
+    // --- enabled: 反调试总开关 ---
+    // 数据类型: boolean
+    // 可用值: true | false
+    // true  = 开启反调试检测，运行时检测调试器并执行预设动作
+    // false = 关闭反调试检测
     // 推荐值: true
-    // 为什么用 true: 过期控制是运行时限制分发范围的关键组件，
-    //   如果被绕过，过期保护完全失效
+    // 禁止值: false
+    // ⚠️ 模块特殊原因: 过期控制是运行时限制分发范围的关键组件，
+    //   如果被绕过，过期保护完全失效。攻击者通常会使用调试器
+    //   单步跟踪时间验证逻辑，修改内存中的时间值或跳过
+    //   check() 方法的执行。反调试是防止此类动态分析的必要手段。
     enabled: true,
+
+    // --- action: 检测到调试器时的响应动作 ---
+    // 数据类型: string
+    // 可用值: "exit" | "warn" | "crash" | "silent"
+    //   "exit"   = 立即退出进程（最激进，适合安全关键路径）
+    //   "warn"   = 输出警告但不阻止执行（适合调试阶段）
+    //   "crash"  = 触发异常/崩溃（可被 try-except 捕获）
+    //   "silent" = 静默记录但无可见响应（适合隐蔽检测）
+    // 推荐值: "exit"
+    // ⚠️ 模块特殊原因: 检测到调试器时立即退出是最安全的选择。
+    //   使用 "crash" 可能被外层的 try-except 捕获并忽略，
+    //   使用 "warn" 不会阻止攻击者继续分析。
+    //   "exit" 确保一旦检测到调试器，保护机制不会被绕过。
     action: "exit",
-    checks: ["pdb", "debugger"],
+
+    // --- checks: 启用的反调试检测方法列表 ---
+    // 数据类型: string[]
+    // 可用值: "pdb" | "debugger" | "trace" | "time" | "ptrace"
+    //   "pdb"      = 检测 pdb 模块是否已加载
+    //   "debugger" = 检测通用调试器特征（如 sys.gettrace()）
+    //   "trace"    = 检测 sys.settrace 是否被外部设置
+    //   "time"     = 检测代码执行时间差异（被调试时代码执行更慢）
+    //   "ptrace"   = 检测 ptrace 系统调用（仅 Linux）
+    // 推荐值: ["pdb", "debugger", "trace"]
+    // ⚠️ 模块特殊原因: 过期控制模块需要多重反调试检测：
+    //   • pdb 检测 — 防止使用 pdb 单步跟踪时间判断
+    //   • debugger 检测 — 防止使用 IDE 调试器（PyCharm/VSCode）
+    //   • trace 检测 — 防止通过 sys.settrace 挂钩函数调用
+    //   time 检测在此模块中不适用（模块本身就有时间计算，
+    //     难以区分正常时间偏差和被调试时的执行延迟）。
+    checks: ["pdb", "debugger", "trace"],
+
+    // --- per_check_actions: 逐检测项动作覆盖 ---
+    // 可用值: string[]，与 checks 数组一一对应
+    // 推荐值: []
+    // ⚠️ 模块特殊原因: 所有检测项统一使用顶层 action，无需逐项覆盖。
+    per_check_actions: [],
+
+    // --- process_whitelist: 进程白名单 ---
+    // 可用值: string[]（进程名列表）
+    // 推荐值: []
+    // ⚠️ 模块特殊原因: 过期验证应覆盖所有进程，不做例外。
+    process_whitelist: [],
+
+    // --- block_tracing: 阻止系统级跟踪 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // ⚠️ 模块特殊原因: 防止攻击者通过 sys.settrace 拦截时间校验逻辑，
+    //   与 checks 中的 trace 检测互补使用。
+    block_tracing: true,
+
+    // --- timing_threshold: 反调试超时阈值（秒） ---
+    // 可用值: number（0 = 禁用定时检查）
+    // 推荐值: 2.0
+    // ⚠️ 模块特殊原因: 此模块本身执行时间敏感操作（NTP 请求），
+    //   设置 2s 阈值以区分正常网络延迟和被调试时的执行延迟。
+    timing_threshold: 2.0,
+
+    // --- exit_code: 反调试触发时的进程退出码 ---
+    // 可用值: number（通常为 1 或负数）
+    // 推荐值: 1
+    // ⚠️ 模块特殊原因: 检测到调试器时立即退出，退出码 1 标识异常终止。
+    exit_code: 1,
+
+    // --- wipe_memory: 退出时擦除敏感内存 ---
+    // 可用值: true | false
+    // 推荐值: true
+    // ⚠️ 模块特殊原因: 退出时擦除内存中的许可证时间信息，
+    //   防止进程转储（core dump）泄露过期数据。
+    wipe_memory: true,
+
+    // --- corrupt_on_exit: 退出时损坏关键数据 ---
+    // 可用值: true | false
+    // 推荐值: false
+    // ⚠️ 模块特殊原因: 时间验证数据损坏可能导致合法用户也无法通过验证，
+    //   擦除内存即可，不需要主动损坏数据。
+    corrupt_on_exit: false,
   },
 }

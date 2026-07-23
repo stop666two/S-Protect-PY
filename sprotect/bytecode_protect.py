@@ -1,3 +1,5 @@
+# BYTECODE SHIELD: code object encryption layer
+# HOOK: import meta-path interception
 """Bytecode-level protection: encrypt .pyc and decrypt at runtime via import hook."""
 from __future__ import annotations
 import os, sys, marshal, zlib, hashlib, struct, types
@@ -26,11 +28,11 @@ class SecureImporter:
     """Import hook that transparently decrypts .pye files."""
 
     def __init__(self, runtime_dir: str, key: bytes):
-        self._dir = runtime_dir
-        self._key = key
+        self._rt_path = runtime_dir
+        self._decryption_key = key
 
     def find_spec(self, fullname, path=None, target=None):
-        pye_path = os.path.join(self._dir, fullname.replace(".", os.sep) + ".pye")
+        pye_path = os.path.join(self._rt_path, fullname.replace(".", os.sep) + ".pye")
         if os.path.isfile(pye_path):
             import importlib.machinery as _mach
             return _mach.ModuleSpec(fullname, self, origin=pye_path)
@@ -40,9 +42,9 @@ class SecureImporter:
         return None
 
     def exec_module(self, module):
-        pye_path = os.path.join(self._dir, module.__name__.replace(".", os.sep) + ".pye")
+        pye_path = os.path.join(self._rt_path, module.__name__.replace(".", os.sep) + ".pye")
         with open(pye_path, "rb") as f:
-            code = unprotect_code(f.read(), self._key)
+            code = unprotect_code(f.read(), self._decryption_key)
         exec(code, module.__dict__)
 
 

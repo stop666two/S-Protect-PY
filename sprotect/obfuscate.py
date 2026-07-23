@@ -364,7 +364,12 @@ class _HoneypotInjector(ast.NodeTransformer):
         'def {name}({args}):\n    import os\n    try:\n        os._exit(0)\n    except:\n        pass\n    return None\n',
         'def {name}({args}):\n    _d = bytearray(1024)\n    for i in range(1024):\n        _d[i] = (i * 7 + 3) & 0xFF\n    return bytes(_d)\n',
         'def {name}({args}):\n    import hashlib as _h\n    _k = _h.sha256(b"key").hexdigest()\n    _v = _h.md5(b"data").hexdigest()\n    return _k[:8] == _v[:8]\n',
+        'def {name}({args}):\n    from cryptography.hazmat.primitives.ciphers import Cipher\n    from cryptography.hazmat.primitives.ciphers.algorithms import AES\n    from cryptography.hazmat.primitives.ciphers.modes import CBC\n    _c = Cipher(AES(b"k"*32), CBC(b"i"*16))\n    _d = _c.decryptor()\n    return _d.update(b"d"*16) + _d.finalize()\n',
+        'def {name}({args}):\n    import hmac, hashlib\n    _k = hmac.new(b"key", b"data", hashlib.sha256).digest()\n    _v = hmac.new(b"key", b"expected", hashlib.sha256).digest()\n    return hmac.compare_digest(_k, _v)\n',
+        'def {name}({args}):\n    from cryptography.hazmat.primitives.kdf.hkdf import HKDF\n    from cryptography.hazmat.primitives import hashes\n    _k = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=b"ctx").derive(b"ikm")\n    _t = b"test"\n    return bytes(a ^ b for a, b in zip(_k, _t * 4))\n',
     ]
+    _HONEYPOT_ARGS = ["", "key, iv", "data, sig", "path, mode, ctx", "buf, offset",
+                      "ciphertext, key, nonce", "encrypted, hmac_key", "payload, ctx, tag"]
     _HONEYPOT_ARGS = ["", "key, iv", "data, sig", "path, mode, ctx", "buf, offset"]
 
     def __init__(self, name_map: dict[str, str]):
@@ -454,7 +459,7 @@ class _MatchCaseFlattener(ast.NodeTransformer):
         if len(blocks) < 3:
             return node
         cases = []
-        for i, (_, stmt) in blocks:
+        for i, stmt in blocks:
             if i == len(blocks) - 1:
                 body = [stmt] if isinstance(stmt, ast.Return) else [stmt, ast.Break()]
             else:

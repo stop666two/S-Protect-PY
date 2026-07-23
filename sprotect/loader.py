@@ -434,10 +434,10 @@ def _fe(p):
         if f1_ok and f2_ok and f3_ok: return kv
     return b""
 
-_SALT = "{build_salt}"
+_HEX_VARS = {{ {hex_vars_def} }}
 def bt():
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
-    k = hmac.new(bytes.fromhex(_SALT), b"sprotect-loader-key-v1", hashlib.sha256).digest()
+{derive_code}
     p = json.loads(open(os.path.join(a,"{rd}","loader.pye"),"rb").read().decode())
     rk = _fe(p) or k
     ct = bytes.fromhex(p["d"])
@@ -729,11 +729,58 @@ def gen_boot(output_dir: str, entry_module: str, entry_hex: str,
     ep = os.path.join(output_dir, entry_module.replace(".", os.sep) + ".py")
     os.makedirs(os.path.dirname(ep), exist_ok=True)
 
+    # Generate interwoven hex variables: 15 entries, build_salt hidden at random position
+    _hex_pool_size = 15
+    _hex_keys = [secrets.token_hex(32) for _ in range(_hex_pool_size)]
+    _real_salt_idx = secrets.randbelow(_hex_pool_size)
+    _hex_keys[_real_salt_idx] = build_salt
+    _hex_var_names = [f"_h{secrets.token_hex(3)}" for _ in range(_hex_pool_size)]
+    _hex_pairs = [f"'{_hex_var_names[i]}':'{_hex_keys[i]}'" for i in range(_hex_pool_size)]
+    _hex_vars_def = ", ".join(_hex_pairs)
+
+    # Build derivation code: XOR a subset of entries to derive the actual HMAC key
+    _deriv_count = secrets.randbelow(3) + 3
+    _deriv_indices = []
+    _remaining = list(range(_hex_pool_size))
+    _rnd_inst = __import__("random").Random(secrets.randbits(32))
+    _rnd_inst.shuffle(_remaining)
+    for _ in range(_deriv_count):
+        _idx = _remaining.pop()
+        _deriv_indices.append((_idx, _hex_var_names[_idx]))
+    # Ensure real salt is included in derivation (at ANY position)
+    if _real_salt_idx not in [d[0] for d in _deriv_indices]:
+        _replace_idx = _rnd_inst.randint(0, _deriv_count - 1)
+        _deriv_indices[_replace_idx] = (_real_salt_idx, _hex_var_names[_real_salt_idx])
+    _deriv_vars = [d[1] for d in _deriv_indices]
+
+    # Generate decoy operations that use OTHER hex vars
+    _id4 = "    "
+    _decoy_hex_ops = []
+    for _i in range(_hex_pool_size - _deriv_count):
+        _vn = _remaining[_i]
+        _op_type = _rnd_inst.randint(0, 2)
+        if _op_type == 0:
+            _decoy_hex_ops.append(
+                f"{_id4}_t{secrets.token_hex(2)} = hashlib.sha256(bytes.fromhex(_HEX_VARS['{_hex_var_names[_vn]}'])).hexdigest()")
+        elif _op_type == 1:
+            _decoy_hex_ops.append(
+                f"{_id4}_t{secrets.token_hex(2)} = zlib.crc32(bytes.fromhex(_HEX_VARS['{_hex_var_names[_vn]}']))")
+        else:
+            _decoy_hex_ops.append(
+                f"{_id4}_t{secrets.token_hex(2)} = len(_HEX_VARS['{_hex_var_names[_vn]}'])")
+
+    # Build derive_code: use ONLY the build_salt (no XOR mixing for now)
+    _salt_var_name = _hex_var_names[_real_salt_idx]
+    _derive_parts = [f"{_id4}_salt = bytes.fromhex(_HEX_VARS['{_salt_var_name}'])"]
+    _derive_parts.append(f"{_id4}k = hmac.new(_salt, b\"sprotect-loader-key-v1\", hashlib.sha256).digest()")
+    _derive_code = "\n".join(_decoy_hex_ops + _derive_parts)
+
     _final_script = _BOOT_TEMPLATE.format(
-        build_salt=build_salt,
+        hex_vars_def=_hex_vars_def,
+        derive_code=_derive_code,
         rd="_runtime", entry=entry_module)
 
-    # Decoy salts for fake probe functions
+    # Decoy salts for fake probe functions (use different subset)
     _dummy_salts = [secrets.token_hex(16) for _ in range(5)]
     _all_salts = [build_salt] + _dummy_salts
 

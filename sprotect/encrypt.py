@@ -96,7 +96,7 @@ def build(project_dir, output_dir, config):
     from sprotect.watermark import Watermark
     _watermark_engine = Watermark(config.watermark) if config.watermark.enabled else None
 
-    _loader_build_salt = secrets.token_hex(16)
+    _loader_build_salt = secrets.token_hex(32)
     _loader_cipher_key = hmac.new(
         bytes.fromhex(_loader_build_salt),
         b"sprotect-loader-key-v1",

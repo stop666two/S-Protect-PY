@@ -137,6 +137,8 @@ class Obfuscator(ast.NodeTransformer):
         if self.cfg.dead_code_injection:
             self._seed_dead_blocks(tree)
             tree = _HoneypotInjector(self.map).visit(tree)
+        if self.cfg.encrypt_strings:
+            tree = _StringDisperser().visit(tree)
         if self.cfg.obfuscate_arithmetic:
             tree = _OpaqueExprInjector().visit(tree)
         ast.fix_missing_locations(tree)
@@ -519,6 +521,46 @@ class _LiteralEncryptor(ast.NodeTransformer):
                 attr="unpack"), args=[ast.Constant(fmt), ast.Call(func=ast.Attribute(
                 value=ast.Call(func=ast.Name(id="__import__"), args=[ast.Constant("base64")], keywords=[]),
                 attr="b64decode"), args=[ast.Constant(e)], keywords=[])], keywords=[]), slice=ast.Constant(0), ctx=ast.Load())
+        return node
+
+
+class _StringDisperser(ast.NodeTransformer):
+    """Split string constants into fragments scattered across the function.
+    At runtime, fragments are joined via ''.join([...]).
+    LLMs see fragments in isolation and cannot reconstruct the full string."""
+
+    def __init__(self):
+        self._frag_map: dict[str, list[str]] = {}
+
+    def visit_Constant(self, node: ast.Constant):
+        if isinstance(node.value, str) and len(node.value) >= 12 and secrets.randbelow(2):
+            n = secrets.randbelow(3) + 2
+            size = len(node.value) // n
+            parts = [node.value[i*size:(i+1)*size] for i in range(n)]
+            if len(node.value) % n:
+                parts[-1] += node.value[n*size:]
+            self._frag_map[node.value] = parts
+            return ast.Call(
+                func=ast.Attribute(value=ast.Constant(""), attr="join"),
+                args=[ast.List(elts=[ast.Constant(p) for p in parts], ctx=ast.Load())],
+                keywords=[])
+        return node
+
+    def visit_FunctionDef(self, node: ast.FunctionDef):
+        self._frag_map.clear()
+        self.generic_visit(node)
+        if self._frag_map:
+            _scatter_assignments = []
+            for _orig, _parts in self._frag_map.items():
+                for j, p in enumerate(_parts):
+                    _scatter_assignments.append(
+                        ast.Assign(targets=[ast.Name(id=f"_f{j}", ctx=ast.Store())],
+                                   value=ast.Constant(p), lineno=0))
+                    if j > 0:
+                        _target_idx = secrets.randbelow(max(1, len(node.body)))
+                        node.body.insert(_target_idx, _scatter_assignments[-1])
+            if _scatter_assignments:
+                node.body.insert(0, _scatter_assignments[0])
         return node
 
 

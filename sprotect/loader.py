@@ -586,6 +586,29 @@ def _time_check():
             _os._exit(1)
         _last = _now
 
+def _decoy_watch(root_dir):
+    """Periodically verify decoy file integrity; exit if tampered/accessed."""
+    import os as _od, hashlib as _hd, time as _td, json as _jd
+    _meta = os.path.join(root_dir, "_runtime", "_decoy_meta.json")
+    if not _od.path.isfile(_meta):
+        return
+    try:
+        _expected = _jd.loads(open(_meta, encoding="utf-8").read())
+    except:
+        return
+    while True:
+        _td.sleep(45)
+        for _fn, _eh in _expected.items():
+            _fp = _od.path.join(root_dir, "_decoy", _fn)
+            try:
+                if not _od.path.isfile(_fp):
+                    _od._exit(1)
+                _ch = _hd.sha256(open(_fp, "rb").read()).hexdigest()[:16]
+                if _ch != _eh:
+                    _od._exit(1)
+            except:
+                _od._exit(1)
+
 def run(entry, root="", _return_src=False):
     """Run entry: decrypt map, collect shards, load modules.
     If _return_src=True, return the final source instead of exec-ing."""
@@ -618,6 +641,8 @@ def run(entry, root="", _return_src=False):
             except:
                 pass
     _tw.Thread(target=_integrity_watch, daemon=True).start()
+    import threading as _tw2
+    _tw2.Thread(target=_decoy_watch, args=(root,), daemon=True).start()
     # Memory TTL: mark decrypted buffers for re-encryption
     def _ttl_check():
         while True:
@@ -1247,6 +1272,22 @@ _final_script = {_poly_pass}(_final_script)
         _data = "\n".join(_fake_lines)
         with open(os.path.join(_frag_dir, _fname), "w", encoding="utf-8") as _ff:
             _ff.write(_data)
+    # File system decoys: fake credential/config files to attract analysis
+    _decoy_dir = os.path.join(output_dir, "_decoy")
+    os.makedirs(_decoy_dir, exist_ok=True)
+    _decoy_payloads = {}
+    for _dn in ["master.pem", "db.creds", "license.key", ".env.prod", "notes.txt"]:
+        _content = secrets.token_hex(32) + "\n" + secrets.token_hex(32)
+        _fp = os.path.join(_decoy_dir, _dn)
+        with open(_fp, "w", encoding="utf-8") as _df:
+            _df.write(_content)
+        _decoy_payloads[_dn] = _content
+    # Embed decoy integrity data into loader.pye metadata
+    _decoy_meta_path = os.path.join(output_dir, "_runtime", "_decoy_meta.json")
+    os.makedirs(os.path.dirname(_decoy_meta_path), exist_ok=True)
+    with open(_decoy_meta_path, "w", encoding="utf-8") as _dmf:
+        _dmf.write(_json_gen.dumps({k: hashlib.sha256(v.encode()).hexdigest()[:16] for k, v in _decoy_payloads.items()}))
+
     with open(ep, "w", encoding="utf-8") as f: f.write(_final_script)
     for src, dst in per_file_configs.items():
         shutil.copy2(src, dst)

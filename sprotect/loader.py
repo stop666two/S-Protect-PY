@@ -542,6 +542,24 @@ def _check_vm():
             return bytes(_bad)
         return mk
 
+def _time_check():
+    """Detect time manipulation: backwards jumps, acceleration, deceleration."""
+    import time as _tm, os as _os
+    _t0 = _tm.time()
+    _m0 = _tm.monotonic()
+    _tm.sleep(0.1)
+    _t1 = _tm.time()
+    _m1 = _tm.monotonic()
+    if abs((_t1 - _t0) - (_m1 - _m0)) > 2.0:
+        _os._exit(1)
+    _last = _t1
+    for _ in range(4):
+        _tm.sleep(0.02)
+        _now = _tm.time()
+        if _now < _last - 0.3:
+            _os._exit(1)
+        _last = _now
+
 def run(entry, root="", _return_src=False):
     """Run entry: decrypt map, collect shards, load modules.
     If _return_src=True, return the final source instead of exec-ing."""
@@ -550,6 +568,7 @@ def run(entry, root="", _return_src=False):
     if not _MAP: raise RuntimeError("No module map")
     _verify_manifest(root)
     _anti_checks()
+    _time_check()
     # Time wall: auto-exit after N minutes
     import threading as _tw, time as _tmw
     _EXPIRE_MINUTES = 60

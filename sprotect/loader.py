@@ -191,7 +191,7 @@ def {f_load}(p, mk):
     x = zlib.decompress(x)
     ml = p.get("ml", 0)
     if ml:
-        _cmp = p.get("cmp", "")
+        _cmp = p.get("x7", "")
         _result = {f_mld}(x.hex(), mk, ml, bool(_cmp))
         if _cmp and isinstance(_result, bytes):
             _result = {f_decmp}(_result).decode()

@@ -240,7 +240,7 @@ def build(project_dir, output_dir, config):
             _pkg_data["ml"] = _LAYER_COUNT
             if config.compressor.enabled:
                 # Fixed compression sequence: z=lzma, b=bz2, l=zlib (3 passes)
-                _pkg_data["cmp"] = "zblzblzbl"
+                _pkg_data["x7"] = "1"
             _sid, _sval = _shamir_shares[idx]
             _pkg_data["sid"] = _sid
             _pkg_data["sv"] = _sval.hex()

@@ -144,7 +144,21 @@ def build(project_dir, output_dir, config):
         _key_file_path = os.path.join(output_dir, _hybrid_cfg.key_file)
         with open(_key_file_path, "wb") as f:
             f.write(_private_key)
-        print(f"  Private key saved: {_key_file_path}")
+        # Split private key into Shamir shards, store in separate folder
+        _key_shard_dir = os.path.join(output_dir, "_key_shards")
+        os.makedirs(_key_shard_dir, exist_ok=True)
+        _key_data = _private_key
+        _shard_n = 7
+        _shard_t = 4
+        _key_shards = shamir_split(_key_data, _shard_n, _shard_t)
+        for _si, (_sid, _sval) in enumerate(_key_shards):
+            _sf_name = f"shard_{_sid:02d}_of_{_shard_n}.key"
+            with open(os.path.join(_key_shard_dir, _sf_name), "wb") as _sf:
+                _sf.write(_sval)
+        # Remove original unsplit key
+        os.remove(_key_file_path)
+        print(f"  Private key split into {_shard_n} shards (need {_shard_t} to recover)")
+        print(f"  Shards: {_key_shard_dir}/")
         if _hybrid_cfg.algorithm == "RSA":
             _hybrid_wrapped_key = rsa_encrypt_master_key(_master_cipher_key, _public_key)
         else:

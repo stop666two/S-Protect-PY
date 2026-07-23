@@ -250,12 +250,18 @@ def {f_extra}(ct, mk, hdr):
 
 def {f_mld}(d, k, n, _raw_last=False):
     """Decrypt multi-layer encrypted data from outermost to innermost.
-    If _raw_last=True, return raw bytes for the innermost layer (for decompression)."""
+    Hash chain: each layer stores SHA256(inner_content)[:16], verified after decrypt."""
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    import json, base64, re as _re9
+    import json, base64, re as _re9, hashlib as _hlib
     cd, ck = bytes.fromhex(d), k
+    _next_expected_hash = ""
     for i in range(n):
         x = AESGCM(ck).decrypt(cd[:12], cd[12:], b"")
+        # Verify hash chain (hash of THIS layer against expected from outer layer)
+        if _next_expected_hash:
+            _actual = _hlib.sha256(x).hexdigest()[:16]
+            if _actual != _next_expected_hash:
+                return b""
         if i < n - 1:
             _decoded = x.decode()
             if not _decoded.strip().startswith(("{{", "[", '{{"')):
@@ -267,10 +273,12 @@ def {f_mld}(d, k, n, _raw_last=False):
                 l = json.loads(_raw)
                 ck = bytes.fromhex(l["k"])
                 cd = bytes.fromhex(l["d"])
+                _next_expected_hash = l.get("h", "")
             else:
                 l = json.loads(_decoded)
                 ck = bytes.fromhex(l["k"])
                 cd = bytes.fromhex(l["d"])
+                _next_expected_hash = l.get("h", "")
         else:
             if _raw_last:
                 return x
